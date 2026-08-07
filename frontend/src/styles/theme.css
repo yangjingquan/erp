@@ -1,0 +1,19 @@
+:root {
+  --erp-page-bg: #f4f7fb;
+  --erp-panel-bg: #ffffff;
+  --erp-sidebar-bg: #18253d;
+  --erp-border: #e5e7eb;
+  --erp-text: #1f2937;
+  --erp-muted-text: #64748b;
+}
+
+:root[data-theme="dark"] {
+  --erp-page-bg: #0f172a;
+  --erp-panel-bg: #172033;
+  --erp-sidebar-bg: #090f1d;
+  --erp-border: #334155;
+  --erp-text: #e5e7eb;
+  --erp-muted-text: #94a3b8;
+}
+
+body { margin: 0; color: var(--erp-text); background: var(--erp-page-bg); }

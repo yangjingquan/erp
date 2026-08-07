@@ -1,0 +1,33 @@
+<script setup lang="ts">
+import { onMounted, reactive, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { createSalesQuote, createSalesReturn, listSalesQuotes, listSalesReturns, quoteAction } from "../api/sales";
+import { createPurchaseRequest, createPurchaseReturn, listPurchaseRequests, listPurchaseReturns, requestAction } from "../api/purchase";
+import { useMasterOptions } from "../composables/useMasterOptions";
+
+type Kind = "quote" | "purchase-request" | "sales-return" | "purchase-return";
+const props = defineProps<{ kind: Kind; title: string }>();
+const rows = ref<any[]>([]); const loading = ref(false); const saving = ref(false); const dialogVisible = ref(false); const actionLoading = ref("");
+const form = reactive<any>({ customer_id: "", supplier_id: "", warehouse_id: "", source_delivery_id: "", source_receipt_id: "", quote_date: new Date().toISOString().slice(0, 10), request_date: new Date().toISOString().slice(0, 10), return_date: new Date().toISOString().slice(0, 10), valid_until: null, items: [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }] });
+const { customers, suppliers, materials, warehouses, loadOptions } = useMasterOptions();
+const isQuote = () => props.kind === "quote"; const isRequest = () => props.kind === "purchase-request"; const isSalesReturn = () => props.kind === "sales-return";
+function listFn() { return isQuote() ? listSalesQuotes() : isRequest() ? listPurchaseRequests() : isSalesReturn() ? listSalesReturns() : listPurchaseReturns(); }
+function listFrom(response: any) { if (response.data.code !== 0) throw new Error(response.data.msg); return Array.isArray(response.data.data) ? response.data.data : []; }
+async function load() { loading.value = true; try { rows.value = listFrom(await listFn()); } catch (error) { ElMessage.error(error instanceof Error ? error.message : `${props.title}加载失败`); } finally { loading.value = false; } }
+function reset() { Object.keys(form).forEach((key) => { if (key !== "items") form[key] = ""; }); form.quote_date = form.request_date = form.return_date = new Date().toISOString().slice(0, 10); form.items = [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }]; }
+function openCreate() { reset(); dialogVisible.value = true; }
+async function save() {
+  if (!form.items[0].material_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写物料和有效数量"); return; }
+  saving.value = true;
+  try { let response: any; if (isQuote()) response = await createSalesQuote({ ...form, items: [{ ...form.items[0], unit_price: form.items[0].unit_price }] }); else if (isRequest()) response = await createPurchaseRequest({ ...form }); else if (isSalesReturn()) response = await createSalesReturn({ ...form }); else response = await createPurchaseReturn({ ...form }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("单据已创建"); dialogVisible.value = false; await load(); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "创建失败"); } finally { saving.value = false; }
+}
+async function action(row: any, name: "submit" | "approve" | "reject") { try { await ElMessageBox.confirm(`确认操作单据“${row.doc_no}”吗？`, "操作确认", { type: "warning" }); actionLoading.value = row.id; const response = props.kind === "quote" ? await quoteAction(row.id, name) : await requestAction(row.id, name); if (response.data.code !== 0) throw new Error(response.data.msg); await load(); } catch (error) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "操作失败"); } finally { actionLoading.value = ""; } }
+onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "suppliers", "materials", "warehouses"])]); });
+</script>
+<template>
+  <section class="page-stack"><el-page-header :content="props.title" /><el-space><el-button type="primary" @click="openCreate">新建{{ props.title }}</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space><el-table v-loading="loading" :data="rows" stripe><el-table-column prop="doc_no" label="单据号" /><el-table-column prop="status" label="状态" /><el-table-column prop="customer_id" label="客户" v-if="isQuote() || isSalesReturn()" /><el-table-column prop="supplier_id" label="供应商" v-if="isRequest() || !isQuote() && !isSalesReturn()" /><el-table-column prop="total_amount" label="金额" /><el-table-column label="操作" width="220" v-if="isQuote() || isRequest()"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="action(scope.row, 'approve')">审核</el-button><el-button v-if="scope.row.status === 'submitted'" link type="danger" @click="action(scope.row, 'reject')">驳回</el-button></template></el-table-column><template #empty><el-empty description="暂无单据" /></template></el-table>
+    <el-dialog v-model="dialogVisible" :title="`新建${props.title}`" width="560px"><el-form label-width="100px"><el-form-item v-if="isQuote() || isSalesReturn()" label="客户" required><el-select v-model="form.customer_id" filterable clearable style="width: 100%"><el-option v-for="option in customers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item v-if="isRequest() || props.kind === 'purchase-return'" label="供应商" required><el-select v-model="form.supplier_id" filterable clearable style="width: 100%"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item v-if="!isQuote() && !isRequest()" label="仓库" required><el-select v-model="form.warehouse_id" filterable clearable style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item v-if="!isRequest()" label="单价"><el-input-number v-model="form.items[0].unit_price" :min="0" /></el-form-item><el-form-item v-else label="预计单价"><el-input-number v-model="form.items[0].estimated_price" :min="0" /></el-form-item></el-form><template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template></el-dialog>
+  </section>
+</template>
+<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }</style>

@@ -1,0 +1,1 @@
+import{_ as c,c as s,w as t,f as a,k as _,r as o,o as l}from"./index-uC6ZWqFk.js";const p={};function d(f,e){const n=o("el-empty"),r=o("el-card");return l(),s(r,null,{header:t(()=>[...e[0]||(e[0]=[_("MRP 运算",-1)])]),default:t(()=>[a(n,{description:"暂无 MRP 运算"})]),_:1})}const i=c(p,[["render",d]]);export{i as default};

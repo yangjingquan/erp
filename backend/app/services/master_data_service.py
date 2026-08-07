@@ -1,0 +1,154 @@
+from io import BytesIO
+from typing import Any
+from unicodedata import normalize as unicode_normalize
+
+from openpyxl import Workbook, load_workbook
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.exceptions import AppError
+from app.models.master_data import (
+    MdCustomer,
+    MdMaterial,
+    MdSupplier,
+    MdTaxRate,
+    MdUnit,
+    MdWarehouse,
+)
+from app.services.audit_service import write_operation_log
+
+RESOURCE_CONFIG = {
+    "materials": {
+        "model": MdMaterial,
+        "fields": [
+            "code", "name", "category", "material_type", "standard_cost", "sale_price",
+            "purchase_price", "min_stock", "max_stock", "specification",
+        ],
+    },
+    "customers": {
+        "model": MdCustomer,
+        "fields": ["code", "name", "short_name", "owner_id", "contact_name", "contact_phone", "address", "credit_limit"],
+    },
+    "suppliers": {
+        "model": MdSupplier,
+        "fields": ["code", "name", "short_name", "owner_id", "contact_name", "contact_phone", "address", "credit_days"],
+    },
+    "warehouses": {"model": MdWarehouse, "fields": ["code", "name", "manager_id", "address"]},
+    "units": {"model": MdUnit, "fields": ["code", "name", "precision_scale"]},
+    "tax-rates": {"model": MdTaxRate, "fields": ["code", "name", "rate"]},
+}
+
+
+def normalize_name(value: str) -> str:
+    return "".join(unicode_normalize("NFKC", value).split()).casefold()
+
+
+def get_config(resource: str) -> dict[str, Any]:
+    if resource not in RESOURCE_CONFIG:
+        raise AppError("不支持的主数据类型", code=404)
+    return RESOURCE_CONFIG[resource]
+
+
+def list_items(db: Session, resource: str, org_id: str) -> list[Any]:
+    model = get_config(resource)["model"]
+    return list(
+        db.scalars(
+            select(model)
+            .where(model.org_id == org_id, model.is_deleted.is_(False))
+            .order_by(model.created_at.desc())
+        ).all()
+    )
+
+
+def create_item(db: Session, resource: str, org_id: str, data: dict[str, Any], user: object):
+    model = get_config(resource)["model"]
+    existing = list(
+        db.scalars(
+            select(model).where(model.org_id == org_id, model.is_deleted.is_(False))
+        ).all()
+    )
+    if any(row.code == data["code"] for row in existing):
+        raise AppError("业务编码已存在", code=409)
+    if any(normalize_name(row.name) == normalize_name(data["name"]) for row in existing):
+        raise AppError("名称已存在", code=409)
+    allowed_fields = set(get_config(resource)["fields"])
+    instance = model(
+        org_id=org_id,
+        **{key: value for key, value in data.items() if key in allowed_fields},
+    )
+    db.add(instance)
+    write_operation_log(
+        db,
+        user=user,
+        action="create",
+        resource=resource,
+        target_id=instance.id,
+        detail={"code": instance.code, "name": instance.name},
+    )
+    db.commit()
+    db.refresh(instance)
+    return instance
+
+
+def serialize_item(item: Any, fields: list[str]) -> dict[str, Any]:
+    result = {"id": item.id}
+    for field in fields:
+        value = getattr(item, field, None)
+        result[field] = str(value) if hasattr(value, "as_tuple") else value
+    return result
+
+
+def import_items(db: Session, resource: str, org_id: str, file_obj, user: object) -> dict:
+    config = get_config(resource)
+    model = config["model"]
+    workbook = load_workbook(file_obj, read_only=True, data_only=True)
+    sheet = workbook.active
+    headers = [str(value).strip() if value is not None else "" for value in next(sheet.iter_rows(values_only=True))]
+    rows = []
+    errors = []
+    created_count = 0
+    skipped_count = 0
+    for row_number, values in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+        row = {headers[index]: values[index] for index in range(min(len(headers), len(values)))}
+        code = str(row.get("code") or "").strip()
+        name = str(row.get("name") or "").strip()
+        if not code or not name:
+            errors.append({"row": row_number, "message": "code 和 name 不能为空"})
+            continue
+        existing = list(db.scalars(select(model).where(model.org_id == org_id, model.is_deleted.is_(False))).all())
+        if any(item.code == code or normalize_name(item.name) == normalize_name(name) for item in existing):
+            skipped_count += 1
+            continue
+        data = {key: row.get(key) for key in config["fields"] if row.get(key) is not None}
+        try:
+            instance = model(org_id=org_id, **data)
+            db.add(instance)
+            db.flush()
+            created_count += 1
+        except Exception as exc:
+            db.rollback()
+            errors.append({"row": row_number, "message": str(exc)})
+    db.commit()
+    write_operation_log(
+        db,
+        user=user,
+        action="import",
+        resource=resource,
+        detail={"created_count": created_count, "skipped_count": skipped_count, "errors": errors},
+    )
+    db.commit()
+    return {"created_count": created_count, "skipped_count": skipped_count, "errors": errors}
+
+
+def export_items(db: Session, resource: str, org_id: str) -> BytesIO:
+    config = get_config(resource)
+    workbook = Workbook()
+    sheet = workbook.active
+    fields = config["fields"]
+    sheet.append(fields)
+    for item in list_items(db, resource, org_id):
+        sheet.append([getattr(item, field, None) for field in fields])
+    stream = BytesIO()
+    workbook.save(stream)
+    stream.seek(0)
+    return stream
