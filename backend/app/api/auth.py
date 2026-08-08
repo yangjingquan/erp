@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
@@ -7,7 +8,8 @@ from app.core.exceptions import AppError
 from app.core.response import ok
 from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
 from app.services.audit_service import write_login_log, write_operation_log
-from app.schemas.auth import ChangePasswordRequest, LoginRequest
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest
+from app.models.system import SysOrg, SysUser
 from app.services.auth_service import UserContext, authenticate_user, build_user_context
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -22,6 +24,9 @@ def serialize_user(context: UserContext) -> dict:
         "org_id": user.org_id,
         "department_id": user.department_id,
         "is_superuser": user.is_superuser,
+        "permissions": sorted(context.permissions),
+        "menus": context.menus,
+        "data_scope_type": context.data_scope_type,
     }
 
 
@@ -44,6 +49,31 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
             "user": serialize_user(context),
         }
     )
+
+
+@router.post("/register")
+def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
+    username = payload.username.strip()
+    if len(username) < 3:
+        raise AppError("账号至少 3 位", code=400)
+    if db.scalar(select(SysUser).where(SysUser.username == username, SysUser.is_deleted.is_(False))):
+        raise AppError("账号已存在，请更换账号", code=409)
+    org_id = db.scalar(select(SysOrg.id).where(SysOrg.status == "active").order_by(SysOrg.created_at).limit(1))
+    if org_id is None:
+        org_id = db.scalar(select(SysUser.org_id).order_by(SysUser.created_at).limit(1))
+    if org_id is None:
+        raise AppError("系统尚未初始化组织，暂时无法注册", code=503)
+    user = SysUser(
+        org_id=org_id,
+        username=username,
+        display_name=username,
+        password_hash=hash_password(payload.password),
+        status="active",
+        is_superuser=False,
+    )
+    db.add(user)
+    db.commit()
+    return ok({"id": user.id, "username": user.username})
 
 
 @router.get("/me")

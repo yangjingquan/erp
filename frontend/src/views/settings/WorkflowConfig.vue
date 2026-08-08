@@ -4,8 +4,6 @@ import { ElMessage } from "element-plus";
 
 import {
   getWorkflowDefinition,
-  loadWorkflowConfig,
-  saveWorkflowConfig,
   saveWorkflowDefinition,
   type WorkflowNode,
 } from "../../api/workflow";
@@ -17,23 +15,31 @@ const defaultNodes: WorkflowNode[] = [
 const nodes = ref<WorkflowNode[]>([]);
 const loading = ref(false);
 const saving = ref(false);
-const BUSINESS_TYPE = "sales_order";
+const businessType = ref("sales_order");
+const loadError = ref("");
+const businessTypes = [
+  { value: "sales_order", label: "销售订单" },
+  { value: "purchase_order", label: "采购订单" },
+  { value: "expense", label: "费用报销" },
+  { value: "purchase_request", label: "采购申请" },
+];
 
 async function load() {
   loading.value = true;
+  loadError.value = "";
   try {
-    const response = await getWorkflowDefinition(BUSINESS_TYPE);
+    const response = await getWorkflowDefinition(businessType.value);
     if (response.data.code === 0 && response.data.data?.nodes?.length) {
       nodes.value = response.data.data.nodes.map((node: WorkflowNode) => ({ ...node }));
-      saveWorkflowConfig(nodes.value);
       return;
     }
-  } catch {
-    // Fall back to the local cache when the backend is temporarily unavailable.
+    nodes.value = defaultNodes.map((node) => ({ ...node }));
+  } catch (error) {
+    loadError.value = error instanceof Error ? error.message : "后端审批流加载失败";
+    nodes.value = defaultNodes.map((node) => ({ ...node }));
   } finally {
     loading.value = false;
   }
-  nodes.value = loadWorkflowConfig(defaultNodes.map((node) => ({ ...node })));
 }
 
 function addNode() {
@@ -49,18 +55,20 @@ function removeNode(index: number) {
 }
 
 async function saveWorkflow() {
-  saveWorkflowConfig(nodes.value);
   saving.value = true;
   try {
-    const response = await saveWorkflowDefinition(BUSINESS_TYPE, {
-      name: "销售订单审批",
+    const typeName = businessTypes.find((item) => item.value === businessType.value)?.label || businessType.value;
+    const response = await saveWorkflowDefinition(businessType.value, {
+      name: `${typeName}审批`,
       status: "active",
       nodes: nodes.value,
     });
     if (response.data.code !== 0) throw new Error(response.data.msg || "审批流保存失败");
+    loadError.value = "";
     ElMessage.success("审批流已保存到后端");
   } catch (error) {
-    ElMessage.warning(error instanceof Error ? `${error.message}，已保存在当前浏览器` : "后端保存失败，已保存在当前浏览器");
+    loadError.value = error instanceof Error ? error.message : "后端审批流保存失败";
+    ElMessage.error(loadError.value);
   } finally {
     saving.value = false;
   }
@@ -72,8 +80,9 @@ onMounted(load);
 <template>
   <section class="page-stack">
     <el-page-header content="审批流配置" />
-    <el-alert title="审批节点通过配置保存，单据业务服务不硬编码节点；后端不可用时保留浏览器本地缓存。" type="info" show-icon />
-    <el-space class="toolbar">
+    <el-alert title="审批流按业务类型保存到后端，业务单据只使用后端已发布的定义。后端不可用时不会伪造本地保存成功。" type="info" show-icon />
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon />
+    <el-space class="toolbar"><el-select v-model="businessType" style="width: 180px" @change="load"><el-option v-for="item in businessTypes" :key="item.value" :label="item.label" :value="item.value" /></el-select>
       <el-button type="primary" @click="addNode">新增节点</el-button>
       <el-button type="success" :loading="saving" @click="saveWorkflow">保存流程</el-button>
       <el-button :loading="loading" @click="load">重新加载</el-button>

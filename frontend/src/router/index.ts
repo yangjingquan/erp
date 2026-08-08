@@ -1,6 +1,7 @@
 import { createMemoryHistory, createRouter, createWebHistory } from "vue-router";
 
 import { useAuthStore } from "../stores/auth";
+import { usePermissionStore } from "../stores/permission";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import Dashboard from "../views/Dashboard.vue";
 import Login from "../views/Login.vue";
@@ -56,6 +57,7 @@ export const router = createRouter({
         { path: "settings/api-clients", name: "api-clients", component: () => import("../views/settings/ApiClientList.vue"), meta: { requiresAuth: true, permission: "system:manage" } },
         { path: "settings/workflow", name: "workflow-settings", component: () => import("../views/settings/WorkflowConfig.vue"), meta: { requiresAuth: true } },
         { path: "system/operation-logs", name: "operation-logs", component: () => import("../views/system/OperationLog.vue"), meta: { requiresAuth: true } },
+        { path: "system/users", name: "system-users", component: () => import("../views/system/UserManagement.vue"), meta: { requiresAuth: true } },
         { path: "system/admin", name: "system-admin", component: () => import("../views/system/AdminBasics.vue"), meta: { requiresAuth: true } },
         { path: "profile", name: "profile", component: () => import("../views/Profile.vue"), meta: { requiresAuth: true } },
         { path: "system/backup", name: "backup-restore", component: () => import("../views/system/BackupRestore.vue"), meta: { requiresAuth: true } },
@@ -73,6 +75,10 @@ router.beforeEach((to) => {
   }
   if (to.name === "login" && auth.isLoggedIn) {
     return { name: "dashboard" };
+  }
+  if (to.meta.requiresAuth && auth.user && !auth.user.is_superuser && to.path !== "/profile") {
+    const permissions = usePermissionStore();
+    if (!permissions.hasPagePermission(to.path)) return { name: "forbidden" };
   }
   return true;
 });

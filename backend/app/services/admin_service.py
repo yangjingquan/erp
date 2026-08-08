@@ -84,6 +84,36 @@ def create_user(db: Session, payload, context: UserContext):
     return row
 
 
+def _get_user(db: Session, user_id: str, context: UserContext):
+    row = db.scalar(select(SysUser).where(SysUser.id == user_id, SysUser.org_id == context.org_id, SysUser.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("用户不存在", code=404)
+    return row
+
+
+def update_user(db: Session, user_id: str, payload, context: UserContext):
+    row = _get_user(db, user_id, context)
+    if row.id == context.id and payload.status == "inactive":
+        raise AppError("不能停用当前登录用户", code=400)
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    write_operation_log(db, user=context.user, action="update", resource="sys_user", target_id=row.id)
+    db.commit()
+    return _serialize_user(row, db)
+
+
+def _serialize_user(row, db: Session):
+    role_ids = list(db.scalars(select(sys_user_role.c.role_id).where(sys_user_role.c.user_id == row.id)).all())
+    return _serialize(row, ["username", "display_name", "department_id", "email", "phone", "status", "is_superuser"]) | {"role_ids": role_ids}
+
+
+def update_user_password(db: Session, user_id: str, password: str, context: UserContext):
+    row = _get_user(db, user_id, context)
+    row.password_hash = hash_password(password)
+    write_operation_log(db, user=context.user, action="change_password", resource="sys_user", target_id=row.id)
+    db.commit()
+
+
 def create_menu(db: Session, payload, context: UserContext):
     if db.scalar(select(SysMenu).where(SysMenu.code == payload.code)):
         raise AppError("菜单编码已存在", code=409)
@@ -106,3 +136,18 @@ def set_status(db: Session, resource: str, row_id: str, status: str, context: Us
     write_operation_log(db, user=context.user, action="status", resource=f"sys_{resource[:-1]}", target_id=row.id, detail={"status": status})
     db.commit()
     return row
+
+
+def set_user_roles(db: Session, user_id: str, role_ids: list[str], context: UserContext):
+    user = db.scalar(select(SysUser).where(SysUser.id == user_id, SysUser.org_id == context.org_id, SysUser.is_deleted.is_(False)))
+    if user is None:
+        raise AppError("用户不存在", code=404)
+    roles = db.scalars(select(SysRole).where(SysRole.id.in_(role_ids), SysRole.org_id == context.org_id, SysRole.is_deleted.is_(False))).all() if role_ids else []
+    if len(roles) != len(set(role_ids)):
+        raise AppError("角色不存在", code=404)
+    db.execute(sys_user_role.delete().where(sys_user_role.c.user_id == user_id))
+    for role in roles:
+        db.execute(sys_user_role.insert().values(user_id=user_id, role_id=role.id))
+    write_operation_log(db, user=context.user, action="update_roles", resource="sys_user", target_id=user_id, detail={"role_ids": role_ids})
+    db.commit()
+    return {"user_id": user_id, "role_ids": role_ids}

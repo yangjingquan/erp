@@ -1,1 +1,0 @@
-import{_ as c,o as s,c as a,w as t,f as _,k as l,r as o}from"./index-CRsm_vOy.js";const p={};function d(f,e){const n=o("el-empty"),r=o("el-card");return s(),a(r,null,{header:t(()=>[...e[0]||(e[0]=[l("MRP 运算",-1)])]),default:t(()=>[_(n,{description:"暂无 MRP 运算"})]),_:1})}const i=c(p,[["render",d]]);export{i as default};

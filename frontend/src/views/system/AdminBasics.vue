@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { createAdmin, listAdmin, setAdminStatus, type AdminResource } from "../../api/admin";
+import {
+  createAdmin,
+  getPermissionCatalog,
+  getRoleAccess,
+  listAdmin,
+  setAdminStatus,
+  updateRoleAccess,
+  updateUserRoles,
+  type AdminResource,
+  type FunctionPermission,
+  type PermissionCatalog,
+} from "../../api/admin";
 
 type Row = Record<string, any>;
 const active = ref<AdminResource>("departments");
@@ -12,6 +23,19 @@ const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const form = reactive<Record<string, any>>({});
+const permissionDialogVisible = ref(false);
+const permissionLoading = ref(false);
+const permissionSaving = ref(false);
+const permissionCatalog = ref<PermissionCatalog>({ pages: [], functions: [] });
+const selectedRole = ref<Row | null>(null);
+const selectedPageIds = ref<string[]>([]);
+const selectedFunctionIds = ref<string[]>([]);
+const selectedDataScope = ref<"all" | "department" | "own">("department");
+const pageTree = ref<any>();
+const userRoleDialogVisible = ref(false);
+const selectedUser = ref<Row | null>(null);
+const selectedUserRoleIds = ref<string[]>([]);
+
 const configs: Record<AdminResource, { title: string; columns: Array<{ prop: string; label: string }>; fields: Array<{ prop: string; label: string; type?: string; required?: boolean }> }> = {
   departments: { title: "部门", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "部门编码", required: true }, { prop: "name", label: "部门名称", required: true }, { prop: "parent_id", label: "上级部门ID" }] },
   roles: { title: "角色", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "data_scope_type", label: "数据范围" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "角色编码", required: true }, { prop: "name", label: "角色名称", required: true }, { prop: "data_scope_type", label: "数据范围" }] },
@@ -19,8 +43,18 @@ const configs: Record<AdminResource, { title: string; columns: Array<{ prop: str
   menus: { title: "菜单", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "path", label: "路由" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "菜单编码", required: true }, { prop: "name", label: "菜单名称", required: true }, { prop: "path", label: "路由路径" }, { prop: "component", label: "组件路径" }] },
 };
 
+const functionGroups = computed(() => {
+  const groups = new Map<string, { name: string; items: FunctionPermission[] }>();
+  permissionCatalog.value.functions.forEach((item) => {
+    const group = groups.get(item.menu_id) || { name: item.menu_name, items: [] };
+    group.items.push(item);
+    groups.set(item.menu_id, group);
+  });
+  return [...groups.entries()].map(([menuId, group]) => ({ menuId, ...group }));
+});
+
 function config() { return configs[active.value]; }
-function resetForm() { Object.keys(form).forEach((key) => delete form[key]); config().fields.forEach((field) => { form[field.prop] = field.prop === "role_ids" ? [] : ""; }); }
+function resetForm() { Object.keys(form).forEach((key) => delete form[key]); config().fields.forEach((field) => { form[field.prop] = field.prop === "role_ids" ? [] : field.prop === "data_scope_type" ? "department" : ""; }); }
 async function load(resource = active.value) {
   loading.value = true;
   try {
@@ -46,6 +80,50 @@ async function toggleStatus(row: Row) {
   try { await ElMessageBox.confirm(`确认将“${row.name || row.display_name || row.username}”${next === "active" ? "启用" : "停用"}吗？`, "状态确认", { type: "warning" }); const response = await setAdminStatus(active.value, row.id, next); if (response.data.code !== 0) throw new Error(response.data.msg); await load(); }
   catch (error) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "状态更新失败"); }
 }
+
+async function openRoleAccess(row: Row) {
+  selectedRole.value = row;
+  permissionDialogVisible.value = true;
+  permissionLoading.value = true;
+  try {
+    const [catalogResponse, accessResponse] = await Promise.all([getPermissionCatalog(), getRoleAccess(row.id)]);
+    if (catalogResponse.data.code !== 0 || accessResponse.data.code !== 0) throw new Error("权限目录加载失败");
+    permissionCatalog.value = catalogResponse.data.data;
+    selectedPageIds.value = accessResponse.data.data.menu_ids;
+    selectedFunctionIds.value = accessResponse.data.data.permission_ids;
+    selectedDataScope.value = accessResponse.data.data.data_scope_type || "department";
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "权限加载失败"); }
+  finally { permissionLoading.value = false; }
+}
+async function saveRoleAccess() {
+  if (!selectedRole.value) return;
+  permissionSaving.value = true;
+  try {
+    const menuIds = (pageTree.value?.getCheckedKeys(false) || []) as string[];
+    const response = await updateRoleAccess(selectedRole.value.id, { menu_ids: menuIds, permission_ids: selectedFunctionIds.value, data_scope_type: selectedDataScope.value });
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success("角色权限已保存");
+    permissionDialogVisible.value = false;
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "权限保存失败"); }
+  finally { permissionSaving.value = false; }
+}
+function openUserRoles(row: Row) {
+  selectedUser.value = row;
+  selectedUserRoleIds.value = [...(row.role_ids || [])];
+  userRoleDialogVisible.value = true;
+}
+async function saveUserRoles() {
+  if (!selectedUser.value) return;
+  permissionSaving.value = true;
+  try {
+    const response = await updateUserRoles(selectedUser.value.id, selectedUserRoleIds.value);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success("用户角色已保存");
+    userRoleDialogVisible.value = false;
+    await load("users");
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "用户角色保存失败"); }
+  finally { permissionSaving.value = false; }
+}
 onMounted(() => { void load(); void listAdmin("roles").then((response) => { roles.value = Array.isArray(response.data.data) ? response.data.data : []; }); });
 </script>
 
@@ -59,20 +137,63 @@ onMounted(() => { void load(); void listAdmin("roles").then((response) => { role
       <el-space class="toolbar"><el-button type="primary" @click="openCreate">新增{{ config().title }}</el-button><el-button :loading="loading" @click="load()">刷新</el-button></el-space>
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column v-for="column in config().columns" :key="column.prop" :prop="column.prop" :label="column.label" min-width="140" />
+        <el-table-column v-if="active === 'roles'" label="权限配置" width="120"><template #default="scope"><el-button link type="primary" @click="openRoleAccess(scope.row)">配置权限</el-button></template></el-table-column>
+        <el-table-column v-if="active === 'users'" label="角色配置" width="120"><template #default="scope"><el-button link type="primary" @click="openUserRoles(scope.row)">配置角色</el-button></template></el-table-column>
         <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="scope.row.status" link type="warning" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无数据" /></template>
       </el-table>
     </el-card>
+
     <el-dialog v-model="dialogVisible" :title="`新增${config().title}`" width="560px">
       <el-form label-width="100px">
         <el-form-item v-for="field in config().fields" :key="field.prop" :label="field.label" :required="field.required">
           <el-select v-if="field.prop === 'role_ids'" v-model="form[field.prop]" multiple style="width: 100%"><el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id" /></el-select>
+          <el-select v-else-if="field.prop === 'data_scope_type'" v-model="form[field.prop]" style="width: 100%"><el-option label="全部数据" value="all" /><el-option label="本部门数据" value="department" /><el-option label="本人数据" value="own" /></el-select>
           <el-input v-else v-model="form[field.prop]" :type="field.type === 'password' ? 'password' : 'text'" :show-password="field.type === 'password'" />
         </el-form-item>
       </el-form>
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>
     </el-dialog>
+
+    <el-dialog v-model="permissionDialogVisible" :title="`配置权限 · ${selectedRole?.name || ''}`" width="880px">
+      <el-skeleton v-if="permissionLoading" :rows="8" animated />
+      <el-tabs v-else>
+        <el-tab-pane label="页面权限">
+          <div class="scope-row"><span>数据范围</span><el-select v-model="selectedDataScope" size="small" style="width: 180px"><el-option label="全部数据" value="all" /><el-option label="本部门数据" value="department" /><el-option label="本人数据" value="own" /></el-select><span class="scope-tip">员工信息将按角色数据范围过滤</span></div>
+          <p class="permission-hint">勾选后用户才能看到对应页面；父级模块会随子页面自动保留。</p>
+          <el-tree ref="pageTree" node-key="id" show-checkbox default-expand-all :data="permissionCatalog.pages" :default-checked-keys="selectedPageIds" :props="{ label: 'name', children: 'children' }" class="permission-tree" />
+        </el-tab-pane>
+        <el-tab-pane label="功能权限">
+          <p class="permission-hint">功能权限控制新增、编辑、删除、导出及业务操作按钮，和页面可见性分别保存。</p>
+          <div class="function-groups">
+            <div v-for="group in functionGroups" :key="group.menuId" class="function-group">
+              <div class="function-group-title">{{ group.name }}</div>
+              <el-checkbox-group v-model="selectedFunctionIds"><el-checkbox v-for="item in group.items" :key="item.id" :label="item.id">{{ item.name }}</el-checkbox></el-checkbox-group>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer><el-button @click="permissionDialogVisible = false">取消</el-button><el-button type="primary" :loading="permissionSaving" @click="saveRoleAccess">保存权限</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="userRoleDialogVisible" :title="`配置角色 · ${selectedUser?.display_name || ''}`" width="520px">
+      <el-form label-width="90px"><el-form-item label="角色"><el-select v-model="selectedUserRoleIds" multiple filterable style="width: 100%"><el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id" /></el-select></el-form-item></el-form>
+      <p class="permission-hint">用户最终权限由所选角色的页面权限和功能权限合并得到。</p>
+      <template #footer><el-button @click="userRoleDialogVisible = false">取消</el-button><el-button type="primary" :loading="permissionSaving" @click="saveUserRoles">保存角色</el-button></template>
+    </el-dialog>
   </section>
 </template>
 
-<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }.toolbar { margin-bottom: 16px; }</style>
+<style scoped>
+.page-stack { display: flex; flex-direction: column; gap: 16px; }
+.toolbar { margin-bottom: 16px; }
+.permission-hint { margin: 0 0 16px; color: var(--erp-muted-text); font-size: 13px; }
+.scope-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: var(--erp-text); font-size: 13px; font-weight: 700; }
+.scope-tip { color: var(--erp-muted-text); font-weight: 400; }
+.permission-tree { padding: 10px 16px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
+.function-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-height: 450px; overflow: auto; }
+.function-group { padding: 14px 16px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
+.function-group-title { margin-bottom: 10px; color: var(--erp-text); font-weight: 700; }
+.function-group :deep(.el-checkbox) { margin-right: 18px; margin-bottom: 8px; }
+@media (max-width: 720px) { .function-groups { grid-template-columns: 1fr; } }
+</style>

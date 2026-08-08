@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 
 import { http } from "../api/http";
+import { usePermissionStore, type MenuItem } from "./permission";
 
 const storage = typeof localStorage === "undefined" ? null : localStorage;
 
@@ -11,6 +12,9 @@ export interface CurrentUser {
   org_id: string;
   department_id?: string | null;
   is_superuser: boolean;
+  permissions?: string[];
+  menus?: MenuItem[];
+  data_scope_type?: "all" | "department" | "own";
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -36,18 +40,21 @@ export const useAuthStore = defineStore("auth", {
       const data = response.data.data;
       this.setTokens(data.access_token, data.refresh_token);
       this.user = data.user;
+      usePermissionStore().loadMenus(data.user.menus ?? [], data.user.permissions ?? []);
       return data.user as CurrentUser;
     },
     async loadCurrentUser() {
       if (!this.token) return null;
       const response = await http.get("/auth/me");
       this.user = response.data.data;
+      usePermissionStore().loadMenus(this.user?.menus ?? [], this.user?.permissions ?? []);
       return this.user;
     },
     logout() {
       this.token = null;
       this.refreshToken = null;
       this.user = null;
+      usePermissionStore().$reset();
       storage?.removeItem("erp_access_token");
       storage?.removeItem("erp_refresh_token");
     },

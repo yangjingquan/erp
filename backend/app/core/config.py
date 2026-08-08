@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     )
     jwt_secret_key: str = "erp-development-secret-key-change-in-production-32"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # The admin console keeps a user signed in for two working days.
+    access_token_expire_minutes: int = 48 * 60
     refresh_token_expire_days: int = 7
     cors_origins: list[str] = Field(
         default_factory=lambda: [

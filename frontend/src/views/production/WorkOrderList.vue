@@ -1,20 +1,30 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { listWorkOrders } from "../../api/production";
+import { onMounted, reactive, ref } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { cancelWorkOrder, completeWorkOrder, createWorkOrder, issueMaterial, listWorkOrders, releaseWorkOrder, reportWork } from "../../api/production";
+import { useMasterOptions } from "../../composables/useMasterOptions";
 
-const rows = ref<any[]>([]);
-onMounted(async () => {
-  const response = await listWorkOrders();
-  rows.value = response.data?.data ?? [];
-});
+type Row = Record<string, any>;
+const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false); const actionDialogVisible = ref(false); const actionKind = ref<"issue" | "report">("report"); const selected = ref<Row | null>(null);
+const form = reactive({ material_id: "", warehouse_id: "", quantity: 1, plan_date: new Date().toISOString().slice(0, 10) });
+const actionForm = reactive({ good_quantity: 0, scrap_quantity: 0, hours: 0, items: [] as Array<{ material_id: string; quantity: number }> });
+const { materials, warehouses, loadOptions } = useMasterOptions();
+function listFrom(response: any) { return Array.isArray(response?.data?.data) ? response.data.data : []; }
+async function load() { loading.value = true; try { rows.value = listFrom(await listWorkOrders()); } catch { ElMessage.error("生产工单加载失败"); } finally { loading.value = false; } }
+function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.quantity = 1; form.plan_date = new Date().toISOString().slice(0, 10); dialogVisible.value = true; }
+async function save() { if (!form.material_id || !form.warehouse_id || form.quantity <= 0 || !form.plan_date) { ElMessage.warning("请填写物料、仓库、计划日期和有效数量"); return; } saving.value = true; try { const response = await createWorkOrder(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("生产工单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "生产工单创建失败"); } finally { saving.value = false; } }
+function openAction(row: Row, kind: "issue" | "report") { selected.value = row; actionKind.value = kind; actionForm.good_quantity = 0; actionForm.scrap_quantity = 0; actionForm.hours = 0; actionForm.items = (row.materials || []).map((item: Row) => ({ material_id: item.material_id, quantity: Math.max(Number(item.planned_quantity || 0) - Number(item.issued_quantity || 0), 0) })); actionDialogVisible.value = true; }
+async function saveAction() { const row = selected.value; if (!row?.id) return; if (actionKind.value === "issue" && (actionForm.items.some((item) => item.quantity < 0) || actionForm.items.every((item) => item.quantity <= 0))) { ElMessage.warning("请填写大于 0 的领料数量，且不能超过计划未领数量"); return; } if (actionKind.value === "report" && actionForm.good_quantity + actionForm.scrap_quantity <= 0) { ElMessage.warning("合格数量和报废数量至少填写一项"); return; } saving.value = true; try { const response = actionKind.value === "issue" ? await issueMaterial(row.id, actionForm.items.filter((item) => item.quantity > 0)) : await reportWork(row.id, { good_quantity: actionForm.good_quantity, scrap_quantity: actionForm.scrap_quantity, hours: actionForm.hours }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(actionKind.value === "issue" ? "领料已登记" : "报工已登记"); actionDialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "工单操作失败"); } finally { saving.value = false; } }
+async function action(row: Row, kind: "release" | "complete" | "cancel") { const id = String(row.id || ""); if (!id) return; const labels = { release: "下达工单", complete: "完工入库", cancel: "取消工单" }; try { await ElMessageBox.confirm(`确认${labels[kind]}“${row.doc_no || id}”吗？`, "操作确认", { type: kind === "cancel" ? "warning" : "info" }); actionLoading.value = id; const response = kind === "release" ? await releaseWorkOrder(id) : kind === "complete" ? await completeWorkOrder(id) : await cancelWorkOrder(id); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(`${labels[kind]}成功`); await load(); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${labels[kind]}失败`); } finally { actionLoading.value = null; } }
+onMounted(async () => { await Promise.all([load(), loadOptions(["materials", "warehouses"])]); });
 </script>
 
 <template>
-  <el-card>
-    <template #header>工单</template>
-    <el-table :data="rows">
-      <el-table-column prop="doc_no" label="工单" />
-      <el-table-column prop="status" label="状态" />
-    </el-table>
-  </el-card>
+  <section class="page-stack"><el-page-header content="生产工单" /><el-space><el-button type="primary" @click="openCreate">新建工单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space><el-alert title="工单创建依赖已审核 BOM；报工后才能执行完工入库。" type="info" show-icon />
+    <el-table v-loading="loading" :data="rows" stripe><el-table-column prop="doc_no" label="工单号" width="150" /><el-table-column prop="material_id" label="成品物料" min-width="180" /><el-table-column prop="plan_date" label="计划日期" width="130" /><el-table-column prop="quantity" label="计划数量" width="120" /><el-table-column prop="reported_good_quantity" label="合格报工" width="120" /><el-table-column prop="status" label="状态" width="110" /><el-table-column label="操作" min-width="360"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'release')">下达</el-button><el-button v-if="['released', 'in_progress'].includes(scope.row.status)" link type="primary" @click="openAction(scope.row, 'issue')">领料</el-button><el-button v-if="['released', 'in_progress'].includes(scope.row.status)" link type="success" @click="openAction(scope.row, 'report')">报工</el-button><el-button v-if="['released', 'in_progress'].includes(scope.row.status)" link type="warning" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'complete')">完工入库</el-button><el-button v-if="['released', 'in_progress'].includes(scope.row.status)" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'cancel')">取消</el-button></template></el-table-column><template #empty><el-empty description="暂无生产工单" /></template></el-table>
+    <el-dialog v-model="dialogVisible" title="新建生产工单" width="520px"><el-form label-width="100px"><el-form-item label="成品物料" required><el-select v-model="form.material_id" filterable clearable style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="生产仓库" required><el-select v-model="form.warehouse_id" filterable clearable style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="计划日期" required><el-date-picker v-model="form.plan_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="计划数量" required><el-input-number v-model="form.quantity" :min="0.000001" :precision="6" /></el-form-item></el-form><template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template></el-dialog>
+    <el-dialog v-model="actionDialogVisible" :title="actionKind === 'issue' ? '工单领料' : '工单报工'" width="720px"><template v-if="actionKind === 'issue'"><div v-for="item in actionForm.items" :key="item.material_id" class="issue-row"><span>{{ item.material_id }}</span><el-input-number v-model="item.quantity" :min="0" :precision="6" /></div></template><el-form v-else label-width="100px"><el-form-item label="合格数量"><el-input-number v-model="actionForm.good_quantity" :min="0" :precision="6" /></el-form-item><el-form-item label="报废数量"><el-input-number v-model="actionForm.scrap_quantity" :min="0" :precision="6" /></el-form-item><el-form-item label="工时"><el-input-number v-model="actionForm.hours" :min="0" :precision="2" /></el-form-item></el-form><template #footer><el-button @click="actionDialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveAction">提交</el-button></template></el-dialog>
+  </section>
 </template>
+
+<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }.issue-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }</style>

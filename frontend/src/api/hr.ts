@@ -1,6 +1,8 @@
 import { http } from "./http";
 export const createEmployee = (payload: unknown) => http.post("/hr/employees", payload);
 export const listEmployees = () => http.get("/hr/employees");
+export const updateEmployee = (id: string, payload: unknown) => http.put(`/hr/employees/${id}`, payload);
+export const changeEmployeePassword = (id: string, password: string) => http.put(`/hr/employees/${id}/password`, { password });
 export const listPayroll = (period?: string) => http.get("/hr/payroll", { params: { period } });
 export const recordAttendance = (id: string, payload: unknown) => http.post(`/hr/employees/${id}/attendance`, payload);
 export const calculatePayroll = (period: string) => http.post(`/hr/payroll/${period}/calculate`);

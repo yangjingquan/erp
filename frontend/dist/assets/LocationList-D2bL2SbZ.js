@@ -1,1 +1,0 @@
-import{_ as r,o as s,c as a,w as t,f as _,k as l,r as o}from"./index-CRsm_vOy.js";const d={};function p(f,e){const n=o("el-empty"),c=o("el-card");return s(),a(c,null,{header:t(()=>[...e[0]||(e[0]=[l("库位",-1)])]),default:t(()=>[_(n,{description:"暂无库位数据"})]),_:1})}const m=r(d,[["render",p]]);export{m as default};

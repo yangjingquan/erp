@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.security import decode_token
+from app.models.auth import sys_user_role
 from app.models.system import SysUser
+from sqlalchemy import select
 from app.services.auth_service import UserContext, build_user_context
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
@@ -28,7 +30,19 @@ def get_current_user(
     user = db.get(SysUser, payload["sub"])
     if user is None or user.is_deleted or user.status != "active":
         raise AppError("用户不存在或已停用", code=401)
-    return build_user_context(db, user, payload.get("permissions", []))
+    # Tokens created by older versions carried permissions in their claims. Once
+    # a user has a role assignment, the database is authoritative so changing a
+    # role takes effect without waiting for an old token to expire. Keeping the
+    # claim fallback for users without roles preserves compatibility with
+    # service-to-service/test tokens and with existing deployments during rollout.
+    has_role = db.scalar(
+        select(sys_user_role.c.role_id).where(sys_user_role.c.user_id == user.id).limit(1)
+    ) is not None
+    return build_user_context(
+        db,
+        user,
+        None if has_role or user.is_superuser else payload.get("permissions", []),
+    )
 
 
 def require_permission(permission: str) -> Callable:

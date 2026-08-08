@@ -1,1 +1,0 @@
-import{D as t}from"./DocumentExtensionPage-Cl2Qz4hi.js";import{d as o,c as e,o as r}from"./index-CRsm_vOy.js";import"./sales-LJaKR2hU.js";import"./purchase-D_4RtS7N.js";import"./useMasterOptions-CRjWJ-RR.js";const u=o({__name:"QuoteList",setup(n){return(a,i)=>(r(),e(t,{kind:"quote",title:"销售报价单"}))}});export{u as default};

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
 from app.services.auth_service import UserContext
@@ -24,7 +24,7 @@ def get_definition(business_type: str, context: UserContext = Depends(get_curren
 def save_definition(
     business_type: str,
     payload: dict,
-    context: UserContext = Depends(get_current_user),
+    context: UserContext = Depends(require_permission("workflow:manage")),
     db: Session = Depends(get_db),
 ):
     result = save_workflow_definition(db, business_type, payload, context)

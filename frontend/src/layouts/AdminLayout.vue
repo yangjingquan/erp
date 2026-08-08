@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -18,34 +18,24 @@ import {
 
 import { useAppStore } from "../stores/app";
 import { useAuthStore } from "../stores/auth";
+import { usePermissionStore } from "../stores/permission";
 import { globalSearch } from "../api/search";
 
 const app = useAppStore();
 const auth = useAuthStore();
+const permissions = usePermissionStore();
 const route = useRoute();
 const router = useRouter();
 const searchKeyword = ref("");
 const searchResults = ref<Array<Record<string, any>>>([]);
 const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
-  const group = route.path.split("/")[1] === "settings" ? "system" : route.path.split("/")[1];
-  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "system"].includes(group) ? [group] : [];
+  const currentGroup = route.path.split("/")[1];
+  const group = currentGroup === "settings" ? "config" : currentGroup;
+  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "system", "config"].includes(group) ? [group] : [];
 });
-const pageTitles: Record<string, string> = {
-  "/dashboard": "经营看板", "/master-data/materials": "物料档案", "/master-data/customers": "客户档案", "/master-data/suppliers": "供应商档案", "/master-data/warehouses": "仓库档案", "/master-data/units": "计量单位", "/master-data/tax-rates": "税率档案",
-  "/sales/quotes": "销售报价", "/sales/orders": "销售订单", "/sales/returns": "销售退货", "/purchase/requests": "采购申请", "/purchase/orders": "采购订单", "/purchase/returns": "采购退货",
-  "/inventory/stock": "库存台账", "/inventory/transactions": "库存流水", "/inventory/transfers": "库存调拨", "/inventory/counts": "库存盘点", "/inventory/scan": "移动扫码",
-  "/finance/receivables": "应收账款", "/finance/payables": "应付账款", "/finance/expenses": "费用报销", "/finance/vouchers": "会计凭证", "/crm/leads": "线索管理", "/crm/opportunities": "商机管理",
-  "/production/boms": "BOM", "/production/mrp": "MRP", "/production/work-orders": "生产工单", "/quality/inspections": "质量检验", "/hr/employees": "员工管理", "/hr/payroll": "薪资核算", "/cost/allocations": "成本分摊", "/cost/period-close": "期间结账", "/settings/api-clients": "API 客户端", "/settings/parameters": "全局参数", "/settings/workflow": "审批流程", "/settings/print-templates": "打印模板", "/system/operation-logs": "操作日志", "/system/admin": "权限与基础管理", "/system/backup": "备份恢复", "/profile": "个人中心",
-};
-
-function navigationTitle(path: string) { return pageTitles[path] || "导航页面"; }
-function activateMenu(path: string) { app.activateNavigation(path, navigationTitle(path)); }
-function closeNavigation() { app.closeNavigation(); void router.push("/dashboard"); }
-
-watch(() => route.path, (path) => {
-  if (path !== "/login" && (!app.openedNavigation || app.openedNavigation.path !== path)) activateMenu(path);
-}, { immediate: true });
+function canPage(path: string) { return !auth.user || auth.user.is_superuser || permissions.hasPagePermission(path); }
+function canAny(paths: string[]) { return paths.some((path) => canPage(path)); }
 
 function logout() {
   auth.logout();
@@ -100,59 +90,86 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
         :collapse="app.sidebarCollapsed"
         unique-opened
         router
-        @select="activateMenu"
       >
-        <el-menu-item index="/dashboard">
+        <el-menu-item v-if="canPage('/dashboard')" index="/dashboard">
           <el-icon><DataAnalysis /></el-icon><template #title>经营看板</template>
         </el-menu-item>
-        <el-sub-menu index="master-data">
-          <template #title><el-icon><Collection /></el-icon><span>主数据</span></template>
-          <el-menu-item index="/master-data/materials">物料档案</el-menu-item>
-          <el-menu-item index="/master-data/customers">客户档案</el-menu-item>
-          <el-menu-item index="/master-data/suppliers">供应商档案</el-menu-item>
-          <el-menu-item index="/master-data/warehouses">仓库档案</el-menu-item>
-          <el-menu-item index="/master-data/units">计量单位</el-menu-item>
-          <el-menu-item index="/master-data/tax-rates">税率档案</el-menu-item>
+        <el-sub-menu v-if="canAny(['/master-data/materials', '/master-data/customers', '/master-data/suppliers', '/master-data/warehouses', '/master-data/units', '/master-data/tax-rates'])" index="master-data">
+          <template #title><el-icon><Collection /></el-icon><span>基础资料</span></template>
+          <el-menu-item v-if="canPage('/master-data/materials')" index="/master-data/materials">物料档案</el-menu-item>
+          <el-menu-item v-if="canPage('/master-data/customers')" index="/master-data/customers">客户档案</el-menu-item>
+          <el-menu-item v-if="canPage('/master-data/suppliers')" index="/master-data/suppliers">供应商档案</el-menu-item>
+          <el-menu-item v-if="canPage('/master-data/warehouses')" index="/master-data/warehouses">仓库档案</el-menu-item>
+          <el-menu-item v-if="canPage('/master-data/units')" index="/master-data/units">计量单位</el-menu-item>
+          <el-menu-item v-if="canPage('/master-data/tax-rates')" index="/master-data/tax-rates">税率档案</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="sales">
+        <el-sub-menu v-if="canAny(['/sales/quotes', '/sales/orders', '/sales/returns'])" index="sales">
           <template #title><el-icon><Document /></el-icon><span>销售管理</span></template>
-          <el-menu-item index="/sales/quotes">销售报价</el-menu-item>
-          <el-menu-item index="/sales/orders">销售订单</el-menu-item>
-          <el-menu-item index="/sales/returns">销售退货</el-menu-item>
+          <el-menu-item v-if="canPage('/sales/quotes')" index="/sales/quotes">销售报价</el-menu-item>
+          <el-menu-item v-if="canPage('/sales/orders')" index="/sales/orders">销售订单</el-menu-item>
+          <el-menu-item v-if="canPage('/sales/returns')" index="/sales/returns">销售退货</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="purchase">
+        <el-sub-menu v-if="canAny(['/purchase/requests', '/purchase/orders', '/purchase/returns'])" index="purchase">
           <template #title><el-icon><ShoppingCart /></el-icon><span>采购管理</span></template>
-          <el-menu-item index="/purchase/requests">采购申请</el-menu-item>
-          <el-menu-item index="/purchase/orders">采购订单</el-menu-item>
-          <el-menu-item index="/purchase/returns">采购退货</el-menu-item>
+          <el-menu-item v-if="canPage('/purchase/requests')" index="/purchase/requests">采购申请</el-menu-item>
+          <el-menu-item v-if="canPage('/purchase/orders')" index="/purchase/orders">采购订单</el-menu-item>
+          <el-menu-item v-if="canPage('/purchase/returns')" index="/purchase/returns">采购退货</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="inventory">
+        <el-sub-menu v-if="canAny(['/inventory/stock', '/inventory/transactions', '/inventory/transfers', '/inventory/counts', '/inventory/scan', '/inventory/locations', '/inventory/batches'])" index="inventory">
           <template #title><el-icon><Box /></el-icon><span>库存管理</span></template>
-          <el-menu-item index="/inventory/stock">库存台账</el-menu-item>
-          <el-menu-item index="/inventory/transactions">库存流水</el-menu-item>
-          <el-menu-item index="/inventory/transfers">库存调拨</el-menu-item>
-          <el-menu-item index="/inventory/counts">库存盘点</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/stock')" index="/inventory/stock">库存台账</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/transactions')" index="/inventory/transactions">库存流水</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/transfers')" index="/inventory/transfers">库存调拨</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/counts')" index="/inventory/counts">库存盘点</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/scan')" index="/inventory/scan">移动扫码</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/locations')" index="/inventory/locations">仓位管理</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/batches')" index="/inventory/batches">批次管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="finance">
+        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers'])" index="finance">
           <template #title><el-icon><Wallet /></el-icon><span>财务管理</span></template>
-          <el-menu-item index="/finance/receivables">应收账款</el-menu-item>
-          <el-menu-item index="/finance/payables">应付账款</el-menu-item>
-          <el-menu-item index="/finance/expenses">费用报销</el-menu-item>
-          <el-menu-item index="/finance/vouchers">会计凭证</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/receivables')" index="/finance/receivables">应收账款</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/payables')" index="/finance/payables">应付账款</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/expenses')" index="/finance/expenses">费用报销</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/vouchers')" index="/finance/vouchers">会计凭证</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="crm">
+        <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities'])" index="crm">
           <template #title><el-icon><UserFilled /></el-icon><span>CRM 管理</span></template>
-          <el-menu-item index="/crm/leads">线索管理</el-menu-item>
-          <el-menu-item index="/crm/opportunities">商机管理</el-menu-item>
+          <el-menu-item v-if="canPage('/crm/leads')" index="/crm/leads">线索管理</el-menu-item>
+          <el-menu-item v-if="canPage('/crm/opportunities')" index="/crm/opportunities">商机管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu index="system">
+        <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders'])" index="production">
+          <template #title><el-icon><Document /></el-icon><span>生产管理</span></template>
+          <el-menu-item v-if="canPage('/production/boms')" index="/production/boms">BOM 管理</el-menu-item>
+          <el-menu-item v-if="canPage('/production/mrp')" index="/production/mrp">MRP 运算</el-menu-item>
+          <el-menu-item v-if="canPage('/production/work-orders')" index="/production/work-orders">生产工单</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/cost/allocations', '/cost/period-close'])" index="cost">
+          <template #title><el-icon><Wallet /></el-icon><span>成本管理</span></template>
+          <el-menu-item v-if="canPage('/cost/allocations')" index="/cost/allocations">成本分摊</el-menu-item>
+          <el-menu-item v-if="canPage('/cost/period-close')" index="/cost/period-close">期间结账</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/quality/inspections'])" index="quality">
+          <template #title><el-icon><Collection /></el-icon><span>质量管理</span></template>
+          <el-menu-item v-if="canPage('/quality/inspections')" index="/quality/inspections">质量检验</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/hr/employees', '/hr/payroll'])" index="hr">
+          <template #title><el-icon><UserFilled /></el-icon><span>人事管理</span></template>
+          <el-menu-item v-if="canPage('/hr/employees')" index="/hr/employees">员工档案</el-menu-item>
+          <el-menu-item v-if="canPage('/hr/payroll')" index="/hr/payroll">薪资核算</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/system/operation-logs', '/system/users', '/system/admin', '/system/backup'])" index="system">
           <template #title><el-icon><Setting /></el-icon><span>系统运维</span></template>
-          <el-menu-item index="/system/operation-logs">操作日志</el-menu-item>
-          <el-menu-item index="/system/admin">权限与基础管理</el-menu-item>
-          <el-menu-item index="/system/backup">备份恢复</el-menu-item>
-          <el-menu-item index="/settings/parameters">全局参数</el-menu-item>
-          <el-menu-item index="/settings/workflow">审批流程</el-menu-item>
-          <el-menu-item index="/settings/print-templates">打印模板</el-menu-item>
+          <el-menu-item v-if="canPage('/system/operation-logs')" index="/system/operation-logs">操作日志</el-menu-item>
+          <el-menu-item v-if="canPage('/system/users')" index="/system/users">用户管理</el-menu-item>
+          <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限与基础管理</el-menu-item>
+          <el-menu-item v-if="canPage('/system/backup')" index="/system/backup">备份恢复</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients'])" index="config">
+          <template #title><el-icon><Setting /></el-icon><span>系统配置</span></template>
+          <el-menu-item v-if="canPage('/settings/parameters')" index="/settings/parameters">全局参数</el-menu-item>
+          <el-menu-item v-if="canPage('/settings/workflow')" index="/settings/workflow">审批流程</el-menu-item>
+          <el-menu-item v-if="canPage('/settings/print-templates')" index="/settings/print-templates">打印模板</el-menu-item>
+          <el-menu-item v-if="canPage('/settings/api-clients')" index="/settings/api-clients">API 客户端</el-menu-item>
         </el-sub-menu>
       </el-menu>
       <div class="sidebar-spacer" />
@@ -187,11 +204,6 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
         </el-dropdown>
       </el-header>
       <el-main class="main-content">
-        <div v-if="app.openedNavigation" class="navigation-tabs">
-          <el-tabs :model-value="app.openedNavigation.path" type="card" @tab-click="router.push(app.openedNavigation?.path || '/dashboard')" @tab-remove="closeNavigation">
-            <el-tab-pane :name="app.openedNavigation.path" :label="app.openedNavigation.title" closable />
-          </el-tabs>
-        </div>
         <router-view />
       </el-main>
     </el-container>
@@ -205,12 +217,13 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
 .brand-mark { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border-radius: 12px; background: var(--erp-primary); color: #fff; font-size: 10px; letter-spacing: .02em; }
 .sidebar :deep(.el-menu) { flex: 0 0 auto; border-right: 0; background: transparent; padding: 0 12px; }
 .sidebar :deep(.el-menu-item), .sidebar :deep(.el-sub-menu__title) { height: 40px; line-height: 40px; }
+.sidebar :deep(.el-menu > .el-menu-item), .sidebar :deep(.el-menu > .el-sub-menu > .el-sub-menu__title) { font-size: 15px; font-weight: 600; }
 .sidebar :deep(.el-menu-item), .sidebar :deep(.el-sub-menu__title) { margin: 3px 0; padding: 0 12px !important; border-radius: 10px; color: #c4bab0; }
 .sidebar :deep(.el-menu-item:hover), .sidebar :deep(.el-sub-menu__title:hover) { color: #fff; background: rgba(255,255,255,.06); }
 .sidebar :deep(.el-menu-item.is-active) { color: #fff; background: var(--erp-sidebar-active); box-shadow: inset 3px 0 var(--erp-primary); }
 .sidebar :deep(.el-sub-menu.is-opened > .el-sub-menu__title) { color: #fff; background: rgba(255,255,255,.035); }
 .sidebar :deep(.el-sub-menu .el-menu) { background: transparent; }
-.sidebar :deep(.el-sub-menu .el-menu-item) { padding-left: 47px !important; color: #b4a79c; }
+.sidebar :deep(.el-sub-menu .el-menu-item) { padding-left: 47px !important; color: #b4a79c; font-size: 15px; font-weight: 500; }
 .sidebar :deep(.el-sub-menu .el-menu-item.is-active) { color: #fff; background: var(--erp-sidebar-active); }
 .sidebar :deep(.el-icon) { color: currentColor; margin-right: 9px; font-size: 17px; }
 .sidebar :deep(.el-sub-menu__icon-arrow) { right: 12px; color: #8d8177; }
@@ -224,23 +237,19 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
 .topbar { display: flex; align-items: center; height: 66px; border-bottom: 1px solid var(--erp-border); background: var(--erp-panel-bg); }
 .spacer { flex: 1; }
 .menu-trigger { color: var(--erp-muted-text); font-size: 20px; }
-.user-menu { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--erp-text); }
+.user-menu { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--erp-text); white-space: nowrap; }
 .top-action { color: var(--erp-muted-text); }
 .top-action :deep(.el-icon) { margin-right: 4px; }
-.global-search { width: min(400px, 42vw); margin-left: 14px; }
+.global-search { flex: 0 1 360px; width: min(360px, 30vw); margin-left: 14px; }
 .global-search :deep(.el-input__wrapper) { border-radius: 11px; padding: 1px 12px; }
 .main-content { min-width: 0; background: var(--erp-page-bg); }
 .main-content :deep(.el-main) { padding: 0; }
-.navigation-tabs { margin: 12px 27px 0; }
-.navigation-tabs :deep(.el-tabs__header) { margin: 0; }
-.navigation-tabs :deep(.el-tabs__item) { color: var(--erp-muted-text); }
-.navigation-tabs :deep(.el-tabs__item.is-active) { color: var(--erp-primary-dark); }
 .main-content > :deep(.el-main) { background: var(--erp-page-bg); }
 @media (max-width: 820px) {
   .sidebar { width: 68px !important; }
   .brand { padding-inline: 16px; }
   .sidebar-user { margin-inline: 18px; }
-  .global-search { width: min(260px, 42vw); }
+  .global-search { flex-basis: 260px; width: min(260px, 36vw); }
   .top-action { padding-inline: 6px; }
   .top-action :deep(.el-icon) { margin-right: 0; }
   .top-action:not(:has(.el-icon)) { display: none; }

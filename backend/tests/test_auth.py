@@ -8,7 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.dependencies import get_db
 from app.core.database import Base
-from app.core.security import hash_password
+from app.core.security import create_access_token, decode_token, hash_password
 from app.main import app
 from app.models.system import SysUser
 
@@ -77,3 +77,18 @@ def test_me_requires_token(client_and_session):
     response = client.get("/api/auth/me")
 
     assert response.json()["code"] == 401
+
+
+def test_access_token_expires_after_48_hours():
+    payload = decode_token(create_access_token("user-1"))
+    assert payload["exp"] - payload["iat"] == 48 * 60 * 60
+
+
+def test_public_registration_checks_unique_account_and_creates_login_user(client_and_session):
+    client, _ = client_and_session
+    first = client.post("/api/auth/register", json={"username": "new-user", "password": "Password@123"})
+    assert first.json()["code"] == 0
+    duplicate = client.post("/api/auth/register", json={"username": "new-user", "password": "Password@123"})
+    assert duplicate.json()["code"] == 409
+    login = client.post("/api/auth/login", json={"username": "new-user", "password": "Password@123"})
+    assert login.json()["code"] == 0

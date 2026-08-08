@@ -1,0 +1,1 @@
+import{D as e}from"./DocumentExtensionPage-B7Encel7.js";import{d as t,c as o,o as r}from"./index-BsFQRuR4.js";import"./sales-CFCXgHUD.js";import"./purchase-BFVmmFYv.js";import"./useMasterOptions-2ldqFbgz.js";const _=t({__name:"RequestList",setup(s){return(n,a)=>(r(),o(e,{kind:"purchase-request",title:"采购申请"}))}});export{_ as default};

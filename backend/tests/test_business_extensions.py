@@ -4,7 +4,7 @@ from app.models.master_data import MdMaterial
 
 
 def headers():
-    return {"Authorization": f"Bearer {create_access_token('user-1', [])}"}
+    return {"Authorization": f"Bearer {create_access_token('user-1', ['sales:manage', 'purchase:manage'])}"}
 
 
 def test_quote_and_purchase_request_can_be_created(client_and_session):

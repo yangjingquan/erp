@@ -31,6 +31,7 @@ from app.core.database import SessionLocal
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_context import RequestContextMiddleware
 from app.services.startup_check import check_schema
+from app.services.runtime_migrations import ensure_employee_account_column
 
 logging.basicConfig(level=logging.INFO)
 settings = get_settings()
@@ -40,6 +41,10 @@ settings = get_settings()
 async def lifespan(application: FastAPI):
     db = SessionLocal()
     try:
+        try:
+            ensure_employee_account_column(db)
+        except Exception:
+            logging.getLogger("erp.startup").exception("员工账号字段迁移失败")
         schema_status = check_schema(db)
         application.state.schema_status = schema_status
         if not schema_status.connected:

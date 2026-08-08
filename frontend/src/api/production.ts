@@ -1,5 +1,16 @@
 import { http } from "./http";
+export const listBoms = () => http.get("/production/boms");
+export const createBom = (payload: unknown) => http.post("/production/boms", payload);
+export const submitBom = (id: string) => http.post(`/production/boms/${id}/submit`);
+export const approveBom = (id: string) => http.post(`/production/boms/${id}/approve`);
+export const disableBom = (id: string) => http.post(`/production/boms/${id}/disable`);
+export const listMps = () => http.get("/production/mps");
+export const createMps = (payload: unknown) => http.post("/production/mps", payload);
+export const runMrp = (id: string) => http.post(`/production/mps/${id}/run-mrp`);
 export const listWorkOrders = () => http.get("/production/work-orders");
+export const createWorkOrder = (payload: unknown) => http.post("/production/work-orders", payload);
 export const releaseWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/release`);
 export const issueMaterial = (id: string, items: unknown) => http.post(`/production/work-orders/${id}/issue`, { items });
+export const reportWork = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/reports`, payload);
 export const completeWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/complete`);
+export const cancelWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/cancel`);

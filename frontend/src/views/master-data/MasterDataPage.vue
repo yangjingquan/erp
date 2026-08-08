@@ -140,7 +140,7 @@ onMounted(load);
 
 <template>
   <section class="master-page">
-    <div class="page-heading"><div><div class="breadcrumb">主数据 <span>/</span> {{ props.title }}</div><h1>{{ props.title }}</h1></div><div class="page-note">最后更新：实时数据</div></div>
+    <div class="page-heading"><div><div class="breadcrumb">基础资料 <span>/</span> {{ props.title }}</div><h1>{{ props.title }}</h1></div><div class="page-note">最后更新：实时数据</div></div>
 
     <div class="summary-grid">
       <el-card v-for="metric in props.summaryMetrics" :key="metric.label" class="summary-card" shadow="never">

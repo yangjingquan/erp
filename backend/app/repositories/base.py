@@ -18,7 +18,7 @@ class BaseRepository(Generic[ModelT]):
         self,
         *,
         context: UserContext | None = None,
-        scope_type: str = "department",
+        scope_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> list[ModelT]:

@@ -1949,6 +1949,7 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   employee_no VARCHAR(64) NOT NULL,
   name VARCHAR(128) NOT NULL,
   department_id CHAR(36) NULL,
+  user_id CHAR(36) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'active',
   base_salary DECIMAL(18,2) NOT NULL DEFAULT 0, allowance DECIMAL(18,2) NOT NULL DEFAULT 0,
   is_deleted TINYINT(1) NOT NULL DEFAULT 0,
@@ -1956,6 +1957,7 @@ CREATE TABLE IF NOT EXISTS hr_employee (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   version INT NOT NULL DEFAULT 1,
   UNIQUE KEY uk_hr_employee_no (org_id, employee_no)
+  , KEY idx_hr_employee_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS hr_attendance (
@@ -2037,17 +2039,23 @@ ON DUPLICATE KEY UPDATE display_name = VALUES(display_name), password_hash = VAL
 INSERT INTO sys_menu (id, code, name, path, component, menu_type, sort_order)
 VALUES
 ('10000000-0000-0000-0000-000000000001', 'dashboard:view', '经营看板', '/dashboard', 'Dashboard', 'menu', 1),
-('10000000-0000-0000-0000-000000000002', 'master:view', '主数据', '/master-data', 'MasterData', 'menu', 10),
+('10000000-0000-0000-0000-000000000002', 'master:view', '基础资料', '/master-data', 'MasterData', 'menu', 10),
 ('10000000-0000-0000-0000-000000000003', 'sales:view', '销售管理', '/sales', 'Sales', 'menu', 20),
 ('10000000-0000-0000-0000-000000000004', 'purchase:view', '采购管理', '/purchase', 'Purchase', 'menu', 30),
 ('10000000-0000-0000-0000-000000000005', 'inventory:view', '库存管理', '/inventory', 'Inventory', 'menu', 40),
 ('10000000-0000-0000-0000-000000000006', 'finance:view', '财务管理', '/finance', 'Finance', 'menu', 50),
-('10000000-0000-0000-0000-000000000007', 'system:view', '系统管理', '/system', 'System', 'menu', 90),
+('10000000-0000-0000-0000-000000000007', 'system:view', '系统运维', '/system', 'System', 'menu', 90),
 ('10000000-0000-0000-0000-000000000008', 'production:view', '生产管理', '/production', 'Production', 'menu', 35),
 ('10000000-0000-0000-0000-000000000009', 'cost:view', '成本管理', '/cost', 'Cost', 'menu', 45),
-('10000000-0000-0000-0000-000000000010', 'crm:view', 'CRM', '/crm', 'Crm', 'menu', 25),
+('10000000-0000-0000-0000-000000000010', 'crm:view', 'CRM 管理', '/crm', 'Crm', 'menu', 60),
 ('10000000-0000-0000-0000-000000000011', 'quality:view', '质量管理', '/quality', 'Quality', 'menu', 55),
-('10000000-0000-0000-0000-000000000012', 'hr:view', '人事管理', '/hr', 'Hr', 'menu', 60)
+('10000000-0000-0000-0000-000000000012', 'hr:view', '人事管理', '/hr', 'Hr', 'menu', 65),
+('10000000-0000-0000-0000-000000000014', 'config:view', '系统配置', '/settings', 'Settings', 'menu', 95)
+ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component);
+
+INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
+SELECT '10000000-0000-0000-0000-000000000013', id, 'page:hr:employees:view', '员工管理', '/hr/employees', 'EmployeeList', 'menu', 1
+FROM sys_menu WHERE code = 'hr:view'
 ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component);
 
 INSERT INTO sys_permission (id, menu_id, code, name, permission_type)
@@ -2058,6 +2066,11 @@ ON DUPLICATE KEY UPDATE name = VALUES(name);
 INSERT INTO sys_permission (id, menu_id, code, name, permission_type)
 SELECT '20000000-0000-0000-0000-000000000002', id, 'production:manage', '生产计划管理', 'button'
 FROM sys_menu WHERE code = 'production:view'
+ON DUPLICATE KEY UPDATE name = VALUES(name);
+
+INSERT INTO sys_permission (id, menu_id, code, name, permission_type)
+SELECT '20000000-0000-0000-0000-000000000003', id, 'hr:employee:manage', '员工信息管理', 'button'
+FROM sys_menu WHERE code = 'page:hr:employees:view'
 ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 INSERT INTO sys_role_menu (role_id, menu_id)

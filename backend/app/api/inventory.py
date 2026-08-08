@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
 from app.schemas.inventory import CountCreate, TransferCreate
@@ -50,7 +50,7 @@ def transfers(context: UserContext = Depends(get_current_user), db: Session = De
 
 
 @router.post("/transfers")
-def create_transfer_api(payload: TransferCreate, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_transfer_api(payload: TransferCreate, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
     transfer = create_transfer(
         db,
         context,
@@ -63,14 +63,14 @@ def create_transfer_api(payload: TransferCreate, context: UserContext = Depends(
 
 
 @router.post("/transfers/{transfer_id}/approve")
-def approve_transfer_api(transfer_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def approve_transfer_api(transfer_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
     transfer = approve_transfer(db, transfer_id, context)
     db.commit()
     return ok(serialize_transfer(transfer))
 
 
 @router.post("/transfers/{transfer_id}/complete")
-def complete_transfer_api(transfer_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def complete_transfer_api(transfer_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
     transfer = complete_transfer(db, transfer_id, context)
     db.commit()
     return ok(serialize_transfer(transfer))
@@ -82,7 +82,7 @@ def counts(context: UserContext = Depends(get_current_user), db: Session = Depen
 
 
 @router.post("/counts")
-def create_count_api(payload: CountCreate, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_count_api(payload: CountCreate, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
     count = create_count(
         db,
         context,
@@ -94,7 +94,7 @@ def create_count_api(payload: CountCreate, context: UserContext = Depends(get_cu
 
 
 @router.post("/counts/{count_id}/complete")
-def complete_count_api(count_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def complete_count_api(count_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
     count = complete_count(db, count_id, context)
     db.commit()
     return ok(serialize_count(count))

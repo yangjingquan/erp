@@ -8,15 +8,20 @@ function source(path: string) {
 }
 
 describe("导航和关联字段交互", () => {
-  it("keeps only one first-level navigation group open", () => {
+  it("uses the sidebar hierarchy as the only page navigation", () => {
     const layout = source("../src/layouts/AdminLayout.vue");
     const store = source("../src/stores/app.ts");
-    expect(layout).toContain("activateNavigation");
-    expect(layout).toContain("@select=\"activateMenu\"");
     expect(layout).toContain(":default-openeds=\"openMenuKeys\"");
     expect(layout).toContain("unique-opened");
-    expect(store).toContain("openedNavigation");
-    expect(store).toContain("this.openedNavigation = { path, title }");
+    expect(layout).toContain("<el-sub-menu");
+    expect(layout).toContain("<el-menu-item v-if=\"canPage('/master-data/customers')\"");
+    expect(layout).toContain("<span>基础资料</span>");
+    expect(layout).toContain("index=\"/production/work-orders\"");
+    expect(layout).toContain("index=\"/settings/api-clients\"");
+    expect(layout).toContain("index=\"config\"");
+    expect(layout).not.toContain("navigation-tabs");
+    expect(layout).not.toContain("el-tab-pane");
+    expect(store).not.toContain("openedNavigation");
   });
 
   it("uses master-data options instead of typing common IDs", () => {

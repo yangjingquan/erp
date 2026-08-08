@@ -45,6 +45,7 @@ describe("route guard", () => {
       "/finance/vouchers",
       "/settings/workflow",
       "/system/operation-logs",
+      "/system/users",
       "/system/admin",
       "/master-data/units",
       "/master-data/tax-rates",

@@ -36,15 +36,14 @@ describe("系统设置页面交互契约", () => {
     expect(content).toContain("@click=\"backup\"");
   });
 
-  it("loads and saves workflow configuration through the backend with local fallback", () => {
+  it("loads and saves workflow configuration through the backend without local-only fallback", () => {
     const content = source("../src/views/settings/WorkflowConfig.vue");
     const apiContent = source("../src/api/workflow.ts");
 
-    expect(apiContent).toContain("localStorage");
     expect(content).toContain("getWorkflowDefinition");
     expect(content).toContain("saveWorkflowDefinition");
-    expect(content).toContain("saveWorkflowConfig");
-    expect(content).toContain("ElMessage.warning");
+    expect(content).toContain("businessTypes");
+    expect(content).toContain("ElMessage.error");
     expect(content).toContain("@click=\"saveWorkflow\"");
   });
 

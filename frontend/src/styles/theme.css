@@ -61,12 +61,15 @@ button, input, textarea, select { font: inherit; }
   box-shadow: var(--erp-shadow);
 }
 
-.el-page-header { margin-bottom: 18px; }
+.el-page-header { margin: 0; padding: 2px 0 0; }
 .el-page-header__content { color: var(--erp-text); font-weight: 700; }
+.page-stack > .el-page-header { min-height: 32px; }
 .el-button--primary { --el-color-primary: var(--erp-primary); --el-color-primary-light-3: #d78c6e; --el-color-primary-dark-2: #a9583b; }
 .el-input__wrapper, .el-select__wrapper { background: var(--erp-panel-soft); box-shadow: 0 0 0 1px var(--erp-border) inset; }
 .el-input-group__append { background: var(--erp-panel-soft); border-color: var(--erp-border); color: var(--erp-primary-dark); }
 .el-table { --el-table-bg-color: var(--erp-panel-bg); --el-table-tr-bg-color: var(--erp-panel-bg); --el-table-header-bg-color: var(--erp-panel-soft); --el-table-border-color: var(--erp-border-soft); --el-table-text-color: var(--erp-text); --el-table-header-text-color: var(--erp-muted-text); }
+.main-content > section, .main-content > .el-card, .main-content > .page-stack { width: 100%; min-width: 0; }
+.main-content .el-table, .main-content .el-table__inner-wrapper, .main-content .el-table__header-wrapper, .main-content .el-table__body-wrapper { width: 100%; }
 .el-table th.el-table__cell { font-weight: 600; }
 .el-table tr:hover > td.el-table__cell { background: var(--erp-panel-soft) !important; }
 .el-dialog { --el-dialog-bg-color: var(--erp-panel-bg); border-radius: 16px; }
