@@ -23,5 +23,5 @@ const fields = [
 </script>
 
 <template>
-  <MasterDataPage resource="suppliers" title="供应商档案" :columns="columns" :fields="fields" />
+  <MasterDataPage resource="suppliers" title="供应商档案" search-placeholder="搜索编码、名称、联系人..." :columns="columns" :fields="fields" :summary-metrics="[{ label: '供应商总数', key: 'total', tone: 'rust' }, { label: '启用供应商', key: 'active', tone: 'green' }, { label: '已停用', key: 'inactive', tone: 'amber' }]" />
 </template>

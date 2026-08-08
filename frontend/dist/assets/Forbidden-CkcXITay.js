@@ -1,1 +1,0 @@
-import{_ as o,c as t,r as n,o as r}from"./index-uC6ZWqFk.js";const c={};function s(_,a){const e=n("el-result");return r(),t(e,{icon:"warning",title:"无权访问","sub-title":"请联系管理员分配菜单或操作权限"})}const i=o(c,[["render",s]]);export{i as default};

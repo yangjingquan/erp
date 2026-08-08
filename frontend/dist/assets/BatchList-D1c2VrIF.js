@@ -1,1 +1,0 @@
-import{_ as r,c as s,w as t,f as a,k as _,r as o,o as l}from"./index-uC6ZWqFk.js";const d={};function p(f,e){const c=o("el-empty"),n=o("el-card");return l(),s(n,null,{header:t(()=>[...e[0]||(e[0]=[_("批次",-1)])]),default:t(()=>[a(c,{description:"暂无批次数据"})]),_:1})}const i=r(d,[["render",p]]);export{i as default};

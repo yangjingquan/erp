@@ -16,5 +16,5 @@ const fields = [
 </script>
 
 <template>
-  <MasterDataPage resource="warehouses" title="仓库档案" :columns="columns" :fields="fields" />
+  <MasterDataPage resource="warehouses" title="仓库档案" search-placeholder="搜索仓库编码、名称、地址..." :columns="columns" :fields="fields" :summary-metrics="[{ label: '仓库总数', key: 'total', tone: 'rust' }, { label: '启用中', key: 'active', tone: 'green' }, { label: '已停用', key: 'inactive', tone: 'amber' }]" />
 </template>

@@ -1,1 +1,0 @@
-import{_ as r,c as s,w as t,f as a,k as _,r as o,o as l}from"./index-uC6ZWqFk.js";const d={};function p(f,e){const n=o("el-empty"),c=o("el-card");return l(),s(c,null,{header:t(()=>[...e[0]||(e[0]=[_("库位",-1)])]),default:t(()=>[a(n,{description:"暂无库位数据"})]),_:1})}const m=r(d,[["render",p]]);export{m as default};

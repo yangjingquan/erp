@@ -38,5 +38,5 @@ const fields = [
 </script>
 
 <template>
-  <MasterDataPage resource="materials" title="物料档案" :columns="columns" :fields="fields" />
+  <MasterDataPage resource="materials" title="物料档案" search-placeholder="按编码、名称或规格进行过滤..." :columns="columns" :fields="fields" :summary-metrics="[{ label: '总物料数', key: 'total', tone: 'rust' }, { label: '库存预警', key: 'active', tone: 'amber' }, { label: '封存物料', key: 'inactive', tone: 'green' }]" />
 </template>

@@ -1,1 +1,0 @@
-import{q as t}from"./index-uC6ZWqFk.js";const e=()=>t.get("/crm/leads"),r=o=>t.post(`/crm/leads/${o}/convert`),a=()=>t.get("/crm/opportunities"),c=(o,s)=>t.post(`/crm/opportunities/${o}/follow-ups`,s);export{a,c as b,r as c,e as l};

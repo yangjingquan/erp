@@ -1,1 +1,0 @@
-import{q as a}from"./index-uC6ZWqFk.js";const p=o=>a.post("/hr/employees",o),s=()=>a.get("/hr/employees"),e=o=>a.post(`/hr/payroll/${o}/calculate`),t=o=>a.post(`/hr/payroll/${o}/approve`),r=o=>a.post(`/hr/payroll/${o}/pay`);export{e as a,t as b,p as c,s as l,r as p};

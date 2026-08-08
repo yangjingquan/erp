@@ -1,1 +1,0 @@
-import{_ as c,c as s,w as t,f as a,k as _,r as o,o as l}from"./index-uC6ZWqFk.js";const d={};function p(m,e){const n=o("el-empty"),r=o("el-card");return l(),s(r,null,{header:t(()=>[...e[0]||(e[0]=[_("BOM",-1)])]),default:t(()=>[a(n,{description:"暂无 BOM 数据"})]),_:1})}const i=c(d,[["render",p]]);export{i as default};

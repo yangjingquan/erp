@@ -1,0 +1,1 @@
+import{_ as c,o as s,c as a,w as t,f as _,k as l,r as o}from"./index-CRsm_vOy.js";const d={};function p(m,e){const n=o("el-empty"),r=o("el-card");return s(),a(r,null,{header:t(()=>[...e[0]||(e[0]=[l("BOM",-1)])]),default:t(()=>[_(n,{description:"暂无 BOM 数据"})]),_:1})}const i=c(d,[["render",p]]);export{i as default};

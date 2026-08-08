@@ -1,0 +1,1 @@
+import{_ as r,o as s,c as a,w as t,f as _,k as l,r as o}from"./index-CRsm_vOy.js";const d={};function p(f,e){const c=o("el-empty"),n=o("el-card");return s(),a(n,null,{header:t(()=>[...e[0]||(e[0]=[l("批次",-1)])]),default:t(()=>[_(c,{description:"暂无批次数据"})]),_:1})}const i=r(d,[["render",p]]);export{i as default};

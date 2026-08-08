@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
+import { Download, EditPen, FolderOpened, Plus, Refresh, Search, View } from "@element-plus/icons-vue";
 
 import {
   createMasterData,
@@ -12,31 +13,25 @@ import {
   type MasterResource,
 } from "../../api/master-data";
 
-export interface MasterColumn {
-  prop: string;
-  label: string;
-  width?: number;
-}
+export interface MasterColumn { prop: string; label: string; width?: number; }
+export interface MasterFormField { prop: string; label: string; type?: "text" | "number" | "textarea" | "select"; required?: boolean; defaultValue?: string | number; options?: Array<{ label: string; value: string }>; }
+export interface SummaryMetric { label: string; key: "total" | "active" | "inactive"; tone?: "rust" | "green" | "amber"; }
 
-export interface MasterFormField {
-  prop: string;
-  label: string;
-  type?: "text" | "number" | "textarea" | "select";
-  required?: boolean;
-  defaultValue?: string | number;
-  options?: Array<{ label: string; value: string }>;
-}
-
-const props = withDefaults(
-  defineProps<{
-    resource: MasterResource;
-    title: string;
-    columns: MasterColumn[];
-    fields: MasterFormField[];
-    searchPlaceholder?: string;
-  }>(),
-  { searchPlaceholder: "编码、名称或关键字" },
-);
+const props = withDefaults(defineProps<{
+  resource: MasterResource;
+  title: string;
+  columns: MasterColumn[];
+  fields: MasterFormField[];
+  searchPlaceholder?: string;
+  summaryMetrics?: SummaryMetric[];
+}>(), {
+  searchPlaceholder: "编码、名称或关键字",
+  summaryMetrics: () => [
+    { label: "档案总数", key: "total", tone: "rust" },
+    { label: "启用中", key: "active", tone: "green" },
+    { label: "已停用", key: "inactive", tone: "amber" },
+  ],
+});
 
 const rows = ref<Record<string, unknown>[]>([]);
 const loading = ref(false);
@@ -46,6 +41,8 @@ const keyword = ref("");
 const currentPage = ref(1);
 const pageSize = ref(10);
 const dialogVisible = ref(false);
+const detailVisible = ref(false);
+const selectedRow = ref<Record<string, unknown> | null>(null);
 const formRef = ref<FormInstance>();
 const fileInput = ref<HTMLInputElement>();
 const form = reactive<Record<string, unknown>>({});
@@ -53,78 +50,44 @@ const form = reactive<Record<string, unknown>>({});
 const filteredRows = computed(() => {
   const query = keyword.value.trim().toLocaleLowerCase();
   if (!query) return rows.value;
-  return rows.value.filter((row) =>
-    Object.values(row).some((value) => String(value ?? "").toLocaleLowerCase().includes(query)),
-  );
+  return rows.value.filter((row) => Object.values(row).some((value) => String(value ?? "").toLocaleLowerCase().includes(query)));
 });
+const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value));
+const activeCount = computed(() => rows.value.filter((row) => row.status === undefined || row.status === "active").length);
+const summaryValues = computed(() => ({ total: rows.value.length, active: activeCount.value, inactive: Math.max(rows.value.length - activeCount.value, 0) }));
+const formRules = computed<FormRules>(() => Object.fromEntries(props.fields.filter((field) => field.required).map((field) => [field.prop, [{ required: true, message: `请输入${field.label}`, trigger: "blur" }]])));
+const dialogTitle = computed(() => `新增${props.title}`);
 
-const pagedRows = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value;
-  return filteredRows.value.slice(start, start + pageSize.value);
-});
+function ensureResponseSuccess(response: { data: { code: number; msg: string } }) { if (response.data.code !== 0) throw new Error(response.data.msg); }
 
-const formRules = computed<FormRules>(() => {
-  const rules: FormRules = {};
-  props.fields.forEach((field) => {
-    if (field.required) {
-      rules[field.prop] = [{ required: true, message: `请输入${field.label}`, trigger: "blur" }];
-    }
-  });
-  return rules;
-});
-
-function ensureResponseSuccess(response: { data: { code: number; msg: string } }) {
-  if (response.data.code !== 0) throw new Error(response.data.msg);
-}
-
-function resetForm() {
+function resetForm(source?: Record<string, unknown>) {
   Object.keys(form).forEach((key) => delete form[key]);
-  props.fields.forEach((field) => {
-    form[field.prop] = field.defaultValue ?? (field.type === "number" ? 0 : "");
-  });
+  props.fields.forEach((field) => { form[field.prop] = source?.[field.prop] ?? field.defaultValue ?? (field.type === "number" ? 0 : ""); });
 }
 
 async function load() {
   loading.value = true;
   try {
-    const response = await listMasterData(props.resource, {
-      keyword: keyword.value.trim() || undefined,
-      page: currentPage.value,
-      pageSize: pageSize.value,
-    });
+    const response = await listMasterData(props.resource, { keyword: keyword.value.trim() || undefined, page: currentPage.value, pageSize: pageSize.value });
     ensureResponseSuccess(response);
     const data = response.data.data;
     rows.value = Array.isArray(data) ? data : [];
-    if (currentPage.value > 1 && pagedRows.value.length === 0 && rows.value.length > 0) {
-      currentPage.value = 1;
-    }
+    if (currentPage.value > 1 && pagedRows.value.length === 0 && rows.value.length > 0) currentPage.value = 1;
   } catch (error) {
     ElMessage.error(getMasterDataErrorMessage(error, `${props.title}加载失败`));
     rows.value = [];
-  } finally {
-    loading.value = false;
-  }
+  } finally { loading.value = false; }
 }
 
-function search() {
-  currentPage.value = 1;
-}
-
-function openCreate() {
-  resetForm();
-  dialogVisible.value = true;
-  void nextTick(() => formRef.value?.clearValidate());
-}
-
-function closeCreate() {
-  if (!submitting.value) dialogVisible.value = false;
-}
+function search() { currentPage.value = 1; void load(); }
+function openCreate() { resetForm(); dialogVisible.value = true; void nextTick(() => formRef.value?.clearValidate()); }
+function closeCreate() { if (!submitting.value) dialogVisible.value = false; }
+function openDetail(row: Record<string, unknown>) { selectedRow.value = row; detailVisible.value = true; }
 
 async function submitCreate() {
   if (!formRef.value) return;
   const valid = await formRef.value.validate().catch(() => false);
   if (!valid) return;
-
   submitting.value = true;
   try {
     const response = await createMasterData(props.resource, { ...form });
@@ -132,180 +95,123 @@ async function submitCreate() {
     ElMessage.success("新增成功");
     dialogVisible.value = false;
     await load();
-  } catch (error) {
-    ElMessage.error(getMasterDataErrorMessage(error, "新增失败，请检查编码或名称是否重复"));
-  } finally {
-    submitting.value = false;
-  }
+  } catch (error) { ElMessage.error(getMasterDataErrorMessage(error, "新增失败，请检查编码或名称是否重复")); }
+  finally { submitting.value = false; }
 }
 
-function chooseImportFile() {
-  fileInput.value?.click();
-}
-
+function chooseImportFile() { fileInput.value?.click(); }
 async function handleImport(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
-
   importing.value = true;
   try {
     const response = await importMasterData(props.resource, file);
     ensureResponseSuccess(response);
-    const result = response.data.data as {
-      created_count?: number;
-      skipped_count?: number;
-      errors?: Array<{ row?: number; message?: string }>;
-    };
+    const result = response.data.data as { created_count?: number; skipped_count?: number; errors?: Array<{ message?: string }> };
     const errors = result?.errors ?? [];
     const summary = `新增${result?.created_count ?? 0}条，跳过${result?.skipped_count ?? 0}条`;
-    if (errors.length > 0) {
-      ElMessage.warning(`${summary}，${errors.length}条数据有误：${errors[0]?.message ?? "请检查导入文件"}`);
-    } else {
-      ElMessage.success(`导入完成，${summary}`);
-    }
+    errors.length ? ElMessage.warning(`${summary}，${errors.length}条数据有误：${errors[0]?.message ?? "请检查导入文件"}`) : ElMessage.success(`导入完成，${summary}`);
     await load();
-  } catch (error) {
-    ElMessage.error(getMasterDataErrorMessage(error, "导入失败，请使用系统导出的Excel模板"));
-  } finally {
-    importing.value = false;
-    input.value = "";
-  }
+  } catch (error) { ElMessage.error(getMasterDataErrorMessage(error, "导入失败，请使用系统导出的Excel模板")); }
+  finally { importing.value = false; input.value = ""; }
 }
 
 async function handleExport() {
   try {
     const response = await exportMasterData(props.resource);
-    const blob = new Blob([response.data]);
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${props.resource}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob([response.data]));
+    const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${props.resource}.xlsx`; anchor.click(); URL.revokeObjectURL(url);
     ElMessage.success("导出成功");
-  } catch (error) {
-    ElMessage.error(getMasterDataErrorMessage(error, "导出失败"));
-  }
+  } catch (error) { ElMessage.error(getMasterDataErrorMessage(error, "导出失败")); }
 }
 
 function formatCell(row: Record<string, unknown>, column: MasterColumn) {
+  if (column.prop === "status") return row.status === "inactive" ? "停用" : "启用";
+  if (column.prop === "material_type") return ({ goods: "商品", raw_material: "原材料", semi_finished: "半成品", finished: "成品" } as Record<string, string>)[String(row[column.prop])] ?? row[column.prop];
   const value = row[column.prop];
-  if (column.prop === "status") return value === "active" ? "启用" : value || "停用";
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
-
-function isActiveStatus(row: Record<string, unknown>, column: MasterColumn) {
-  return column.prop === "status" && row[column.prop] === "active";
-}
-
-function handlePageSizeChange() {
-  currentPage.value = 1;
-}
+function isActiveStatus(row: Record<string, unknown>, column: MasterColumn) { return column.prop === "status" && row.status !== "inactive"; }
+function handlePageSizeChange() { currentPage.value = 1; }
 
 onMounted(load);
 </script>
 
 <template>
   <section class="master-page">
-    <el-page-header :content="props.title" />
+    <div class="page-heading"><div><div class="breadcrumb">主数据 <span>/</span> {{ props.title }}</div><h1>{{ props.title }}</h1></div><div class="page-note">最后更新：实时数据</div></div>
+
+    <div class="summary-grid">
+      <el-card v-for="metric in props.summaryMetrics" :key="metric.label" class="summary-card" shadow="never">
+        <div class="summary-label"><span>{{ metric.label }}</span><span :class="['summary-dot', metric.tone || 'rust']" /></div>
+        <strong>{{ summaryValues[metric.key] }}</strong>
+        <small>{{ metric.key === 'total' ? '当前组织范围' : '档案状态' }}</small>
+      </el-card>
+    </div>
 
     <el-card class="toolbar-card" shadow="never">
       <div class="toolbar">
-        <el-input
-          v-model="keyword"
-          :placeholder="props.searchPlaceholder"
-          clearable
-          class="search-input"
-          @keyup.enter="search"
-          @clear="search"
-        >
-          <template #append><el-button @click="search">搜索</el-button></template>
-        </el-input>
-        <div class="toolbar-actions">
-          <el-button type="primary" @click="openCreate">新增</el-button>
-          <el-button :loading="importing" @click="chooseImportFile">导入</el-button>
-          <el-button @click="handleExport">导出</el-button>
-          <el-button :loading="loading" @click="load">刷新</el-button>
-          <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleImport" />
-        </div>
+        <div class="search-row"><el-input v-model="keyword" :placeholder="props.searchPlaceholder" clearable class="search-input" @keyup.enter="search" @clear="search"><template #prefix><el-icon><Search /></el-icon></template></el-input><el-button class="search-button" @click="search"><el-icon><Search /></el-icon>查询</el-button></div>
+        <div class="toolbar-actions"><el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新增{{ props.title.replace('档案', '') }}</el-button><el-button :loading="importing" @click="chooseImportFile"><el-icon><FolderOpened /></el-icon>导入</el-button><el-button @click="handleExport"><el-icon><Download /></el-icon>导出</el-button><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button><input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleImport" /></div>
       </div>
     </el-card>
 
     <el-card class="table-card" shadow="never">
-      <el-table v-loading="loading" :data="pagedRows" stripe row-key="id">
-        <el-table-column
-          v-for="column in props.columns"
-          :key="column.prop"
-          :prop="column.prop"
-          :label="column.label"
-          :width="column.width"
-          show-overflow-tooltip
-        >
-          <template #default="{ row }">
-            <el-tag v-if="isActiveStatus(row, column)" type="success">{{ formatCell(row, column) }}</el-tag>
-            <span v-else>{{ formatCell(row, column) }}</span>
-          </template>
+      <div class="table-caption"><div><strong>{{ props.title }}</strong><span>共 {{ filteredRows.length }} 条记录</span></div><span class="caption-tip">支持编码、名称和关键字模糊搜索</span></div>
+      <el-table v-loading="loading" :data="pagedRows" row-key="id" class="master-table">
+        <el-table-column v-for="column in props.columns" :key="column.prop" :prop="column.prop" :label="column.label" :width="column.width" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }"><el-tag v-if="isActiveStatus(row, column)" class="status-tag" type="success">{{ formatCell(row, column) }}</el-tag><el-tag v-else-if="column.prop === 'status'" class="status-tag" type="info">{{ formatCell(row, column) }}</el-tag><span v-else>{{ formatCell(row, column) }}</span></template>
         </el-table-column>
-        <template #empty>
-          <el-empty description="暂无数据" />
-        </template>
+        <el-table-column label="操作" width="150">
+          <template #default="{ row }"><el-button link class="row-action" @click="openDetail(row)"><el-icon><View /></el-icon>查看</el-button><el-button link class="row-action" @click="openDetail(row)"><el-icon><EditPen /></el-icon>编辑</el-button></template>
+        </el-table-column>
+        <template #empty><el-empty description="暂无数据，试试调整筛选条件" /></template>
       </el-table>
-      <div v-if="filteredRows.length > 0" class="pagination-wrap">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="filteredRows.length"
-          @size-change="handlePageSizeChange"
-        />
-      </div>
+      <div v-if="filteredRows.length > 0" class="pagination-wrap"><span>显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, filteredRows.length) }} / 共 {{ filteredRows.length }} 条</span><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10, 20, 50]" layout="sizes, prev, pager, next" :total="filteredRows.length" @size-change="handlePageSizeChange" /></div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="`新增${props.title}`" width="620px" @close="closeCreate">
-      <el-form ref="formRef" :model="form" :rules="formRules" label-width="100px">
-        <el-form-item v-for="field in props.fields" :key="field.prop" :label="field.label" :prop="field.prop">
-          <el-select v-if="field.type === 'select'" v-model="form[field.prop]" style="width: 100%">
-            <el-option
-              v-for="option in field.options ?? []"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-          <el-input-number
-            v-else-if="field.type === 'number'"
-            v-model="form[field.prop] as number"
-            :min="0"
-            :controls="false"
-            style="width: 100%"
-          />
-          <el-input
-            v-else
-            v-model="form[field.prop] as string"
-            :type="field.type === 'textarea' ? 'textarea' : 'text'"
-            :rows="field.type === 'textarea' ? 3 : undefined"
-          />
-        </el-form-item>
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="620px" @close="closeCreate">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" class="master-form">
+        <el-form-item v-for="field in props.fields" :key="field.prop" :label="field.label" :prop="field.prop"><el-select v-if="field.type === 'select'" v-model="form[field.prop]" class="full-width"><el-option v-for="option in field.options ?? []" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-input-number v-else-if="field.type === 'number'" v-model="form[field.prop] as number" :min="0" :controls="false" class="full-width" /><el-input v-else v-model="form[field.prop] as string" :type="field.type === 'textarea' ? 'textarea' : 'text'" :rows="field.type === 'textarea' ? 3 : undefined" /></el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="closeCreate">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="submitCreate">保存</el-button>
-      </template>
+      <template #footer><el-button @click="closeCreate">取消</el-button><el-button type="primary" :loading="submitting" @click="submitCreate">保存{{ props.title.replace('档案', '') }}</el-button></template>
     </el-dialog>
+
+    <el-drawer v-model="detailVisible" :title="`${props.title}详情`" size="430px"><div v-if="selectedRow" class="detail-panel"><div class="detail-intro"><span class="detail-code">{{ selectedRow.code || '-' }}</span><el-tag v-if="selectedRow.status !== 'inactive'" type="success">启用</el-tag><el-tag v-else type="info">停用</el-tag></div><div v-for="field in props.fields" :key="field.prop" class="detail-row"><span>{{ field.label }}</span><strong>{{ selectedRow[field.prop] ?? '-' }}</strong></div></div></el-drawer>
   </section>
 </template>
 
 <style scoped>
-.master-page { display: flex; flex-direction: column; gap: 16px; }
-.toolbar-card, .table-card { border-color: var(--erp-border); background: var(--erp-panel-bg); }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.search-input { max-width: 440px; }
+.master-page { min-width: 0; }
+.page-heading { display: flex; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+.breadcrumb { color: var(--erp-muted-text); font-size: 11px; }
+.breadcrumb span { margin: 0 5px; color: var(--erp-border); }
+h1 { margin: 6px 0 0; color: var(--erp-text); font-size: 25px; line-height: 1.2; }
+.page-note { color: var(--erp-subtle-text); font-size: 11px; }
+.summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin-bottom: 15px; }
+.summary-card { min-height: 108px; padding: 16px 17px; }
+.summary-card :deep(.el-card__body) { padding: 0; }
+.summary-label { display: flex; align-items: center; justify-content: space-between; color: var(--erp-muted-text); font-size: 12px; }
+.summary-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--erp-primary); }
+.summary-dot.green { background: var(--erp-green); }.summary-dot.amber { background: var(--erp-amber); }
+.summary-card strong { display: block; margin: 14px 0 5px; color: var(--erp-text); font-size: 25px; line-height: 1; }
+.summary-card small { color: var(--erp-subtle-text); font-size: 11px; }
+.toolbar-card, .table-card { margin-bottom: 15px; }
+.toolbar-card :deep(.el-card__body) { padding: 16px 17px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
+.search-row { display: flex; flex: 1; min-width: 290px; max-width: 530px; gap: 8px; }
+.search-input { min-width: 0; flex: 1; }.search-input :deep(.el-input__wrapper) { border-radius: 8px; }
+.search-button { color: var(--erp-primary-dark); border-color: var(--erp-border); background: var(--erp-panel-bg); }
 .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.pagination-wrap { display: flex; justify-content: flex-end; padding-top: 16px; }
-@media (max-width: 768px) {
-  .search-input { max-width: none; width: 100%; }
-  .toolbar-actions { width: 100%; }
-}
+.table-card :deep(.el-card__body) { padding: 0; }
+.table-caption { display: flex; align-items: center; justify-content: space-between; padding: 16px 17px; border-bottom: 1px solid var(--erp-border-soft); }
+.table-caption > div { display: flex; align-items: center; gap: 12px; }.table-caption strong { color: #493d35; font-size: 15px; }.table-caption span { color: var(--erp-subtle-text); font-size: 11px; }.caption-tip { color: var(--erp-subtle-text); }
+.master-table :deep(.el-table__header th) { background: var(--erp-panel-soft); }.master-table :deep(.el-table__cell) { padding: 13px 8px; }.master-table :deep(.el-table__row) { background: var(--erp-panel-bg); }
+.status-tag { border: 0; border-radius: 999px; }.status-tag.el-tag--success { background: var(--erp-green-bg); color: var(--erp-green); }.status-tag.el-tag--info { background: #f2e6dc; color: #a45b40; }
+.row-action { color: var(--erp-primary-dark); }.row-action + .row-action { margin-left: 4px; }.row-action :deep(.el-icon) { margin-right: 2px; }
+.pagination-wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 17px; border-top: 1px solid var(--erp-border-soft); color: var(--erp-muted-text); font-size: 11px; }.pagination-wrap :deep(.el-pagination) { padding: 0; }
+.master-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }.master-form :deep(.el-form-item:last-child) { grid-column: 1 / -1; }.full-width { width: 100%; }
+.detail-panel { padding: 4px 2px; }.detail-intro { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--erp-border-soft); }.detail-code { color: var(--erp-primary-dark); font-size: 18px; font-weight: 700; }.detail-row { display: flex; justify-content: space-between; gap: 20px; padding: 15px 0; border-bottom: 1px solid var(--erp-border-soft); }.detail-row span { color: var(--erp-muted-text); }.detail-row strong { max-width: 240px; color: var(--erp-text); font-weight: 600; text-align: right; word-break: break-word; }
+@media (max-width: 760px) { .summary-grid { grid-template-columns: 1fr; }.page-heading { align-items: flex-start; flex-direction: column; gap: 8px; }.toolbar-actions { width: 100%; }.pagination-wrap { align-items: flex-start; flex-direction: column; }.master-form { grid-template-columns: 1fr; }.master-form :deep(.el-form-item:last-child) { grid-column: auto; } }
 </style>
