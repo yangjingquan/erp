@@ -14,6 +14,7 @@ vi.mock("../src/api/http", () => ({
 
 import {
   approveSalesOrder,
+  createSalesQuote,
   createSalesDelivery,
   createSalesOrder,
   listSalesOrders,
@@ -72,6 +73,26 @@ describe("一期业务 API 路由", () => {
     expect(postMock).toHaveBeenNthCalledWith(2, "/sales/orders/sales-1/submit");
     expect(postMock).toHaveBeenNthCalledWith(3, "/sales/orders/sales-1/approve");
     expect(postMock).toHaveBeenNthCalledWith(4, "/sales/orders/sales-1/create-delivery");
+  });
+
+  it("normalizes an empty quote validity date and whitelists quote fields", async () => {
+    const payload = {
+      customer_id: "customer-1",
+      quote_date: "2026-08-09",
+      valid_until: "",
+      supplier_id: "",
+      warehouse_id: "",
+      items: [{ material_id: "material-1", quantity: 2, unit_price: 3, estimated_price: 0 }],
+    };
+
+    await createSalesQuote(payload);
+
+    expect(postMock).toHaveBeenCalledWith("/sales/quotes", {
+      customer_id: "customer-1",
+      quote_date: "2026-08-09",
+      valid_until: null,
+      items: [{ material_id: "material-1", quantity: 2, unit_price: 3 }],
+    });
   });
 
   it("uses the purchase order list and lifecycle endpoints", async () => {
