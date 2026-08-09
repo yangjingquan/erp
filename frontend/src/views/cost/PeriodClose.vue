@@ -27,7 +27,7 @@ async function close() {
     <el-page-header content="期间结账" />
     <el-card shadow="never">
       <el-space>
-        <el-input v-model="period" placeholder="YYYY-MM" clearable style="width: 180px" />
+        <el-date-picker v-model="period" type="month" value-format="YYYY-MM" placeholder="选择结账期间" clearable style="width: 180px" />
         <el-button type="primary" @click="close">结账</el-button>
       </el-space>
     </el-card>

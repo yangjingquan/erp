@@ -42,6 +42,7 @@ class PurchaseRequest(UUIDModel):
     doc_no: Mapped[str] = mapped_column(String(64), nullable=False)
     department_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     requester_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    supplier_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     request_date: Mapped[date] = mapped_column(Date, nullable=False)
     remark: Mapped[str | None] = mapped_column(String(500), nullable=True)

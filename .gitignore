@@ -4,6 +4,7 @@ backend/var/backups/
 backend/.idea/*
 frontend/node_modules/
 frontend/.env
+frontend/dist
 __pycache__/
 *.py[cod]
 .DS_Store

@@ -419,6 +419,7 @@ CREATE TABLE IF NOT EXISTS purchase_request (
   doc_no VARCHAR(64) NOT NULL,
   department_id CHAR(36) NULL,
   requester_id CHAR(36) NULL,
+  supplier_id CHAR(36) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   request_date DATE NOT NULL,
   remark VARCHAR(500) NULL,

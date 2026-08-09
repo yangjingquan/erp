@@ -19,7 +19,7 @@ onMounted(load);
     <el-page-header content="会计凭证" />
     <el-button class="toolbar" :loading="loading" @click="load">刷新</el-button>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe><el-table-column prop="voucher_no" label="凭证号" /><el-table-column prop="voucher_date" label="日期" /><el-table-column prop="total_debit" label="借方合计" /><el-table-column prop="total_credit" label="贷方合计" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="scope"><el-button v-if="!scope.row.voucher_no" link type="primary" :loading="actionLoading === scope.row.source_id" @click="create(scope.row)">生成凭证</el-button></template></el-table-column></el-table>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit><el-table-column prop="voucher_no" label="凭证号" /><el-table-column prop="voucher_date" label="日期" /><el-table-column prop="total_debit" label="借方合计" /><el-table-column prop="total_credit" label="贷方合计" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="scope"><el-button v-if="!scope.row.voucher_no" link type="primary" :loading="actionLoading === scope.row.source_id" @click="create(scope.row)">生成凭证</el-button></template></el-table-column></el-table>
   </section>
 </template>
 

@@ -29,7 +29,7 @@ onMounted(load);
     <el-page-header content="库存流水" />
     <el-button class="toolbar" :loading="loading" @click="load">刷新</el-button>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe><el-table-column prop="source_type" label="来源类型" /><el-table-column prop="source_id" label="来源单据" /><el-table-column prop="direction" label="方向" /><el-table-column prop="quantity" label="数量" /><el-table-column prop="amount" label="金额" /></el-table>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit><el-table-column prop="source_type" label="来源类型" /><el-table-column prop="source_id" label="来源单据" /><el-table-column prop="direction" label="方向" /><el-table-column prop="quantity" label="数量" /><el-table-column prop="amount" label="金额" /></el-table>
   </section>
 </template>
 

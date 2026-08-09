@@ -27,6 +27,7 @@ class PurchaseRequestItemCreate(BaseModel):
 
 class PurchaseRequestCreate(BaseModel):
     request_date: date
+    supplier_id: str | None = None
     remark: str | None = None
     items: list[PurchaseRequestItemCreate] = Field(min_length=1)
 

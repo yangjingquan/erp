@@ -13,4 +13,14 @@ describe("一期业务页面加载契约", () => {
     expect(source).toContain("loading");
     expect(source).toContain("onMounted");
   });
+
+  it("列表操作列使用固定宽度，避免 fit 按 min-width 放大造成右侧空白", () => {
+    const salesOrder = pageSources["../src/views/sales/SalesOrderList.vue"];
+    const purchaseOrder = pageSources["../src/views/purchase/PurchaseOrderList.vue"];
+    const expense = pageSources["../src/views/finance/ExpenseList.vue"];
+
+    expect(salesOrder).toContain('<el-table-column label="操作" width="300">');
+    expect(purchaseOrder).toContain('<el-table-column label="操作" width="300">');
+    expect(expense).toContain('<el-table-column label="操作" width="260">');
+  });
 });

@@ -137,12 +137,12 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''">
       <template #default><el-button link type="primary" @click="load">重新加载</el-button></template>
     </el-alert>
-    <el-table v-loading="loading" :data="rows" stripe>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
       <el-table-column prop="doc_no" label="订单号" />
       <el-table-column label="客户"><template #default="scope">{{ scope.row.customer_name || scope.row.customer_id }}</template></el-table-column>
       <el-table-column prop="status" label="状态" />
       <el-table-column prop="total_amount" label="含税金额" />
-      <el-table-column label="操作" min-width="300">
+      <el-table-column label="操作" width="300">
         <template #default="scope">
           <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button>
           <el-button link @click="copyToForm(scope.row)">复制填充</el-button>

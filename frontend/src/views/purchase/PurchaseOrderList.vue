@@ -108,9 +108,9 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     <el-page-header content="采购订单" />
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
       <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ scope.row.supplier_name || scope.row.supplier_id }}</template></el-table-column><el-table-column prop="status" label="状态" /><el-table-column prop="total_amount" label="含税金额" />
-      <el-table-column label="操作" min-width="300"><template #default="scope">
+      <el-table-column label="操作" width="300"><template #default="scope">
         <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button><el-button link @click="copyToForm(scope.row)">复制填充</el-button>
         <el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'submit')">提交</el-button>
         <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button>

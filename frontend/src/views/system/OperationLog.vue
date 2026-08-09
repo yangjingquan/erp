@@ -38,7 +38,7 @@ onMounted(load);
       <el-button :loading="loading" @click="load">刷新</el-button>
     </el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''" />
-    <el-table v-loading="loading" :data="rows" stripe>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
       <el-table-column prop="created_at" label="时间" min-width="180" />
       <el-table-column prop="username" label="用户" width="140" />
       <el-table-column prop="action" label="动作" width="140" />

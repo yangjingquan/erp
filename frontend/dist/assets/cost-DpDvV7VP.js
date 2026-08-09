@@ -1,1 +1,0 @@
-import{q as s}from"./index-BzVHiAx9.js";const c=o=>s.post("/cost/allocations",o),a=()=>s.get("/cost/allocations"),l=o=>s.post(`/cost/allocations/${o}/post`),i=o=>s.post(`/cost/periods/${o}/close`);export{i as a,c,a as l,l as p};

@@ -184,11 +184,11 @@ onMounted(load);
 
     <el-card class="table-card" shadow="never">
       <div class="table-caption"><div><strong>{{ props.title }}</strong><span>共 {{ totalRows }} 条记录</span></div><span class="caption-tip">支持编码、名称和关键字模糊搜索</span></div>
-      <el-table v-loading="loading" :data="rows" row-key="id" class="master-table">
+      <el-table v-loading="loading" :data="rows" row-key="id" class="master-table" width="100%" fit>
         <el-table-column v-for="column in props.columns" :key="column.prop" :prop="column.prop" :label="column.label" :width="column.width" min-width="100" show-overflow-tooltip>
           <template #default="{ row }"><el-tag v-if="isActiveStatus(row, column)" class="status-tag" type="success">{{ formatCell(row, column) }}</el-tag><el-tag v-else-if="column.prop === 'status'" class="status-tag" type="info">{{ formatCell(row, column) }}</el-tag><span v-else>{{ formatCell(row, column) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="150">
+        <el-table-column label="操作" width="220" class-name="operation-column">
           <template #default="{ row }"><el-button link class="row-action" @click="openDetail(row)"><el-icon><View /></el-icon>查看</el-button><el-button link class="row-action" @click="openEdit(row)"><el-icon><EditPen /></el-icon>编辑</el-button><el-button link class="row-action" @click="toggleStatus(row)">{{ row.status === "inactive" ? "启用" : "停用" }}</el-button></template>
         </el-table-column>
         <template #empty><el-empty description="暂无数据，试试调整筛选条件" /></template>
@@ -234,7 +234,7 @@ h1 { margin: 6px 0 0; color: var(--erp-text); font-size: 25px; line-height: 1.2;
 .table-caption > div { display: flex; align-items: center; gap: 12px; }.table-caption strong { color: #493d35; font-size: 15px; }.table-caption span { color: var(--erp-subtle-text); font-size: 11px; }.caption-tip { color: var(--erp-subtle-text); }
 .master-table :deep(.el-table__header th) { background: var(--erp-panel-soft); }.master-table :deep(.el-table__cell) { padding: 13px 8px; }.master-table :deep(.el-table__row) { background: var(--erp-panel-bg); }
 .status-tag { border: 0; border-radius: 999px; }.status-tag.el-tag--success { background: var(--erp-green-bg); color: var(--erp-green); }.status-tag.el-tag--info { background: #f2e6dc; color: #a45b40; }
-.row-action { color: var(--erp-primary-dark); }.row-action + .row-action { margin-left: 4px; }.row-action :deep(.el-icon) { margin-right: 2px; }
+.operation-column :deep(.cell), .row-action { white-space: nowrap; }.row-action { color: var(--erp-primary-dark); }.row-action + .row-action { margin-left: 4px; }.row-action :deep(.el-icon) { margin-right: 2px; }
 .pagination-wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 17px; border-top: 1px solid var(--erp-border-soft); color: var(--erp-muted-text); font-size: 11px; }.pagination-wrap :deep(.el-pagination) { padding: 0; }
 .master-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }.master-form :deep(.el-form-item:last-child) { grid-column: 1 / -1; }.full-width { width: 100%; }
 .detail-panel { padding: 4px 2px; }.detail-intro { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--erp-border-soft); }.detail-code { color: var(--erp-primary-dark); font-size: 18px; font-weight: 700; }.detail-row { display: flex; justify-content: space-between; gap: 20px; padding: 15px 0; border-bottom: 1px solid var(--erp-border-soft); }.detail-row span { color: var(--erp-muted-text); }.detail-row strong { max-width: 240px; color: var(--erp-text); font-weight: 600; text-align: right; word-break: break-word; }

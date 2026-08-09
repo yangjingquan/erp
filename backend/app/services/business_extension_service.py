@@ -54,7 +54,8 @@ def transition_quote(db: Session, quote_id: str, new_status: str, context: UserC
 
 
 def serialize_request(row):
-    return {"id": row.id, "doc_no": row.doc_no, "department_id": row.department_id, "requester_id": row.requester_id, "status": row.status, "request_date": row.request_date.isoformat(), "remark": row.remark, "items": _serialize_items(row.items, "estimated_price")}
+    items = _serialize_items(row.items, "estimated_price")
+    return {"id": row.id, "doc_no": row.doc_no, "department_id": row.department_id, "requester_id": row.requester_id, "supplier_id": row.supplier_id, "status": row.status, "request_date": row.request_date.isoformat(), "remark": row.remark, "total_amount": str(_total(row.items)), "items": items}
 
 
 def list_requests(db: Session, context: UserContext):
@@ -64,7 +65,7 @@ def list_requests(db: Session, context: UserContext):
 
 def create_request(db: Session, payload, context: UserContext):
     now = datetime.now(UTC).replace(tzinfo=None)
-    row = PurchaseRequest(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_request", context.org_id, payload.request_date), department_id=context.department_id, requester_id=context.id, request_date=payload.request_date, remark=payload.remark, created_by=context.id, created_at=now, updated_at=now)
+    row = PurchaseRequest(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_request", context.org_id, payload.request_date), department_id=context.department_id, requester_id=context.id, supplier_id=payload.supplier_id, request_date=payload.request_date, remark=payload.remark, created_by=context.id, created_at=now, updated_at=now)
     row.items = [PurchaseRequestItem(material_id=item.material_id, quantity=item.quantity, estimated_price=item.estimated_price, line_no=index) for index, item in enumerate(payload.items, 1)]
     db.add(row)
     db.commit()

@@ -15,7 +15,12 @@ def test_quote_and_purchase_request_can_be_created(client_and_session):
     session.commit()
     response = client.post("/api/sales/quotes", json={"customer_id": "c-1", "quote_date": "2026-08-02", "items": [{"material_id": "ext-material", "quantity": 2, "unit_price": 10}]}, headers=headers())
     assert response.json()["code"] == 0
-    response = client.post("/api/purchase/requests", json={"request_date": "2026-08-02", "items": [{"material_id": "ext-material", "quantity": 3, "estimated_price": 4}]}, headers=headers())
+    response = client.post("/api/purchase/requests", json={"supplier_id": "supplier-1", "request_date": "2026-08-02", "items": [{"material_id": "ext-material", "quantity": 3, "estimated_price": 4}]}, headers=headers())
     assert response.json()["code"] == 0
+    assert response.json()["data"]["supplier_id"] == "supplier-1"
+    assert response.json()["data"]["total_amount"] == "12.00"
     assert len(client.get("/api/sales/quotes", headers=headers()).json()["data"]) == 1
-    assert len(client.get("/api/purchase/requests", headers=headers()).json()["data"]) == 1
+    purchase_requests = client.get("/api/purchase/requests", headers=headers()).json()["data"]
+    assert len(purchase_requests) == 1
+    assert purchase_requests[0]["supplier_id"] == "supplier-1"
+    assert purchase_requests[0]["total_amount"] == "12.00"
