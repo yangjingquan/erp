@@ -6,6 +6,7 @@ from app.models.base import AuditMixin, UUIDModel
 class CrmLead(AuditMixin, UUIDModel):
     __tablename__ = "crm_lead"
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    lead_no: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     phone: Mapped[str | None] = mapped_column(String(64))
     email: Mapped[str | None] = mapped_column(String(128))
@@ -15,15 +16,18 @@ class CrmLead(AuditMixin, UUIDModel):
     customer_id: Mapped[str | None] = mapped_column(String(36))
     contact_id: Mapped[str | None] = mapped_column(String(36))
     opportunity_id: Mapped[str | None] = mapped_column(String(36))
+    __table_args__ = (UniqueConstraint("org_id", "lead_no", name="uk_crm_lead_org_no"),)
 
 class CrmOpportunity(AuditMixin, UUIDModel):
     __tablename__ = "crm_opportunity"
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    opportunity_no: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     customer_id: Mapped[str | None] = mapped_column(String(36))
     owner_id: Mapped[str | None] = mapped_column(String(36))
     stage: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
     loss_reason: Mapped[str | None] = mapped_column(String(255))
+    __table_args__ = (UniqueConstraint("org_id", "opportunity_no", name="uk_crm_opportunity_org_no"),)
 
 class CrmContact(AuditMixin, UUIDModel):
     __tablename__ = "crm_contact"

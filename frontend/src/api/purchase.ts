@@ -33,6 +33,10 @@ export function createPurchaseReceipt(orderId: string) {
   return http.post(`/purchase/orders/${orderId}/create-receipt`);
 }
 
+export function listPurchaseReceipts() {
+  return http.get("/purchase/receipts");
+}
+
 export function listPurchaseRequests() { return http.get("/purchase/requests"); }
 export function createPurchaseRequest(payload: Record<string, unknown>) { return http.post("/purchase/requests", payload); }
 export function requestAction(id: string, action: "submit" | "approve" | "reject") { return http.post(`/purchase/requests/${id}/${action}`); }

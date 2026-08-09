@@ -132,7 +132,24 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
           <el-form-item v-if="form.action === 'receive'" label="库位" required><el-input v-model="form.location_id" /></el-form-item>
           <el-form-item v-if="form.action === 'receive'" label="批次"><el-input v-model="form.batch_id" /></el-form-item>
           <el-form-item label="物料" required><el-select v-model="form.material_id" filterable clearable class="full-width"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item>
-          <el-form-item :label="form.action === 'count' ? '实盘数量' : '数量'" required><el-input-number v-if="form.action !== 'count'" v-model="form.quantity" :min="0.0001" class="full-width" /><el-input-number v-else v-model="form.actual_quantity" :min="0" class="full-width" /></el-form-item>
+          <el-form-item :label="form.action === 'count' ? '实盘数量' : '数量'" required>
+            <el-input-number
+              v-if="form.action !== 'count'"
+              v-model="form.quantity"
+              :min="0.01"
+              :step="0.01"
+              :precision="2"
+              class="full-width"
+            />
+            <el-input-number
+              v-else
+              v-model="form.actual_quantity"
+              :min="0"
+              :step="0.01"
+              :precision="2"
+              class="full-width"
+            />
+          </el-form-item>
         </div>
         <el-button native-type="submit" type="primary" :loading="processing" class="submit-button">提交扫码</el-button>
       </el-form>

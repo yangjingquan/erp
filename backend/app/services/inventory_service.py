@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import false, select
 from sqlalchemy.orm import Session
@@ -44,6 +45,10 @@ PRODUCTION_STOCK_SOURCES = frozenset(
         SUBCONTRACT_RECEIPT_SOURCE,
     }
 )
+
+
+def _new_inventory_doc_no(prefix: str) -> str:
+    return f"{prefix}-{date.today():%Y%m%d}-{uuid4().hex.upper()}"
 
 
 def get_stock_unit_cost(
@@ -162,7 +167,7 @@ def create_transfer(db: Session, context: UserContext, *, from_warehouse_id: str
     assert_warehouse_access(context, to_warehouse_id)
     transfer = InvTransfer(
         org_id=context.org_id,
-        doc_no=f"TR-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S')}",
+        doc_no=_new_inventory_doc_no("TR"),
         from_warehouse_id=from_warehouse_id,
         to_warehouse_id=to_warehouse_id,
         status="draft",
@@ -308,7 +313,7 @@ def create_count(db: Session, context: UserContext, *, warehouse_id: str, items:
     assert_warehouse_access(context, warehouse_id)
     count = InvCount(
         org_id=context.org_id,
-        doc_no=f"CT-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S')}",
+        doc_no=_new_inventory_doc_no("CT"),
         warehouse_id=warehouse_id,
         status="draft",
         count_date=date.today(),

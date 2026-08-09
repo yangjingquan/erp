@@ -262,7 +262,7 @@ def list_scan_tasks(db: Session, context: UserContext) -> list[dict]:
     else:
         warehouse_ids = sorted(allowed)
     tasks.extend({
-        "action": "count", "document_id": f"count:{warehouse_id}", "document_no": f"COUNT-{warehouse_id[:8]}",
+        "action": "count", "document_id": warehouse_id, "document_no": f"COUNT-{warehouse_id[:8]}",
         "warehouse_id": warehouse_id, "status": "open",
     } for warehouse_id in warehouse_ids)
     return tasks

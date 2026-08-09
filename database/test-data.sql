@@ -99,9 +99,9 @@ ON DUPLICATE KEY UPDATE name=VALUES(name), stage='new';
 INSERT INTO qa_plan (id, org_id, name, items_json) VALUES
 ('11111111-1111-1111-1111-111111111601', @org, '测试来料检验方案', JSON_ARRAY(JSON_OBJECT('item', '外观', 'required', true), JSON_OBJECT('item', '尺寸', 'min', 9, 'max', 11)))
 ON DUPLICATE KEY UPDATE name=VALUES(name);
-INSERT INTO qa_inspection (id, org_id, doc_no, source_type, source_id, status, result) VALUES
-('11111111-1111-1111-1111-111111111602', @org, 'TEST-QA-001', 'purchase_order', '11111111-1111-1111-1111-111111111203', 'draft', NULL)
-ON DUPLICATE KEY UPDATE status='draft', result=NULL;
+INSERT INTO qa_inspection (id, org_id, doc_no, inspection_type, source_type, source_id, status, result, results_json, disposition) VALUES
+('11111111-1111-1111-1111-111111111602', @org, 'TEST-QA-001', 'incoming', 'purchase_order', '11111111-1111-1111-1111-111111111203', 'draft', NULL, JSON_ARRAY(), NULL)
+ON DUPLICATE KEY UPDATE status='draft', result=NULL, results_json=JSON_ARRAY(), disposition=NULL;
 INSERT INTO hr_employee (id, org_id, employee_no, name, department_id, status, base_salary, allowance) VALUES
 ('11111111-1111-1111-1111-111111111701', @org, 'TEST-EMP-001', '测试员工一', @dept, 'active', 8000, 500)
 ON DUPLICATE KEY UPDATE name=VALUES(name), status='active';

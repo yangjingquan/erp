@@ -2,6 +2,7 @@ backend/.venv/
 backend/.env
 backend/var/backups/
 backend/.idea/*
+backend/tests/
 frontend/node_modules/
 frontend/.env
 frontend/dist

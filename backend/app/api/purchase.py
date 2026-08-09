@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.response import ok
+from app.models.purchase import PurchaseReceipt
 from app.schemas.purchase import PurchaseOrderCreate, PurchaseRequestCreate, PurchaseReturnCreate
 from app.services.auth_service import UserContext
 from app.services.purchase_service import (
@@ -58,6 +60,25 @@ def complete_receipt(receipt_id: str, context: UserContext = Depends(require_per
     payable = create_payable_from_purchase_receipt(db, receipt.id, context)
     db.commit()
     return ok({"receipt_id": receipt.id, "status": receipt.status, "payable_id": payable.id})
+
+
+@router.get("/receipts")
+def list_receipts(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(
+        select(PurchaseReceipt)
+        .where(PurchaseReceipt.org_id == context.org_id, PurchaseReceipt.status != "cancelled")
+        .order_by(PurchaseReceipt.receipt_date.desc(), PurchaseReceipt.doc_no.desc())
+    ).all()
+    return ok([
+        {
+            "id": row.id,
+            "doc_no": row.doc_no,
+            "status": row.status,
+            "receipt_date": row.receipt_date.isoformat(),
+            "total_amount": str(row.total_amount),
+        }
+        for row in rows
+    ])
 
 
 @router.get("/requests")

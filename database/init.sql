@@ -883,20 +883,6 @@ CREATE TABLE IF NOT EXISTS sys_backup_record (
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS sys_api_client (
-  id CHAR(36) PRIMARY KEY,
-  org_id CHAR(36) NOT NULL,
-  client_name VARCHAR(128) NOT NULL,
-  client_key VARCHAR(128) NOT NULL,
-  client_secret_hash VARCHAR(255) NOT NULL,
-  secret_hash VARCHAR(128) NULL,
-  scopes JSON NULL,
-  scopes_json JSON NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'active',
-  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  UNIQUE KEY uk_sys_api_client_key (client_key)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
 CREATE TABLE IF NOT EXISTS ext_module_registry (
   id CHAR(36) PRIMARY KEY,
   module_key VARCHAR(64) NOT NULL,
@@ -1902,11 +1888,14 @@ CREATE TABLE IF NOT EXISTS crm_activity (
 CREATE TABLE IF NOT EXISTS qa_inspection (
   id CHAR(36) PRIMARY KEY,
   org_id CHAR(36) NOT NULL,
-  doc_no VARCHAR(64) NOT NULL,
-  source_type VARCHAR(64) NULL,
-  source_id CHAR(36) NULL,
+  doc_no VARCHAR(64) NULL,
+  inspection_type VARCHAR(32) NOT NULL,
+  source_type VARCHAR(64) NOT NULL,
+  source_id CHAR(36) NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   result VARCHAR(32) NULL,
+  results_json JSON NOT NULL,
+  disposition VARCHAR(32) NULL,
   is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -2103,7 +2092,9 @@ VALUES
 ('30000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'mfg_mps', 'MPS', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'mfg_mrp', 'MRP', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000014', '00000000-0000-0000-0000-000000000001', 'mfg_subcontract_order', 'SC', '%Y%m%d', 4, 'day'),
-('30000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000001', 'mfg_subcontract_receipt', 'SR', '%Y%m%d', 4, 'day')
+('30000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000001', 'mfg_subcontract_receipt', 'SR', '%Y%m%d', 4, 'day'),
+('30000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000001', 'crm_lead', 'LD', '%Y%m%d', 4, 'day'),
+('30000000-0000-0000-0000-000000000017', '00000000-0000-0000-0000-000000000001', 'crm_opportunity', 'OP', '%Y%m%d', 4, 'day')
 ON DUPLICATE KEY UPDATE prefix = VALUES(prefix), date_format = VALUES(date_format), sequence_length = VALUES(sequence_length);
 
 INSERT INTO cfg_global_parameter (id, org_id, parameter_key, parameter_value, value_type, description)

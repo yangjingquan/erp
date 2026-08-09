@@ -7,7 +7,7 @@ from app.schemas.crm import LeadCreate, OpportunityCreate, FollowUpCreate
 from app.services.auth_service import UserContext
 from app.services.crm_service import *
 router = APIRouter(prefix="/api/crm", tags=["crm"])
-def _row(row): return {k: getattr(row, k) for k in ("id", "name", "status", "stage", "phone", "email", "source", "customer_id") if hasattr(row, k)}
+def _row(row): return {k: getattr(row, k) for k in ("id", "lead_no", "opportunity_no", "name", "status", "stage", "phone", "email", "source", "customer_id") if hasattr(row, k)}
 @router.get("/leads")
 def leads(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)): return ok([_row(x) for x in list_leads(db, context)])
 @router.post("/leads")

@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +21,12 @@ from app.models.purchase import PurchaseReceipt
 from app.models.production import MfgSubcontractReceipt
 from app.models.sales import SalesDelivery
 from app.services.auth_service import UserContext
+
+
+def _new_finance_doc_no(prefix: str, context: UserContext) -> str:
+    """Build a human-readable finance number with a collision-resistant suffix."""
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    return f"{prefix}-{context.id[:8]}-{timestamp}-{uuid4().hex[:8]}"
 
 
 def create_receivable_from_sales_delivery(db: Session, delivery_id: str, context: UserContext) -> SalesReceivable:
@@ -111,7 +118,7 @@ def create_receipt(db: Session, context: UserContext, *, customer_id: str, amoun
         raise AppError("收款金额必须大于 0", code=400)
     receipt = FinReceipt(
         org_id=context.org_id,
-        doc_no=f"RC-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S%f')}",
+        doc_no=_new_finance_doc_no("RC", context),
         customer_id=customer_id,
         amount=amount,
         receipt_date=date.today(),
@@ -127,9 +134,21 @@ def reconcile_receivable(db: Session, receipt_id: str, receivable_id: str, amoun
     receivable = db.get(SalesReceivable, receivable_id)
     if receipt is None or receivable is None or receipt.org_id != context.org_id or receivable.org_id != context.org_id:
         raise AppError("收款或应收单不存在", code=404)
+    if receipt.customer_id != receivable.customer_id:
+        raise AppError("收款客户与应收客户不一致", code=400)
+    amount = Decimal(str(amount))
     if amount <= 0 or amount > receivable.total_amount - receivable.reconciled_amount or amount > receipt.amount - sum(item.amount for item in receipt.reconciles):
         raise AppError("核销金额超过可核销余额", code=400)
-    db.add(FinReceiptReconcile(receipt_id=receipt.id, receivable_id=receivable.id, amount=amount))
+    existing = db.scalar(
+        select(FinReceiptReconcile).where(
+            FinReceiptReconcile.receipt_id == receipt.id,
+            FinReceiptReconcile.receivable_id == receivable.id,
+        )
+    )
+    if existing:
+        existing.amount += amount
+    else:
+        db.add(FinReceiptReconcile(receipt_id=receipt.id, receivable_id=receivable.id, amount=amount))
     receivable.reconciled_amount += amount
     receivable.status = "settled" if receivable.reconciled_amount == receivable.total_amount else "partial"
     db.flush()
@@ -140,7 +159,7 @@ def create_payment(db: Session, context: UserContext, *, supplier_id: str, amoun
         raise AppError("付款金额必须大于 0", code=400)
     payment = FinPayment(
         org_id=context.org_id,
-        doc_no=f"PY-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S%f')}",
+        doc_no=_new_finance_doc_no("PY", context),
         supplier_id=supplier_id,
         amount=amount,
         payment_date=date.today(),
@@ -169,7 +188,7 @@ def create_expense(db: Session, context: UserContext, *, amount: Decimal, expens
     assert_period_open(db, context.org_id, date.today())
     expense = FinExpense(
         org_id=context.org_id,
-        doc_no=f"EX-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S%f')}",
+        doc_no=_new_finance_doc_no("EX", context),
         applicant_id=context.id,
         department_id=context.department_id,
         amount=amount,
@@ -241,7 +260,7 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         raise AppError("暂不支持该凭证来源", code=400)
     voucher = FinVoucher(
         org_id=context.org_id,
-        voucher_no=f"FV-{context.id[:8]}-{date.today().strftime('%Y%m%d%H%M%S%f')}",
+        voucher_no=_new_finance_doc_no("FV", context),
         voucher_date=date.today(),
         period=date.today().strftime("%Y-%m"),
         source_type=source_type,
