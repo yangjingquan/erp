@@ -14,6 +14,17 @@ export type SalesOrderPayload = {
   }>;
 };
 
+export type SalesQuotePayload = {
+  customer_id: string;
+  quote_date: string;
+  valid_until?: string | null;
+  items: Array<{
+    material_id: string;
+    quantity: number;
+    unit_price: number;
+  }>;
+};
+
 export function listSalesOrders(params?: Record<string, unknown>) {
   return http.get("/sales/orders", { params });
 }
@@ -35,7 +46,14 @@ export function createSalesDelivery(orderId: string) {
 }
 
 export function listSalesQuotes() { return http.get("/sales/quotes"); }
-export function createSalesQuote(payload: SalesOrderPayload & { quote_date?: string; valid_until?: string | null }) { return http.post("/sales/quotes", payload); }
+export function createSalesQuote(payload: SalesQuotePayload) {
+  return http.post("/sales/quotes", {
+    customer_id: payload.customer_id,
+    quote_date: payload.quote_date,
+    valid_until: payload.valid_until?.trim() || null,
+    items: payload.items.map(({ material_id, quantity, unit_price }) => ({ material_id, quantity, unit_price })),
+  });
+}
 export function quoteAction(id: string, action: "submit" | "approve" | "reject") { return http.post(`/sales/quotes/${id}/${action}`); }
 export function listSalesReturns() { return http.get("/sales/returns"); }
 export function createSalesReturn(payload: Record<string, unknown>) { return http.post("/sales/returns", payload); }
