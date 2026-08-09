@@ -55,4 +55,14 @@ describe("系统设置页面交互契约", () => {
     expect(content).toContain("onMounted(load)");
     expect(content).toContain("@click=\"openCreate\"");
   });
+
+  it("shows permission settings with a department tree and edit actions", () => {
+    const content = source("../src/views/system/AdminBasics.vue");
+
+    expect(content).toContain("权限设置");
+    expect(content).toContain("el-tree-select");
+    expect(content).toContain("departmentTree");
+    expect(content).toContain("updateAdmin");
+    expect(content).toContain(">修改</el-button>");
+  });
 });

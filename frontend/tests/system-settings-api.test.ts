@@ -18,6 +18,7 @@ import { listOperationLogs } from "../src/api/system";
 import { createPrintTemplate, listGlobalParameters, listPrintTemplates, updateGlobalParameter } from "../src/api/config";
 import { createBackup, restoreBackup, validateRestore } from "../src/api/backup";
 import { getWorkflowDefinition, saveWorkflowDefinition } from "../src/api/workflow";
+import { updateAdmin } from "../src/api/admin";
 
 describe("系统设置 API", () => {
   beforeEach(() => {
@@ -72,5 +73,13 @@ describe("系统设置 API", () => {
 
     expect(getMock).toHaveBeenCalledWith("/config/print-templates");
     expect(postMock).toHaveBeenCalledWith("/config/print-templates", payload);
+  });
+
+  it("uses the department and role update endpoint", async () => {
+    const payload = { code: "sales-new", name: "销售一部", parent_id: null };
+
+    await updateAdmin("departments", "department-1", payload);
+
+    expect(putMock).toHaveBeenCalledWith("/admin/departments/department-1", payload);
   });
 });

@@ -48,9 +48,49 @@ def _ensure_unique(db: Session, model, context: UserContext, code: str, name: st
 
 def create_department(db: Session, payload, context: UserContext):
     _ensure_unique(db, SysDepartment, context, payload.code, payload.name)
+    _validate_department_parent(db, payload.parent_id, context)
     row = SysDepartment(org_id=context.org_id, **payload.model_dump())
     db.add(row)
     write_operation_log(db, user=context.user, action="create", resource="sys_department", target_id=row.id)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _get_department(db: Session, department_id: str, context: UserContext):
+    row = db.scalar(select(SysDepartment).where(SysDepartment.id == department_id, SysDepartment.org_id == context.org_id, SysDepartment.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("部门不存在", code=404)
+    return row
+
+
+def _validate_department_parent(db: Session, parent_id: str | None, context: UserContext, department_id: str | None = None):
+    if not parent_id:
+        return
+    if department_id and parent_id == department_id:
+        raise AppError("上级部门不能是当前部门", code=400)
+    parent = _get_department(db, parent_id, context)
+    visited = {department_id} if department_id else set()
+    while parent.parent_id:
+        if parent.id in visited:
+            raise AppError("部门层级不能形成循环", code=400)
+        visited.add(parent.id)
+        if department_id and parent.parent_id == department_id:
+            raise AppError("上级部门不能选择当前部门的下级部门", code=400)
+        parent = _get_department(db, parent.parent_id, context)
+
+
+def update_department(db: Session, department_id: str, payload, context: UserContext):
+    row = _get_department(db, department_id, context)
+    for existing in db.scalars(select(SysDepartment).where(SysDepartment.org_id == context.org_id, SysDepartment.is_deleted.is_(False), SysDepartment.id != department_id)).all():
+        if existing.code == payload.code:
+            raise AppError("编码已存在", code=409)
+        if existing.name == payload.name:
+            raise AppError("名称已存在", code=409)
+    _validate_department_parent(db, payload.parent_id, context, department_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, field, value)
+    write_operation_log(db, user=context.user, action="update", resource="sys_department", target_id=row.id)
     db.commit()
     db.refresh(row)
     return row
@@ -61,6 +101,28 @@ def create_role(db: Session, payload, context: UserContext):
     row = SysRole(org_id=context.org_id, **payload.model_dump())
     db.add(row)
     write_operation_log(db, user=context.user, action="create", resource="sys_role", target_id=row.id)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _get_role(db: Session, role_id: str, context: UserContext):
+    row = db.scalar(select(SysRole).where(SysRole.id == role_id, SysRole.org_id == context.org_id, SysRole.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("角色不存在", code=404)
+    return row
+
+
+def update_role(db: Session, role_id: str, payload, context: UserContext):
+    row = _get_role(db, role_id, context)
+    for existing in db.scalars(select(SysRole).where(SysRole.org_id == context.org_id, SysRole.is_deleted.is_(False), SysRole.id != role_id)).all():
+        if existing.code == payload.code:
+            raise AppError("编码已存在", code=409)
+        if existing.name == payload.name:
+            raise AppError("名称已存在", code=409)
+    for field, value in payload.model_dump().items():
+        setattr(row, field, value)
+    write_operation_log(db, user=context.user, action="update", resource="sys_role", target_id=row.id)
     db.commit()
     db.refresh(row)
     return row

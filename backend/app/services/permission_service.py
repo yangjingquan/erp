@@ -51,7 +51,7 @@ PAGE_CATALOG = [
     ("inventory:view", "批次管理", "/inventory/batches", 7),
     ("system:view", "操作日志", "/system/operation-logs", 1),
     ("system:view", "用户管理", "/system/users", 2),
-    ("system:view", "权限与基础管理", "/system/admin", 3),
+    ("system:view", "权限设置", "/system/admin", 3),
     ("system:view", "备份恢复", "/system/backup", 4),
     ("config:view", "全局参数", "/settings/parameters", 1),
     ("config:view", "审批流程", "/settings/workflow", 2),

@@ -161,7 +161,7 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <template #title><el-icon><Setting /></el-icon><span>系统运维</span></template>
           <el-menu-item v-if="canPage('/system/operation-logs')" index="/system/operation-logs">操作日志</el-menu-item>
           <el-menu-item v-if="canPage('/system/users')" index="/system/users">用户管理</el-menu-item>
-          <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限与基础管理</el-menu-item>
+          <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限设置</el-menu-item>
           <el-menu-item v-if="canPage('/system/backup')" index="/system/backup">备份恢复</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients'])" index="config">

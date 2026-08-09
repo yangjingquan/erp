@@ -8,10 +8,18 @@ class DepartmentCreate(BaseModel):
     manager_id: str | None = None
 
 
+class DepartmentUpdate(DepartmentCreate):
+    pass
+
+
 class RoleCreate(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=128)
     data_scope_type: str = "department"
+
+
+class RoleUpdate(RoleCreate):
+    pass
 
 
 class UserCreate(BaseModel):

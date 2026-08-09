@@ -4,6 +4,7 @@ export type AdminResource = "departments" | "roles" | "users" | "menus";
 
 export function listAdmin(resource: AdminResource) { return http.get(`/admin/${resource}`); }
 export function createAdmin(resource: AdminResource, payload: Record<string, unknown>) { return http.post(`/admin/${resource}`, payload); }
+export function updateAdmin(resource: AdminResource, id: string, payload: Record<string, unknown>) { return http.put(`/admin/${resource}/${id}`, payload); }
 export function updateAdminUser(id: string, payload: Record<string, unknown>) { return http.put(`/admin/users/${id}`, payload); }
 export function changeAdminUserPassword(id: string, password: string) { return http.put(`/admin/users/${id}/password`, { password }); }
 export function setAdminStatus(resource: AdminResource, id: string, status: "active" | "inactive") {

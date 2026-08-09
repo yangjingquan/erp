@@ -5,7 +5,7 @@ from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.response import ok
-from app.schemas.admin import DepartmentCreate, MenuCreate, RoleAccessUpdate, RoleCreate, StatusUpdate, UserCreate, UserPasswordUpdate, UserRolesUpdate, UserUpdate
+from app.schemas.admin import DepartmentCreate, DepartmentUpdate, MenuCreate, RoleAccessUpdate, RoleCreate, RoleUpdate, StatusUpdate, UserCreate, UserPasswordUpdate, UserRolesUpdate, UserUpdate
 from app.services.admin_service import (
     create_department,
     create_menu,
@@ -17,6 +17,8 @@ from app.services.admin_service import (
     list_users,
     set_status,
     update_user,
+    update_department,
+    update_role,
     update_user_password,
     set_user_roles,
 )
@@ -43,6 +45,11 @@ def add_department(payload: DepartmentCreate, context: UserContext = Depends(req
     return ok({"id": create_department(db, payload, context).id})
 
 
+@router.put("/departments/{department_id}")
+def edit_department(department_id: str, payload: DepartmentUpdate, context: UserContext = Depends(require_permission("system:department:manage")), db: Session = Depends(get_db)):
+    return ok({"id": update_department(db, department_id, payload, context).id})
+
+
 @router.get("/roles")
 def roles(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_roles(db, context))
@@ -51,6 +58,11 @@ def roles(context: UserContext = Depends(get_current_user), db: Session = Depend
 @router.post("/roles")
 def add_role(payload: RoleCreate, context: UserContext = Depends(require_permission("system:role:manage")), db: Session = Depends(get_db)):
     return ok({"id": create_role(db, payload, context).id})
+
+
+@router.put("/roles/{role_id}")
+def edit_role(role_id: str, payload: RoleUpdate, context: UserContext = Depends(require_permission("system:role:manage")), db: Session = Depends(get_db)):
+    return ok({"id": update_role(db, role_id, payload, context).id})
 
 
 @router.get("/users")

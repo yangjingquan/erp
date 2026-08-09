@@ -120,13 +120,13 @@ onMounted(load);
         <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
         <el-form-item v-if="editing" label="状态"><el-select v-model="form.status" style="width: 100%"><el-option label="启用" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item>
       </el-form>
-      <p class="dialog-note">页面权限、功能权限和数据范围由用户所绑定的角色统一继承，可在“权限与基础管理”的角色权限中配置。</p>
+      <p class="dialog-note">页面权限、功能权限和数据范围由用户所绑定的角色统一继承，可在“权限设置”的角色权限中配置。</p>
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="roleDialogVisible" :title="`配置角色 · ${roleUser?.display_name || ''}`" width="520px">
       <el-select v-model="selectedRoleIds" multiple filterable style="width: 100%"><el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id" /></el-select>
-      <p class="dialog-note">角色同时决定页面权限、功能权限和数据范围。具体权限请在“权限与基础管理”的角色配置中维护。</p>
+      <p class="dialog-note">角色同时决定页面权限、功能权限和数据范围。具体权限请在“权限设置”的角色配置中维护。</p>
       <template #footer><el-button @click="roleDialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveRoles">保存角色</el-button></template>
     </el-dialog>
 

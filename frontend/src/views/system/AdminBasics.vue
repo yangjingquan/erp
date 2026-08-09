@@ -8,6 +8,7 @@ import {
   getRoleAccess,
   listAdmin,
   setAdminStatus,
+  updateAdmin,
   updateRoleAccess,
   updateUserRoles,
   type AdminResource,
@@ -18,10 +19,12 @@ import {
 type Row = Record<string, any>;
 const active = ref<AdminResource>("departments");
 const rows = ref<Row[]>([]);
+const departmentRows = ref<Row[]>([]);
 const roles = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
+const editing = ref<Row | null>(null);
 const form = reactive<Record<string, any>>({});
 const permissionDialogVisible = ref(false);
 const permissionLoading = ref(false);
@@ -37,7 +40,7 @@ const selectedUser = ref<Row | null>(null);
 const selectedUserRoleIds = ref<string[]>([]);
 
 const configs: Record<AdminResource, { title: string; columns: Array<{ prop: string; label: string }>; fields: Array<{ prop: string; label: string; type?: string; required?: boolean }> }> = {
-  departments: { title: "部门", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "部门编码", required: true }, { prop: "name", label: "部门名称", required: true }, { prop: "parent_id", label: "上级部门ID" }] },
+  departments: { title: "部门", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "parent_id", label: "上级部门" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "部门编码", required: true }, { prop: "name", label: "部门名称", required: true }, { prop: "parent_id", label: "上级部门" }] },
   roles: { title: "角色", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "data_scope_type", label: "数据范围" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "角色编码", required: true }, { prop: "name", label: "角色名称", required: true }, { prop: "data_scope_type", label: "数据范围" }] },
   users: { title: "用户", columns: [{ prop: "username", label: "登录账号" }, { prop: "display_name", label: "姓名" }, { prop: "department_id", label: "部门ID" }, { prop: "status", label: "状态" }], fields: [{ prop: "username", label: "登录账号", required: true }, { prop: "display_name", label: "姓名", required: true }, { prop: "password", label: "初始密码", type: "password", required: true }, { prop: "department_id", label: "部门ID" }, { prop: "role_ids", label: "角色" }] },
   menus: { title: "菜单", columns: [{ prop: "code", label: "编码" }, { prop: "name", label: "名称" }, { prop: "path", label: "路由" }, { prop: "status", label: "状态" }], fields: [{ prop: "code", label: "菜单编码", required: true }, { prop: "name", label: "菜单名称", required: true }, { prop: "path", label: "路由路径" }, { prop: "component", label: "组件路径" }] },
@@ -55,23 +58,70 @@ const functionGroups = computed(() => {
 
 function config() { return configs[active.value]; }
 function resetForm() { Object.keys(form).forEach((key) => delete form[key]); config().fields.forEach((field) => { form[field.prop] = field.prop === "role_ids" ? [] : field.prop === "data_scope_type" ? "department" : ""; }); }
+function buildDepartmentTree(items: Row[]) {
+  const nodes: Row[] = items.map((item) => ({ ...item, children: [] as Row[] }));
+  const byId = new Map(nodes.map((item) => [item.id, item]));
+  const roots: Row[] = [];
+  nodes.forEach((node) => {
+    const parent = node.parent_id ? byId.get(node.parent_id) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  });
+  return roots;
+}
+const departmentTree = computed(() => buildDepartmentTree(departmentRows.value));
+const departmentTreeForForm = computed(() => {
+  const excluded = new Set<string>();
+  if (editing.value && active.value === "departments") {
+    excluded.add(editing.value.id);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      departmentRows.value.forEach((item) => {
+        if (item.parent_id && excluded.has(item.parent_id) && !excluded.has(item.id)) {
+          excluded.add(item.id);
+          changed = true;
+        }
+      });
+    }
+  }
+  return buildDepartmentTree(departmentRows.value.filter((item) => !excluded.has(item.id)));
+});
+function departmentName(id: string | null | undefined) { return departmentRows.value.find((item) => item.id === id)?.name || "-"; }
+function cellValue(row: Row, prop: string) { return active.value === "departments" && prop === "parent_id" ? departmentName(row.parent_id) : row[prop]; }
 async function load(resource = active.value) {
   loading.value = true;
   try {
     const response = await listAdmin(resource);
     if (response.data.code !== 0) throw new Error(response.data.msg);
     rows.value = Array.isArray(response.data.data) ? response.data.data : [];
+    if (resource === "departments") departmentRows.value = rows.value;
     if (resource === "roles") roles.value = rows.value;
   } catch (error) { rows.value = []; ElMessage.error(error instanceof Error ? error.message : "数据加载失败"); }
   finally { loading.value = false; }
 }
 function changeTab(value: string | number) { active.value = value as AdminResource; void load(active.value); }
-function openCreate() { resetForm(); dialogVisible.value = true; }
+function openCreate() { editing.value = null; resetForm(); dialogVisible.value = true; }
+function openEdit(row: Row) {
+  if (active.value !== "departments" && active.value !== "roles") return;
+  editing.value = row;
+  resetForm();
+  config().fields.forEach((field) => { form[field.prop] = row[field.prop] ?? (field.prop === "data_scope_type" ? "department" : ""); });
+  dialogVisible.value = true;
+}
 async function save() {
   const required = config().fields.filter((field) => field.required).find((field) => !String(form[field.prop] ?? "").trim());
   if (required) { ElMessage.warning(`请输入${required.label}`); return; }
   saving.value = true;
-  try { const response = await createAdmin(active.value, { ...form }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(`新增${config().title}成功`); dialogVisible.value = false; await load(); }
+  try {
+    const payload = { ...form };
+    if (active.value === "departments") payload.parent_id = payload.parent_id || null;
+    const response = editing.value ? await updateAdmin(active.value, editing.value.id, payload) : await createAdmin(active.value, payload);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success(`${editing.value ? "编辑" : "新增"}${config().title}成功`);
+    dialogVisible.value = false;
+    await load();
+  }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : "保存失败"); }
   finally { saving.value = false; }
 }
@@ -138,25 +188,26 @@ onMounted(async () => {
 
 <template>
   <section class="page-stack">
-    <el-page-header content="权限与基础管理" />
+    <el-page-header content="权限设置" />
     <el-card shadow="never">
       <el-tabs v-model="active" @tab-change="changeTab">
         <el-tab-pane v-for="(_, key) in configs" :key="key" :label="configs[key as AdminResource].title" :name="key" />
       </el-tabs>
       <el-space class="toolbar"><el-button type="primary" @click="openCreate">新增{{ config().title }}</el-button><el-button :loading="loading" @click="load()">刷新</el-button></el-space>
-      <el-table v-loading="loading" :data="rows" stripe>
-        <el-table-column v-for="column in config().columns" :key="column.prop" :prop="column.prop" :label="column.label" min-width="140" />
+      <el-table v-loading="loading" :data="active === 'departments' ? departmentTree : rows" row-key="id" stripe :tree-props="{ children: 'children' }">
+        <el-table-column v-for="column in config().columns" :key="column.prop" :prop="column.prop" :label="column.label" min-width="140"><template #default="scope">{{ cellValue(scope.row, column.prop) }}</template></el-table-column>
         <el-table-column v-if="active === 'roles'" label="权限配置" width="120"><template #default="scope"><el-button link type="primary" @click="openRoleAccess(scope.row)">配置权限</el-button></template></el-table-column>
         <el-table-column v-if="active === 'users'" label="角色配置" width="120"><template #default="scope"><el-button link type="primary" @click="openUserRoles(scope.row)">配置角色</el-button></template></el-table-column>
-        <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="scope.row.status" link type="warning" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button></template></el-table-column>
+        <el-table-column label="操作" :width="active === 'departments' || active === 'roles' ? 180 : 100"><template #default="scope"><el-button v-if="active === 'departments' || active === 'roles'" link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button v-if="scope.row.status" link type="warning" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无数据" /></template>
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="`新增${config().title}`" width="560px">
+    <el-dialog v-model="dialogVisible" :title="`${editing ? '编辑' : '新增'}${config().title}`" width="560px">
       <el-form label-width="100px">
         <el-form-item v-for="field in config().fields" :key="field.prop" :label="field.label" :required="field.required">
           <el-select v-if="field.prop === 'role_ids'" v-model="form[field.prop]" multiple style="width: 100%"><el-option v-for="role in roles" :key="role.id" :label="role.name" :value="role.id" /></el-select>
+          <el-tree-select v-else-if="field.prop === 'parent_id'" v-model="form[field.prop]" :data="departmentTreeForForm" node-key="id" :props="{ label: 'name', children: 'children' }" check-strictly clearable filterable default-expand-all style="width: 100%" placeholder="请选择上级部门" />
           <el-select v-else-if="field.prop === 'data_scope_type'" v-model="form[field.prop]" style="width: 100%"><el-option label="全部数据" value="all" /><el-option label="本部门数据" value="department" /><el-option label="本人数据" value="own" /></el-select>
           <el-input v-else v-model="form[field.prop]" :type="field.type === 'password' ? 'password' : 'text'" :show-password="field.type === 'password'" />
         </el-form-item>
