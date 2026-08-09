@@ -10,6 +10,7 @@ const loading = ref(false);
 const errorMessage = ref("");
 
 function listFrom(response: any): Row[] {
+  if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "库存接口返回失败");
   const data = response?.data?.data;
   return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
 }

@@ -12,10 +12,10 @@ const errorMessage = ref("");
 const dialogVisible = ref(false);
 const form = reactive({ supplier_id: "", amount: 0 });
 const { suppliers, loadOptions } = useMasterOptions();
-function listFrom(response: any): Row[] { const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
+function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "应付账款接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
 async function load() { loading.value = true; errorMessage.value = ""; try { rows.value = listFrom(await listPayables()); } catch (error) { errorMessage.value = "应付账款加载失败，请检查接口服务后重试"; } finally { loading.value = false; } }
 function openCreate() { form.supplier_id = ""; form.amount = 0; dialogVisible.value = true; }
-async function save() { if (!form.supplier_id || form.amount <= 0) { ElMessage.warning("请填写供应商和大于 0 的付款金额"); return; } saving.value = true; try { await createPayment(form); ElMessage.success("付款单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error("付款单创建失败"); } finally { saving.value = false; } }
+async function save() { if (!form.supplier_id || form.amount <= 0) { ElMessage.warning("请填写供应商和大于 0 的付款金额"); return; } saving.value = true; try { const response = await createPayment(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("付款单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "付款单创建失败"); } finally { saving.value = false; } }
 onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers"])]); });
 </script>
 

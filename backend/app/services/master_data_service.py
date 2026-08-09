@@ -3,7 +3,7 @@ from typing import Any
 from unicodedata import normalize as unicode_normalize
 
 from openpyxl import Workbook, load_workbook
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -49,15 +49,20 @@ def get_config(resource: str) -> dict[str, Any]:
     return RESOURCE_CONFIG[resource]
 
 
-def list_items(db: Session, resource: str, org_id: str) -> list[Any]:
+def list_items(db: Session, resource: str, org_id: str, keyword: str | None = None, page: int = 1, page_size: int = 200) -> tuple[list[Any], int, int, int]:
     model = get_config(resource)["model"]
-    return list(
-        db.scalars(
-            select(model)
-            .where(model.org_id == org_id, model.is_deleted.is_(False))
-            .order_by(model.created_at.desc())
-        ).all()
-    )
+    statement = select(model).where(model.org_id == org_id, model.is_deleted.is_(False))
+    if keyword:
+        pattern = f"%{keyword.strip()}%"
+        statement = statement.where((model.code.like(pattern)) | (model.name.like(pattern)))
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    active = db.scalar(select(func.count()).select_from(statement.where(model.status == "active").subquery())) if hasattr(model, "status") else total
+    active = int(active or 0)
+    total = int(total)
+    page = max(page, 1)
+    page_size = min(max(page_size, 1), 500)
+    rows = list(db.scalars(statement.order_by(model.created_at.desc()).offset((page - 1) * page_size).limit(page_size)).all())
+    return rows, total, active, total - active
 
 
 def create_item(db: Session, resource: str, org_id: str, data: dict[str, Any], user: object):
@@ -85,6 +90,43 @@ def create_item(db: Session, resource: str, org_id: str, data: dict[str, Any], u
         target_id=instance.id,
         detail={"code": instance.code, "name": instance.name},
     )
+    db.commit()
+    db.refresh(instance)
+    return instance
+
+
+def update_item(db: Session, resource: str, item_id: str, org_id: str, data: dict[str, Any], user: object):
+    model = get_config(resource)["model"]
+    instance = db.scalar(select(model).where(model.id == item_id, model.org_id == org_id, model.is_deleted.is_(False)))
+    if instance is None:
+        raise AppError("主数据记录不存在", code=404)
+    existing = db.scalars(select(model).where(model.org_id == org_id, model.is_deleted.is_(False), model.id != item_id)).all()
+    if any(row.code == data["code"] for row in existing):
+        raise AppError("业务编码已存在", code=409)
+    if any(normalize_name(row.name) == normalize_name(data["name"]) for row in existing):
+        raise AppError("名称已存在", code=409)
+    for key in get_config(resource)["fields"]:
+        if key in data:
+            setattr(instance, key, data[key])
+    instance.version += 1
+    write_operation_log(db, user=user, action="update", resource=resource, target_id=instance.id, detail={"code": instance.code, "name": instance.name})
+    db.commit()
+    db.refresh(instance)
+    return instance
+
+
+def set_item_status(db: Session, resource: str, item_id: str, org_id: str, status: str, user: object):
+    if status not in {"active", "inactive"}:
+        raise AppError("状态无效", code=400)
+    model = get_config(resource)["model"]
+    instance = db.scalar(select(model).where(model.id == item_id, model.org_id == org_id, model.is_deleted.is_(False)))
+    if instance is None:
+        raise AppError("主数据记录不存在", code=404)
+    if not hasattr(instance, "status"):
+        raise AppError("该主数据类型不支持状态变更", code=400)
+    instance.status = status
+    instance.version += 1
+    write_operation_log(db, user=user, action="status", resource=resource, target_id=instance.id, detail={"status": status})
     db.commit()
     db.refresh(instance)
     return instance
@@ -146,7 +188,7 @@ def export_items(db: Session, resource: str, org_id: str) -> BytesIO:
     sheet = workbook.active
     fields = config["fields"]
     sheet.append(fields)
-    for item in list_items(db, resource, org_id):
+    for item in list_items(db, resource, org_id)[0]:
         sheet.append([getattr(item, field, None) for field in fields])
     stream = BytesIO()
     workbook.save(stream)

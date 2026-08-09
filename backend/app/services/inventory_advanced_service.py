@@ -614,3 +614,11 @@ def list_locations(db: Session, warehouse_id: str, context: UserContext) -> list
             ).order_by(InvLocation.code)
         ).all()
     )
+
+
+def list_batches(db: Session, material_id: str | None, context: UserContext) -> list[InvBatch]:
+    statement = select(InvBatch).where(InvBatch.org_id == context.org_id, InvBatch.is_deleted.is_(False))
+    if material_id:
+        _require_material(db, material_id, context)
+        statement = statement.where(InvBatch.material_id == material_id)
+    return list(db.scalars(statement.order_by(InvBatch.created_at.desc())).all())

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.exceptions import AppError
 from app.core.response import ok
 from app.schemas.sales import SalesOrderCreate, SalesQuoteCreate, SalesReturnCreate
 from app.services.auth_service import UserContext
@@ -72,7 +73,7 @@ def add_quote(payload: SalesQuoteCreate, context: UserContext = Depends(require_
 def quote_action(quote_id: str, action: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
     status = {"submit": "submitted", "approve": "approved", "reject": "rejected"}.get(action)
     if status is None:
-        return ok({}, "不支持的报价单操作")
+        raise AppError("不支持的报价单操作", code=400)
     return ok(serialize_quote(transition_quote(db, quote_id, status, context)))
 
 

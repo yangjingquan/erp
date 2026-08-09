@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.exceptions import AppError
 from app.core.response import ok
 from app.schemas.admin import DepartmentCreate, MenuCreate, RoleAccessUpdate, RoleCreate, StatusUpdate, UserCreate, UserPasswordUpdate, UserRolesUpdate, UserUpdate
 from app.services.admin_service import (
@@ -23,6 +24,13 @@ from app.services.auth_service import UserContext
 from app.services.permission_service import get_permission_catalog, get_role_access, save_role_access
 
 router = APIRouter(prefix="/api/admin", tags=["administration"])
+
+STATUS_PERMISSIONS = {
+    "departments": "system:department:manage",
+    "roles": "system:role:manage",
+    "users": "system:user:manage",
+    "menus": "system:menu:manage",
+}
 
 
 @router.get("/departments")
@@ -97,6 +105,11 @@ def update_role_access(role_id: str, payload: RoleAccessUpdate, context: UserCon
 
 
 @router.post("/{resource}/{row_id}/status")
-def update_status(resource: str, row_id: str, payload: StatusUpdate, context: UserContext = Depends(require_permission("system:user:manage")), db: Session = Depends(get_db)):
+def update_status(resource: str, row_id: str, payload: StatusUpdate, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    permission = STATUS_PERMISSIONS.get(resource)
+    if permission is None:
+        raise AppError("不支持的管理资源", code=404)
+    if permission not in context.permissions and "*" not in context.permissions:
+        raise AppError("无权执行该操作", code=403)
     row = set_status(db, resource, row_id, payload.status, context)
     return ok({"id": row.id, "status": row.status})

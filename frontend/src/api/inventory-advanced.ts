@@ -33,3 +33,8 @@ export function listScanTasks() {
 export function processScan(token: string, payload: ScanProcessPayload) {
   return http.post("/inventory/advanced/scan/process", { token, ...payload });
 }
+
+export function listLocations(warehouseId: string) { return http.get("/inventory/advanced/locations", { params: { warehouse_id: warehouseId } }); }
+export function createLocation(warehouseId: string, payload: { code: string; name: string; status?: string }) { return http.post("/inventory/advanced/locations", payload, { params: { warehouse_id: warehouseId } }); }
+export function listBatches(materialId?: string) { return http.get("/inventory/advanced/batches", { params: { material_id: materialId } }); }
+export function createBatch(materialId: string, payload: { batch_no: string; production_date?: string | null; expiry_date?: string | null; status?: string }) { return http.post("/inventory/advanced/batches", payload, { params: { material_id: materialId } }); }

@@ -124,7 +124,16 @@ async function saveUserRoles() {
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : "用户角色保存失败"); }
   finally { permissionSaving.value = false; }
 }
-onMounted(() => { void load(); void listAdmin("roles").then((response) => { roles.value = Array.isArray(response.data.data) ? response.data.data : []; }); });
+onMounted(async () => {
+  await load();
+  try {
+    const response = await listAdmin("roles");
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    roles.value = Array.isArray(response.data.data) ? response.data.data : [];
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "角色列表加载失败");
+  }
+});
 </script>
 
 <template>

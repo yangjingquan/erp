@@ -24,7 +24,7 @@ const permissions = usePermissionStore();
 const canManage = () => Boolean(auth.user?.is_superuser || permissions.hasPermission("hr:employee:manage"));
 
 function resetForm() { Object.assign(form, { employee_no: "", name: "", department_id: "", status: "active", base_salary: 0, allowance: 0, account_username: "", account_password: "" }); }
-async function load() { loading.value = true; try { rows.value = (await listEmployees()).data?.data ?? []; } catch { ElMessage.error("员工列表加载失败"); } finally { loading.value = false; } }
+async function load() { loading.value = true; try { const response = await listEmployees(); if (response.data.code !== 0) throw new Error(response.data.msg); rows.value = Array.isArray(response.data?.data) ? response.data.data : []; } catch (error) { rows.value = []; ElMessage.error(error instanceof Error ? error.message : "员工列表加载失败"); } finally { loading.value = false; } }
 function openCreate() { editing.value = null; resetForm(); dialogVisible.value = true; }
 function openEdit(row: Row) { editing.value = row; Object.assign(form, { employee_no: row.employee_no, name: row.name, department_id: row.department_id || "", status: row.status || "active", base_salary: Number(row.base_salary || 0), allowance: Number(row.allowance || 0), account_username: "", account_password: "" }); dialogVisible.value = true; }
 async function save() {
@@ -45,7 +45,15 @@ async function savePassword() {
   saving.value = true;
   try { const response = await changeEmployeePassword(passwordEmployee.value.id, password.value); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("账号密码已更新"); passwordDialogVisible.value = false; } catch (error) { ElMessage.error(error instanceof Error ? error.message : "密码修改失败"); } finally { saving.value = false; }
 }
-onMounted(async () => { await Promise.all([load(), listAdmin("departments").then((response) => { departments.value = Array.isArray(response.data.data) ? response.data.data : []; })]); });
+onMounted(async () => {
+  await Promise.all([
+    load(),
+    listAdmin("departments").then((response) => {
+      if (response.data.code !== 0) throw new Error(response.data.msg);
+      departments.value = Array.isArray(response.data.data) ? response.data.data : [];
+    }).catch((error) => ElMessage.error(error instanceof Error ? error.message : "部门列表加载失败")),
+  ]);
+});
 </script>
 
 <template>

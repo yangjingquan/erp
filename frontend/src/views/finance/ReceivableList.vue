@@ -12,10 +12,10 @@ const errorMessage = ref("");
 const dialogVisible = ref(false);
 const form = reactive({ customer_id: "", amount: 0 });
 const { customers, loadOptions } = useMasterOptions();
-function listFrom(response: any): Row[] { const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
+function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "应收账款接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
 async function load() { loading.value = true; errorMessage.value = ""; try { rows.value = listFrom(await listReceivables()); } catch (error) { errorMessage.value = "应收账款加载失败，请检查接口服务后重试"; } finally { loading.value = false; } }
 function openCreate() { form.customer_id = ""; form.amount = 0; dialogVisible.value = true; }
-async function save() { if (!form.customer_id || form.amount <= 0) { ElMessage.warning("请填写客户和大于 0 的收款金额"); return; } saving.value = true; try { await createReceipt(form); ElMessage.success("收款单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error("收款单创建失败"); } finally { saving.value = false; } }
+async function save() { if (!form.customer_id || form.amount <= 0) { ElMessage.warning("请填写客户和大于 0 的收款金额"); return; } saving.value = true; try { const response = await createReceipt(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("收款单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "收款单创建失败"); } finally { saving.value = false; } }
 onMounted(async () => { await Promise.all([load(), loadOptions(["customers"])]); });
 </script>
 

@@ -14,6 +14,7 @@ from app.services.inventory_advanced_service import (
     create_scan_token,
     list_scan_tasks,
     list_locations,
+    list_batches,
     list_slow_moving,
     post_fifo_inbound,
     post_fifo_outbound,
@@ -90,6 +91,11 @@ def create_batch_api(
     row = create_batch(db, material_id, payload, context)
     db.commit()
     return ok(_serialize_batch(row))
+
+
+@router.get("/batches")
+def batches(material_id: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok([_serialize_batch(row) for row in list_batches(db, material_id, context)])
 
 
 @router.post("/fifo/inbound")

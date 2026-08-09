@@ -6,7 +6,7 @@ from app.core.security import create_access_token
 
 
 def auth_headers():
-    return {"Authorization": f"Bearer {create_access_token('user-1', [])}"}
+    return {"Authorization": f"Bearer {create_access_token('user-1', ['master:manage'])}"}
 
 
 def test_create_material_and_reject_duplicate_code(client_and_session):

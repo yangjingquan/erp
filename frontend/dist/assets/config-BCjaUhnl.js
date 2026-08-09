@@ -1,0 +1,1 @@
+import{q as t}from"./index-QvMptCkq.js";function a(){return t.get("/config/parameters")}function o(e,r){return t.put(`/config/parameters/${encodeURIComponent(e)}`,r)}function i(){return t.get("/config/print-templates")}function p(e){return t.post("/config/print-templates",e)}export{i as a,p as c,a as l,o as u};

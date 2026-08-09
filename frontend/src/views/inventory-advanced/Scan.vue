@@ -34,12 +34,13 @@ function createScanId() {
 }
 
 function tasksFrom(response: any): ScanTask[] {
+  if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "扫描任务加载失败");
   const data = response?.data?.data;
   return Array.isArray(data) ? data : [];
 }
 
 function messageFrom(error: any, fallback: string) {
-  return error?.response?.data?.message || error?.response?.data?.detail || fallback;
+  return error?.response?.data?.msg || error?.response?.data?.message || error?.response?.data?.detail || (error instanceof Error ? error.message : fallback);
 }
 
 function applyTask(documentId: string) {
@@ -53,6 +54,7 @@ async function load() {
   loading.value = true;
   try {
     const [tokenResponse, tasksResponse] = await Promise.all([createScanToken(), listScanTasks()]);
+    if (tokenResponse?.data?.code !== 0) throw new Error(tokenResponse?.data?.msg || "扫描令牌创建失败");
     scanToken.value = tokenResponse?.data?.data?.token ?? tokenResponse?.data?.data ?? "";
     tasks.value = tasksFrom(tasksResponse);
   } catch (error) {
@@ -77,6 +79,7 @@ async function submit() {
   resultMessage.value = "";
   try {
     const response = await processScan(scanToken.value, form);
+    if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "扫码处理失败");
     const result = response?.data?.data;
     resultMessage.value = `扫描已处理：${result?.document_id || form.document_id}`;
     ElMessage.success(resultMessage.value);

@@ -15,7 +15,7 @@ const createForm = reactive({ inspection_type: "incoming", source_type: "manual"
 const resultForm = reactive({ item: "appearance", value: "pass", passed: true });
 const closeForm = reactive({ disposition: "accept" });
 
-function listFrom(response: any) { return Array.isArray(response?.data?.data) ? response.data.data : []; }
+function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "质量检验接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() {
   loading.value = true;
   try { rows.value = listFrom(await listInspections()); }

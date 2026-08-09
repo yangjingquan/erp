@@ -35,6 +35,7 @@ async function load() {
   loading.value = true;
   try {
     const [userResponse, roleResponse, departmentResponse] = await Promise.all([listAdmin("users"), listAdmin("roles"), listAdmin("departments")]);
+    if ([userResponse, roleResponse, departmentResponse].some((response) => response.data.code !== 0)) throw new Error("用户基础数据接口返回失败");
     rows.value = Array.isArray(userResponse.data?.data) ? userResponse.data.data : [];
     roles.value = Array.isArray(roleResponse.data?.data) ? roleResponse.data.data : [];
     departments.value = Array.isArray(departmentResponse.data?.data) ? departmentResponse.data.data : [];

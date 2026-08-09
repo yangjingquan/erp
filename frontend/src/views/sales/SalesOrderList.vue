@@ -32,6 +32,7 @@ const form = reactive<SalesOrderPayload>({
 const { customers, materials, loadOptions } = useMasterOptions();
 
 function listFrom(response: any): Row[] {
+  if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "销售订单接口返回失败");
   const data = response?.data?.data;
   return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
 }
@@ -90,7 +91,8 @@ async function save() {
   }
   saving.value = true;
   try {
-    await createSalesOrder(form);
+    const response = await createSalesOrder(form);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
     ElMessage.success("销售订单已创建");
     dialogVisible.value = false;
     await load();
@@ -111,13 +113,12 @@ async function confirmAction(row: Row, action: "submit" | "approve" | "delivery"
   try {
     await ElMessageBox.confirm(`确认${labels[action]}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" });
     actionLoading.value = id;
-    if (action === "submit") await submitSalesOrder(id);
-    if (action === "approve") await approveSalesOrder(id);
-    if (action === "delivery") await createSalesDelivery(id);
+    const response = action === "submit" ? await submitSalesOrder(id) : action === "approve" ? await approveSalesOrder(id) : await createSalesDelivery(id);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
     ElMessage.success(`${labels[action]}成功`);
     await load();
   } catch (error: any) {
-    if (error !== "cancel" && error !== "close") ElMessage.error(`${labels[action]}失败`);
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${labels[action]}失败`);
   } finally {
     actionLoading.value = null;
   }

@@ -16,6 +16,7 @@ async function load() {
     if (response.data.code !== 0) throw new Error(response.data.msg || "打印模板加载失败");
     rows.value = Array.isArray(response.data.data) ? response.data.data : [];
   } catch (error) {
+    rows.value = [];
     ElMessage.error(error instanceof Error ? error.message : "打印模板加载失败");
   } finally { loading.value = false; }
 }

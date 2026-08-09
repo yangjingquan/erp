@@ -9,7 +9,7 @@ const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(fals
 const form = reactive({ material_id: "", warehouse_id: "", quantity: 1, plan_date: new Date().toISOString().slice(0, 10) });
 const actionForm = reactive({ good_quantity: 0, scrap_quantity: 0, hours: 0, items: [] as Array<{ material_id: string; quantity: number }> });
 const { materials, warehouses, loadOptions } = useMasterOptions();
-function listFrom(response: any) { return Array.isArray(response?.data?.data) ? response.data.data : []; }
+function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "生产工单接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listWorkOrders()); } catch { ElMessage.error("生产工单加载失败"); } finally { loading.value = false; } }
 function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.quantity = 1; form.plan_date = new Date().toISOString().slice(0, 10); dialogVisible.value = true; }
 async function save() { if (!form.material_id || !form.warehouse_id || form.quantity <= 0 || !form.plan_date) { ElMessage.warning("请填写物料、仓库、计划日期和有效数量"); return; } saving.value = true; try { const response = await createWorkOrder(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("生产工单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "生产工单创建失败"); } finally { saving.value = false; } }

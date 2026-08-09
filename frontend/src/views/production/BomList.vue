@@ -8,7 +8,7 @@ type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false);
 const form = reactive({ material_id: "", bom_version: "1.0", effective_from: new Date().toISOString().slice(0, 10), effective_to: "", items: [{ material_id: "", quantity: 1 }] });
 const { materials, loadOptions } = useMasterOptions();
-function listFrom(response: any) { return Array.isArray(response?.data?.data) ? response.data.data : []; }
+function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "BOM 接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listBoms()); } catch { ElMessage.error("BOM 列表加载失败"); } finally { loading.value = false; } }
 function reset() { form.material_id = ""; form.bom_version = "1.0"; form.effective_from = new Date().toISOString().slice(0, 10); form.effective_to = ""; form.items = [{ material_id: "", quantity: 1 }]; }
 function openCreate() { reset(); dialogVisible.value = true; }

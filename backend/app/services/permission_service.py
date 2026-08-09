@@ -68,6 +68,7 @@ PAGE_CATALOG = [
 ]
 
 LEGACY_FUNCTIONS = {
+    "master:view": [("master:manage", "基础资料业务操作")],
     "system:view": [("system:manage", "系统管理")],
     "system:admin": [
         ("system:user:manage", "用户管理"),
@@ -84,7 +85,7 @@ LEGACY_FUNCTIONS = {
     "cost:view": [("cost:view", "查看成本"), ("cost:manage", "成本业务操作"), ("cost:close", "期间结账"), ("cost:period:reopen", "重开会计期间")],
     "quality:view": [("quality:view", "查看质量检验"), ("quality:manage", "质量业务操作")],
     "hr:view": [("hr:view", "查看人事"), ("hr:salary:view", "查看薪资"), ("hr:salary:manage", "薪资业务操作"), ("hr:employee:manage", "员工信息管理")],
-    "config:view": [("config:manage", "系统配置操作"), ("workflow:manage", "审批流程配置")],
+    "config:view": [("config:manage", "系统配置操作"), ("workflow:manage", "审批流程配置"), ("workflow:approve", "审批任务处理")],
 }
 
 

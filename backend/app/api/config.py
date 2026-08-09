@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
 from app.models.configuration import CfgGlobalParameter
@@ -17,7 +17,7 @@ def print_templates(context: UserContext = Depends(get_current_user), db: Sessio
 
 
 @router.post("/print-templates")
-def create_template(payload: dict, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def create_template(payload: dict, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
     result = create_print_template(db, payload, context)
     db.commit()
     return ok(result, "打印模板已创建")
@@ -27,7 +27,7 @@ def create_template(payload: dict, context: UserContext = Depends(get_current_us
 def field_definition(
     business_type: str,
     field_key: str,
-    context: UserContext = Depends(get_current_user),
+    context: UserContext = Depends(require_permission("config:manage")),
     db: Session = Depends(get_db),
 ) -> dict:
     from app.services.configuration_service import get_field_definition

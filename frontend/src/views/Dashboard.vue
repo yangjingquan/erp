@@ -2,8 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import * as echarts from "echarts";
-import { Bell, CircleCheck, DataAnalysis, TopRight, Wallet } from "@element-plus/icons-vue";
-import { ElMessage } from "element-plus";
+import { Bell, CircleCheck, TopRight, Wallet } from "@element-plus/icons-vue";
 
 import { getDashboardOverview } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
@@ -12,9 +11,31 @@ const router = useRouter();
 const app = useAppStore();
 const period = ref(new Date().toISOString().slice(0, 7));
 const loading = ref(false);
-const overview = ref({ sales_total: 1286430, purchase_total: 698240, inventory_warning_count: 12, receivable_total: 426800 });
+const errorMessage = ref("");
+type DashboardOverview = {
+  period: string;
+  sales_total: number | string;
+  purchase_total: number | string;
+  receivable_total: number | string;
+  inventory_warning_count: number;
+  sales_change: number;
+  purchase_change: number;
+  trend: Array<{ label: string; sales: number | string; purchase: number | string }>;
+  tasks: Array<{ key: string; label: string; description: string; count: number; path: string }>;
+  materials: Array<{ id: string; code: string; name: string; material_type: string; min_stock: number | string; status: string }>;
+  sales_orders: Array<{ id: string; doc_no: string; customer_id: string; total_amount: number | string; status: string }>;
+};
+function emptyOverview(): DashboardOverview { return { period: period.value, sales_total: 0, purchase_total: 0, receivable_total: 0, inventory_warning_count: 0, sales_change: 0, purchase_change: 0, trend: [], tasks: [], materials: [], sales_orders: [] }; }
+const overview = ref<DashboardOverview>(emptyOverview());
 const chart = ref<HTMLDivElement>();
 let chartInstance: echarts.ECharts | null = null;
+
+const periodOptions = computed(() => Array.from({ length: 12 }, (_, index) => {
+  const dateValue = new Date();
+  dateValue.setDate(1);
+  dateValue.setMonth(dateValue.getMonth() - index);
+  return dateValue.toISOString().slice(0, 7);
+}));
 
 const periodLabel = computed(() => {
   const [year, month] = period.value.split("-");
@@ -22,10 +43,10 @@ const periodLabel = computed(() => {
 });
 
 const metrics = computed(() => [
-  { label: "本月销售额", value: formatCurrency(overview.value.sales_total), trend: "↑ 12.8%", note: "较上月", tone: "rust", icon: TopRight },
-  { label: "本月采购额", value: formatCurrency(overview.value.purchase_total), trend: "↑ 4.6%", note: "较上月", tone: "green", icon: TopRight },
-  { label: "应收余额", value: formatCurrency(overview.value.receivable_total), trend: "↓ 6.2%", note: "较上月", tone: "neutral", icon: Wallet },
-  { label: "库存预警", value: String(overview.value.inventory_warning_count), trend: "4 项高风险", note: "需处理", tone: "danger", icon: Bell },
+  { label: "本期销售额", value: formatCurrency(overview.value.sales_total), trend: changeText(overview.value.sales_change), note: "较上期", tone: "rust", icon: TopRight },
+  { label: "本期采购额", value: formatCurrency(overview.value.purchase_total), trend: changeText(overview.value.purchase_change), note: "较上期", tone: "green", icon: TopRight },
+  { label: "应收余额", value: formatCurrency(overview.value.receivable_total), trend: "实时余额", note: "未结清", tone: "neutral", icon: Wallet },
+  { label: "库存预警", value: String(overview.value.inventory_warning_count), trend: overview.value.inventory_warning_count ? `${overview.value.inventory_warning_count} 项` : "暂无预警", note: "需处理", tone: "danger", icon: Bell },
 ]);
 
 function formatCurrency(value: number | string) {
@@ -33,20 +54,18 @@ function formatCurrency(value: number | string) {
   return `¥ ${amount.toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
+function changeText(value: number) { return value === 0 ? "暂无环比" : `${value > 0 ? "↑" : "↓"} ${Math.abs(value)}%`; }
+
 async function loadOverview() {
   loading.value = true;
+  errorMessage.value = "";
   try {
-    const response = await getDashboardOverview();
+    const response = await getDashboardOverview(period.value);
     if (response.data.code !== 0) throw new Error(response.data.msg);
-    const data = response.data.data as Record<string, unknown>;
-    overview.value = {
-      ...overview.value,
-      sales_total: Number(data.sales_total ?? overview.value.sales_total),
-      purchase_total: Number(data.purchase_total ?? overview.value.purchase_total),
-      inventory_warning_count: Number(data.inventory_warning_count ?? overview.value.inventory_warning_count),
-    };
-  } catch {
-    // The dashboard keeps its designed preview state when the API is not available.
+    overview.value = { ...emptyOverview(), ...(response.data.data as DashboardOverview) };
+  } catch (error) {
+    overview.value = emptyOverview();
+    errorMessage.value = error instanceof Error ? error.message : "经营看板加载失败，请稍后重试";
   } finally {
     loading.value = false;
   }
@@ -62,17 +81,16 @@ function renderChart() {
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (value: number) => formatCurrency(value) },
     legend: { right: 0, top: 0, itemWidth: 10, itemHeight: 10, textStyle: { color: "#8e8276", fontSize: 11 }, data: ["销售额", "采购额"] },
     grid: { left: 6, right: 4, top: 34, bottom: 10, containLabel: true },
-    xAxis: { type: "category", data: ["08/01", "08/02", "08/03", "08/04", "08/05", "08/06", "08/07"], axisTick: { show: false }, axisLine: { lineStyle: { color: "#e8dfd5" } }, axisLabel: { color: "#a2988e", fontSize: 11 } },
+    xAxis: { type: "category", data: overview.value.trend.map((item) => item.label), axisTick: { show: false }, axisLine: { lineStyle: { color: "#e8dfd5" } }, axisLabel: { color: "#a2988e", fontSize: 11 } },
     yAxis: { type: "value", splitNumber: 3, axisLabel: { color: "#a2988e", fontSize: 10, formatter: (value: number) => `${Math.round(value / 10000)}万` }, splitLine: { lineStyle: { color: "#f0e8df", type: "dashed" } } },
     series: [
-      { name: "销售额", type: "bar", barWidth: 12, barGap: "25%", data: [42000, 56000, 49000, 72000, 64000, 83000, 76000], itemStyle: { borderRadius: [6, 6, 0, 0] } },
-      { name: "采购额", type: "bar", barWidth: 12, data: [26000, 35000, 31000, 46000, 41000, 54000, 48000], itemStyle: { borderRadius: [6, 6, 0, 0] } },
+      { name: "销售额", type: "bar", barWidth: 12, barGap: "25%", data: overview.value.trend.map((item) => Number(item.sales)), itemStyle: { borderRadius: [6, 6, 0, 0] } },
+      { name: "采购额", type: "bar", barWidth: 12, data: overview.value.trend.map((item) => Number(item.purchase)), itemStyle: { borderRadius: [6, 6, 0, 0] } },
     ],
   });
 }
 
 function go(path: string) { void router.push(path); }
-function showAllTasks() { ElMessage.info("待处理事项已按优先级展示"); }
 
 onMounted(async () => {
   await loadOverview();
@@ -89,13 +107,14 @@ function handleResize() { chartInstance?.resize(); }
   <section class="dashboard-page">
     <div class="dashboard-heading">
       <div>
-        <div class="eyebrow">OPERATING PULSE · AUGUST 2026</div>
+        <div class="eyebrow">OPERATING PULSE · {{ periodLabel }}</div>
         <h1>经营看板</h1>
       </div>
-      <div class="period-picker"><span>查看</span><el-select v-model="period" size="default" @change="loadOverview"><el-option :label="periodLabel" :value="period" /></el-select></div>
+      <div class="period-picker"><span>查看</span><el-select v-model="period" size="default" @change="loadOverview"><el-option v-for="item in periodOptions" :key="item" :label="item" :value="item" /></el-select></div>
     </div>
 
     <div v-loading="loading" class="dashboard-grid">
+      <el-alert v-if="errorMessage" class="dashboard-error" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''" />
       <el-card v-for="metric in metrics" :key="metric.label" class="metric-card" shadow="never">
         <div class="metric-top"><span>{{ metric.label }}</span><el-icon :class="`metric-icon ${metric.tone}`"><component :is="metric.icon" /></el-icon></div>
         <div class="metric-value">{{ metric.value }}<small v-if="metric.label === '库存预警'"> 项</small></div>
@@ -108,20 +127,19 @@ function handleResize() { chartInstance?.resize(); }
       </el-card>
 
       <el-card class="todo-card" shadow="never">
-        <div class="card-heading"><span>今天要处理的事</span><el-button link class="text-link" @click="showAllTasks">查看全部 →</el-button></div>
-        <button class="todo-item" type="button" @click="go('/sales/orders')"><span class="todo-index">1</span><span class="todo-body"><strong>销售订单待审核</strong><small>销售管理 · 4 条待处理</small></span><b>4</b></button>
-        <button class="todo-item" type="button" @click="go('/inventory/stock')"><span class="todo-index">2</span><span class="todo-body"><strong>库存低于安全线</strong><small>库存管理 · 12 项预警</small></span><b>12</b></button>
-        <button class="todo-item" type="button" @click="go('/finance/receivables')"><span class="todo-index">3</span><span class="todo-body"><strong>应收账款逾期</strong><small>财务管理 · 3 笔逾期</small></span><b>3</b></button>
+        <div class="card-heading"><span>待处理事项</span></div>
+        <button v-for="(task, index) in overview.tasks" :key="task.key" class="todo-item" type="button" @click="go(task.path)"><span class="todo-index">{{ index + 1 }}</span><span class="todo-body"><strong>{{ task.label }}</strong><small>{{ task.description }} · {{ task.count }} 条待处理</small></span><b>{{ task.count }}</b></button>
+        <el-empty v-if="!overview.tasks.length" description="暂无待处理事项" :image-size="56" />
       </el-card>
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/master-data/materials')">物料档案</button><small>管理物料、价格与安全库存</small></div><el-button type="primary" size="small" @click="go('/master-data/materials')">新增物料</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-input size="small" placeholder="搜索编码或名称" /><el-select size="small" placeholder="分类"><el-option label="全部分类" value="all" /></el-select><el-button size="small" @click="go('/master-data/materials')">导出</el-button></div><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr><td>MAT-2024-001</td><td>铝合金外壳</td><td>原材料</td><td>500</td><td><span class="status-tag green">启用</span></td></tr><tr><td>MAT-2024-018</td><td>控制面板组件</td><td>半成品</td><td>120</td><td><span class="status-tag green">启用</span></td></tr><tr><td>MAT-2024-032</td><td>工业连接器</td><td>商品</td><td>80</td><td><span class="status-tag">启用</span></td></tr></tbody></table></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.material_type }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
       </el-card>
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/sales/orders')">销售订单</button><small>从草稿到出库的工作流</small></div><el-button type="primary" size="small" @click="go('/sales/orders')">新建订单</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-input size="small" placeholder="搜索订单或客户" /><el-select size="small" placeholder="状态"><el-option label="全部状态" value="all" /></el-select><el-button size="small" @click="go('/sales/orders')">刷新</el-button></div><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr><td>SO-20260807-08</td><td>华东精工</td><td>¥86,400</td><td><span class="status-tag amber">待审核</span></td><td><button class="table-link" type="button" @click="go('/sales/orders')">审核</button></td></tr><tr><td>SO-20260806-14</td><td>启明科技</td><td>¥52,800</td><td><span class="status-tag green">已审核</span></td><td><button class="table-link" type="button" @click="go('/sales/orders')">出库</button></td></tr><tr><td>SO-20260805-21</td><td>南方机电</td><td>¥31,200</td><td><span class="status-tag">草稿</span></td><td><button class="table-link" type="button" @click="go('/sales/orders')">提交</button></td></tr></tbody></table></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ row.status }}</span></td><td><button class="table-link" type="button" @click="go('/sales/orders')">查看</button></td></tr></tbody></table><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
       </el-card>
     </div>
 
@@ -138,6 +156,7 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .period-picker :deep(.el-select) { width: 130px; }
 .period-picker :deep(.el-select__wrapper) { border-radius: 9px; }
 .dashboard-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 15px; }
+.dashboard-error { grid-column: span 12; }
 .metric-card { grid-column: span 3; min-height: 120px; padding: 17px; }
 .metric-card :deep(.el-card__body) { padding: 0; }
 .metric-top, .card-heading, .module-header, .metric-trend { display: flex; align-items: center; justify-content: space-between; }

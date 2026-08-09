@@ -5,11 +5,11 @@ import { convertLead, createLead, listLeads, transitionLead } from "../../api/cr
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const visible = ref(false); const form = reactive({ name: "", phone: "", email: "", source: "" });
-async function load() { loading.value = true; try { rows.value = (await listLeads()).data?.data ?? []; } catch { ElMessage.error("线索加载失败"); } finally { loading.value = false; } }
+async function load() { loading.value = true; try { const response = await listLeads(); if (response.data.code !== 0) throw new Error(response.data.msg); rows.value = Array.isArray(response.data.data) ? response.data.data : []; } catch (error) { rows.value = []; ElMessage.error(error instanceof Error ? error.message : "线索加载失败"); } finally { loading.value = false; } }
 function openCreate() { form.name = ""; form.phone = ""; form.email = ""; form.source = ""; visible.value = true; }
 async function create() { if (!form.name.trim()) { ElMessage.warning("请填写线索名称"); return; } saving.value = true; try { const response = await createLead({ ...form, name: form.name.trim() }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("线索已创建"); visible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "线索创建失败"); } finally { saving.value = false; } }
 async function transition(row: Row, status: string) { try { const response = await transitionLead(row.id, status); if (response.data.code !== 0) throw new Error(response.data.msg); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "线索状态更新失败"); } }
-async function convert(id: string) { try { await convertLead(id); ElMessage.success("线索已转化"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "线索转化失败"); } }
+async function convert(id: string) { try { const response = await convertLead(id); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("线索已转化"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "线索转化失败"); } }
 onMounted(load);
 </script>
 

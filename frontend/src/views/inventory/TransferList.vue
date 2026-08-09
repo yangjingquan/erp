@@ -14,7 +14,7 @@ const dialogVisible = ref(false);
 const form = reactive<InventoryTransferPayload>({ from_warehouse_id: "", to_warehouse_id: "", items: [{ material_id: "", quantity: 1, unit_cost: 0 }] });
 const { warehouses, materials, loadOptions } = useMasterOptions();
 
-function listFrom(response: any): Row[] { const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
+function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "库存调拨接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
 async function load() {
   loading.value = true; errorMessage.value = "";
   try { rows.value = listFrom(await listInventoryTransfers()); }
@@ -25,15 +25,15 @@ function openCreate() { form.from_warehouse_id = ""; form.to_warehouse_id = ""; 
 async function save() {
   if (!form.from_warehouse_id || !form.to_warehouse_id || !form.items[0]?.material_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写调出/调入仓库、物料和有效数量"); return; }
   saving.value = true;
-  try { await createInventoryTransfer(form); ElMessage.success("调拨单已创建"); dialogVisible.value = false; await load(); }
-  catch (error) { ElMessage.error("调拨单创建失败"); }
+  try { const response = await createInventoryTransfer(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("调拨单已创建"); dialogVisible.value = false; await load(); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "调拨单创建失败"); }
   finally { saving.value = false; }
 }
 async function confirmAction(row: Row, action: "approve" | "complete") {
   const id = String(row.id || ""); if (!id) { ElMessage.error("调拨单缺少有效 ID，无法操作"); return; }
   const label = action === "approve" ? "审核调拨单" : "完成调拨单";
-  try { await ElMessageBox.confirm(`确认${label}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" }); actionLoading.value = id; if (action === "approve") await approveInventoryTransfer(id); else await completeInventoryTransfer(id); ElMessage.success(`${label}成功`); await load(); }
-  catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(`${label}失败`); }
+  try { await ElMessageBox.confirm(`确认${label}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" }); actionLoading.value = id; const response = action === "approve" ? await approveInventoryTransfer(id) : await completeInventoryTransfer(id); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(`${label}成功`); await load(); }
+  catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${label}失败`); }
   finally { actionLoading.value = null; }
 }
 onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "materials"])]); });

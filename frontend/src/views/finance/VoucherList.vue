@@ -8,9 +8,9 @@ const rows = ref<Row[]>([]);
 const loading = ref(false);
 const actionLoading = ref<string | null>(null);
 const errorMessage = ref("");
-function listFrom(response: any): Row[] { const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
+function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "会计凭证接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
 async function load() { loading.value = true; errorMessage.value = ""; try { rows.value = listFrom(await listVouchers()); } catch (error) { errorMessage.value = "会计凭证加载失败，请检查接口服务后重试"; } finally { loading.value = false; } }
-async function create(row: Row) { const sourceType = String(row.source_type || ""); const sourceId = String(row.source_id || ""); if (!sourceType || !sourceId) { ElMessage.error("凭证来源信息不完整，无法生成"); return; } try { await ElMessageBox.confirm(`确认根据来源单据“${sourceId}”生成凭证吗？`, "操作确认", { type: "warning" }); actionLoading.value = sourceId; await generateVoucher(sourceType, sourceId); ElMessage.success("凭证已生成"); await load(); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error("凭证生成失败"); } finally { actionLoading.value = null; } }
+async function create(row: Row) { const sourceType = String(row.source_type || ""); const sourceId = String(row.source_id || ""); if (!sourceType || !sourceId) { ElMessage.error("凭证来源信息不完整，无法生成"); return; } try { await ElMessageBox.confirm(`确认根据来源单据“${sourceId}”生成凭证吗？`, "操作确认", { type: "warning" }); actionLoading.value = sourceId; const response = await generateVoucher(sourceType, sourceId); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("凭证已生成"); await load(); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "凭证生成失败"); } finally { actionLoading.value = null; } }
 onMounted(load);
 </script>
 

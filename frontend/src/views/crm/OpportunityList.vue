@@ -5,7 +5,7 @@ import { addFollowUp, createOpportunity, listOpportunities, transitionOpportunit
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const visible = ref(false); const form = reactive({ name: "", customer_id: "" });
-async function load() { loading.value = true; try { rows.value = (await listOpportunities()).data?.data ?? []; } catch { ElMessage.error("商机加载失败"); } finally { loading.value = false; } }
+async function load() { loading.value = true; try { const response = await listOpportunities(); if (response.data.code !== 0) throw new Error(response.data.msg); rows.value = Array.isArray(response.data.data) ? response.data.data : []; } catch (error) { rows.value = []; ElMessage.error(error instanceof Error ? error.message : "商机加载失败"); } finally { loading.value = false; } }
 function openCreate() { form.name = ""; form.customer_id = ""; visible.value = true; }
 async function create() { if (!form.name.trim()) { ElMessage.warning("请填写商机名称"); return; } saving.value = true; try { const response = await createOpportunity({ ...form, name: form.name.trim(), customer_id: form.customer_id.trim() || null }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("商机已创建"); visible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "商机创建失败"); } finally { saving.value = false; } }
 async function move(row: Row, stage: string) { try { const response = await transitionOpportunity(row.id, stage); if (response.data.code !== 0) throw new Error(response.data.msg); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "商机阶段更新失败"); } }

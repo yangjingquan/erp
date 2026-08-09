@@ -33,14 +33,14 @@ def save_definition(
 
 
 @router.post("/tasks/{task_id}/approve")
-def approve(task_id: str, comment: str = "", context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def approve(task_id: str, comment: str = "", context: UserContext = Depends(require_permission("workflow:approve")), db: Session = Depends(get_db)):
     instance = approve_task(db, task_id, context, comment)
     db.commit()
     return ok({"instance_id": instance.id, "status": instance.status})
 
 
 @router.post("/tasks/{task_id}/reject")
-def reject(task_id: str, comment: str = "", context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def reject(task_id: str, comment: str = "", context: UserContext = Depends(require_permission("workflow:approve")), db: Session = Depends(get_db)):
     instance = reject_task(db, task_id, context, comment)
     db.commit()
     return ok({"instance_id": instance.id, "status": instance.status})

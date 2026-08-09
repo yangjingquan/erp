@@ -21,6 +21,14 @@ export function createMasterData(resource: MasterResource, payload: Record<strin
   return http.post(`/master/${resource}`, payload);
 }
 
+export function updateMasterData(resource: MasterResource, id: string, payload: Record<string, unknown>) {
+  return http.put(`/master/${resource}/${id}`, payload);
+}
+
+export function setMasterDataStatus(resource: MasterResource, id: string, status: "active" | "inactive") {
+  return http.post(`/master/${resource}/${id}/status`, { status });
+}
+
 export function importMasterData(resource: MasterResource, file: File) {
   const form = new FormData();
   form.append("file", file);

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { Download, EditPen, FolderOpened, Plus, Refresh, Search, View } from "@element-plus/icons-vue";
 
@@ -10,6 +10,8 @@ import {
   getMasterDataErrorMessage,
   importMasterData,
   listMasterData,
+  setMasterDataStatus,
+  updateMasterData,
   type MasterResource,
 } from "../../api/master-data";
 
@@ -43,20 +45,16 @@ const pageSize = ref(10);
 const dialogVisible = ref(false);
 const detailVisible = ref(false);
 const selectedRow = ref<Record<string, unknown> | null>(null);
+const editingId = ref("");
+const totalRows = ref(0);
+const summary = ref({ total: 0, active: 0, inactive: 0 });
 const formRef = ref<FormInstance>();
 const fileInput = ref<HTMLInputElement>();
 const form = reactive<Record<string, unknown>>({});
 
-const filteredRows = computed(() => {
-  const query = keyword.value.trim().toLocaleLowerCase();
-  if (!query) return rows.value;
-  return rows.value.filter((row) => Object.values(row).some((value) => String(value ?? "").toLocaleLowerCase().includes(query)));
-});
-const pagedRows = computed(() => filteredRows.value.slice((currentPage.value - 1) * pageSize.value, currentPage.value * pageSize.value));
-const activeCount = computed(() => rows.value.filter((row) => row.status === undefined || row.status === "active").length);
-const summaryValues = computed(() => ({ total: rows.value.length, active: activeCount.value, inactive: Math.max(rows.value.length - activeCount.value, 0) }));
+const summaryValues = computed(() => summary.value);
 const formRules = computed<FormRules>(() => Object.fromEntries(props.fields.filter((field) => field.required).map((field) => [field.prop, [{ required: true, message: `请输入${field.label}`, trigger: "blur" }]])));
-const dialogTitle = computed(() => `新增${props.title}`);
+const dialogTitle = computed(() => `${editingId.value ? "编辑" : "新增"}${props.title}`);
 
 function ensureResponseSuccess(response: { data: { code: number; msg: string } }) { if (response.data.code !== 0) throw new Error(response.data.msg); }
 
@@ -71,8 +69,16 @@ async function load() {
     const response = await listMasterData(props.resource, { keyword: keyword.value.trim() || undefined, page: currentPage.value, pageSize: pageSize.value });
     ensureResponseSuccess(response);
     const data = response.data.data;
-    rows.value = Array.isArray(data) ? data : [];
-    if (currentPage.value > 1 && pagedRows.value.length === 0 && rows.value.length > 0) currentPage.value = 1;
+    if (Array.isArray(data)) {
+      rows.value = data;
+      totalRows.value = data.length;
+      summary.value = { total: data.length, active: data.filter((row) => row.status !== "inactive").length, inactive: data.filter((row) => row.status === "inactive").length };
+    } else {
+      rows.value = Array.isArray(data?.items) ? data.items : [];
+      totalRows.value = Number(data?.total ?? rows.value.length);
+      summary.value = { total: totalRows.value, active: Number(data?.active ?? rows.value.filter((row) => row.status !== "inactive").length), inactive: Number(data?.inactive ?? 0) };
+    }
+    if (currentPage.value > 1 && rows.value.length === 0) { currentPage.value = 1; await load(); }
   } catch (error) {
     ElMessage.error(getMasterDataErrorMessage(error, `${props.title}加载失败`));
     rows.value = [];
@@ -80,9 +86,10 @@ async function load() {
 }
 
 function search() { currentPage.value = 1; void load(); }
-function openCreate() { resetForm(); dialogVisible.value = true; void nextTick(() => formRef.value?.clearValidate()); }
+function openCreate() { editingId.value = ""; resetForm(); dialogVisible.value = true; void nextTick(() => formRef.value?.clearValidate()); }
 function closeCreate() { if (!submitting.value) dialogVisible.value = false; }
 function openDetail(row: Record<string, unknown>) { selectedRow.value = row; detailVisible.value = true; }
+function openEdit(row: Record<string, unknown>) { editingId.value = String(row.id); resetForm(row); dialogVisible.value = true; void nextTick(() => formRef.value?.clearValidate()); }
 
 async function submitCreate() {
   if (!formRef.value) return;
@@ -90,13 +97,28 @@ async function submitCreate() {
   if (!valid) return;
   submitting.value = true;
   try {
-    const response = await createMasterData(props.resource, { ...form });
+    const response = editingId.value ? await updateMasterData(props.resource, editingId.value, { ...form }) : await createMasterData(props.resource, { ...form });
     ensureResponseSuccess(response);
-    ElMessage.success("新增成功");
+    ElMessage.success(editingId.value ? "保存成功" : "新增成功");
     dialogVisible.value = false;
     await load();
   } catch (error) { ElMessage.error(getMasterDataErrorMessage(error, "新增失败，请检查编码或名称是否重复")); }
   finally { submitting.value = false; }
+}
+
+async function toggleStatus(row: Record<string, unknown>) {
+  const id = String(row.id || "");
+  if (!id) return;
+  const next = row.status === "inactive" ? "active" : "inactive";
+  try {
+    await ElMessageBox.confirm(`确认${next === "active" ? "启用" : "停用"}${props.title}“${row.name || row.code}”吗？`, "状态确认", { type: "warning" });
+    const response = await setMasterDataStatus(props.resource, id, next);
+    ensureResponseSuccess(response);
+    ElMessage.success("状态已更新");
+    await load();
+  } catch (error: any) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(getMasterDataErrorMessage(error, "状态更新失败"));
+  }
 }
 
 function chooseImportFile() { fileInput.value?.click(); }
@@ -133,7 +155,7 @@ function formatCell(row: Record<string, unknown>, column: MasterColumn) {
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
 function isActiveStatus(row: Record<string, unknown>, column: MasterColumn) { return column.prop === "status" && row.status !== "inactive"; }
-function handlePageSizeChange() { currentPage.value = 1; }
+function handlePageSizeChange() { currentPage.value = 1; void load(); }
 
 onMounted(load);
 </script>
@@ -158,17 +180,17 @@ onMounted(load);
     </el-card>
 
     <el-card class="table-card" shadow="never">
-      <div class="table-caption"><div><strong>{{ props.title }}</strong><span>共 {{ filteredRows.length }} 条记录</span></div><span class="caption-tip">支持编码、名称和关键字模糊搜索</span></div>
-      <el-table v-loading="loading" :data="pagedRows" row-key="id" class="master-table">
+      <div class="table-caption"><div><strong>{{ props.title }}</strong><span>共 {{ totalRows }} 条记录</span></div><span class="caption-tip">支持编码、名称和关键字模糊搜索</span></div>
+      <el-table v-loading="loading" :data="rows" row-key="id" class="master-table">
         <el-table-column v-for="column in props.columns" :key="column.prop" :prop="column.prop" :label="column.label" :width="column.width" min-width="100" show-overflow-tooltip>
           <template #default="{ row }"><el-tag v-if="isActiveStatus(row, column)" class="status-tag" type="success">{{ formatCell(row, column) }}</el-tag><el-tag v-else-if="column.prop === 'status'" class="status-tag" type="info">{{ formatCell(row, column) }}</el-tag><span v-else>{{ formatCell(row, column) }}</span></template>
         </el-table-column>
         <el-table-column label="操作" width="150">
-          <template #default="{ row }"><el-button link class="row-action" @click="openDetail(row)"><el-icon><View /></el-icon>查看</el-button><el-button link class="row-action" @click="openDetail(row)"><el-icon><EditPen /></el-icon>编辑</el-button></template>
+          <template #default="{ row }"><el-button link class="row-action" @click="openDetail(row)"><el-icon><View /></el-icon>查看</el-button><el-button link class="row-action" @click="openEdit(row)"><el-icon><EditPen /></el-icon>编辑</el-button><el-button link class="row-action" @click="toggleStatus(row)">{{ row.status === "inactive" ? "启用" : "停用" }}</el-button></template>
         </el-table-column>
         <template #empty><el-empty description="暂无数据，试试调整筛选条件" /></template>
       </el-table>
-      <div v-if="filteredRows.length > 0" class="pagination-wrap"><span>显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, filteredRows.length) }} / 共 {{ filteredRows.length }} 条</span><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10, 20, 50]" layout="sizes, prev, pager, next" :total="filteredRows.length" @size-change="handlePageSizeChange" /></div>
+      <div v-if="totalRows > 0" class="pagination-wrap"><span>显示 {{ (currentPage - 1) * pageSize + 1 }} - {{ Math.min(currentPage * pageSize, totalRows) }} / 共 {{ totalRows }} 条</span><el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[10, 20, 50]" layout="sizes, prev, pager, next" :total="totalRows" @size-change="handlePageSizeChange" @current-change="load" /></div>
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="620px" @close="closeCreate">

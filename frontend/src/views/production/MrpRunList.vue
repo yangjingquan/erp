@@ -8,7 +8,7 @@ type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false); const resultRows = ref<Row[]>([]); const runVisible = ref(false);
 const form = reactive({ material_id: "", warehouse_id: "", plan_date: new Date().toISOString().slice(0, 10), plan_quantity: 1 });
 const { materials, warehouses, loadOptions } = useMasterOptions();
-function listFrom(response: any) { return Array.isArray(response?.data?.data) ? response.data.data : []; }
+function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "MPS 接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listMps()); } catch { ElMessage.error("MPS 列表加载失败"); } finally { loading.value = false; } }
 function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.plan_date = new Date().toISOString().slice(0, 10); form.plan_quantity = 1; dialogVisible.value = true; }
 async function save() { if (!form.material_id || !form.plan_date || form.plan_quantity <= 0) { ElMessage.warning("请填写计划物料、日期和大于 0 的计划数量"); return; } saving.value = true; try { const response = await createMps({ ...form, warehouse_id: form.warehouse_id || null }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("MPS 计划已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "MPS 创建失败"); } finally { saving.value = false; } }

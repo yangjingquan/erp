@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.exceptions import AppError
 from app.core.response import ok
 from app.schemas.purchase import PurchaseOrderCreate, PurchaseRequestCreate, PurchaseReturnCreate
 from app.services.auth_service import UserContext
@@ -73,7 +74,7 @@ def add_request(payload: PurchaseRequestCreate, context: UserContext = Depends(r
 def request_action(request_id: str, action: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     status = {"submit": "submitted", "approve": "approved", "reject": "rejected"}.get(action)
     if status is None:
-        return ok({}, "不支持的采购申请操作")
+        raise AppError("不支持的采购申请操作", code=400)
     return ok(serialize_request(transition_request(db, request_id, status, context)))
 
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -11,9 +11,9 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/overview")
-def overview(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
-    return ok(dashboard_overview(db, context))
+def overview(period: str | None = Query(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(dashboard_overview(db, context, period))
 
 @router.get("/phase2")
-def phase2(period: str, warehouse_id: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+def phase2(period: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"), warehouse_id: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(dashboard_phase2(db, context, period, warehouse_id))

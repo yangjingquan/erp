@@ -12,7 +12,7 @@ const actionLoading = ref<string | null>(null);
 const dialogVisible = ref(false);
 const form = reactive({ allocation_date: new Date().toISOString().slice(0, 10), amount: 0, basis: "quantity", source_type: "expense", source_id: "", idempotency_key: "", items: [{ project_id: "", quantity: 1, amount: 0, hours: 0 }] as Item[] });
 
-function listFrom(response: any): Row[] { const data = response?.data?.data; return Array.isArray(data) ? data : []; }
+function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "成本分摊接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listAllocations()); } catch { ElMessage.error("成本分摊列表加载失败"); } finally { loading.value = false; } }
 function reset() { form.allocation_date = new Date().toISOString().slice(0, 10); form.amount = 0; form.basis = "quantity"; form.source_type = "expense"; form.source_id = ""; form.idempotency_key = `allocation-${Date.now()}`; form.items = [{ project_id: "", quantity: 1, amount: 0, hours: 0 }]; }
 function openCreate() { reset(); dialogVisible.value = true; }

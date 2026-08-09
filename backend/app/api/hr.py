@@ -31,7 +31,7 @@ def update_employee_api(employee_id:str,payload:EmployeeUpdate,context:UserConte
 @router.put("/employees/{employee_id}/password")
 def change_employee_password_api(employee_id:str,payload:EmployeePasswordUpdate,context:UserContext=Depends(require_permission("hr:employee:manage")),db:Session=Depends(get_db)): change_employee_password(db,employee_id,payload.password,context);db.commit();return ok(msg="员工账号密码已更新")
 @router.post("/employees/{employee_id}/attendance")
-def attendance(employee_id:str,payload:AttendanceCreate,context:UserContext=Depends(get_current_user),db:Session=Depends(get_db)): row=record_attendance(db,employee_id,payload.model_dump(),context);db.commit();return ok({"id":row.id})
+def attendance(employee_id:str,payload:AttendanceCreate,context:UserContext=Depends(require_permission("hr:employee:manage")),db:Session=Depends(get_db)): row=record_attendance(db,employee_id,payload.model_dump(),context);db.commit();return ok({"id":row.id})
 @router.post("/payroll/{period}/calculate")
 def calculate(period:str,context:UserContext=Depends(require_permission("hr:salary:manage")),db:Session=Depends(get_db)): row=calculate_payroll(db,period,context);db.commit();return ok({"id":row.id,"status":row.status,"total_amount":str(row.total_amount)})
 @router.post("/payroll/{payroll_id}/approve")
