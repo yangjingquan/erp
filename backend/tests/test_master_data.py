@@ -38,6 +38,26 @@ def test_customer_name_duplicate_ignores_spaces_and_width(client_and_session):
     assert duplicate.json()["code"] == 409
 
 
+def test_master_data_status_update_is_returned_by_list_api(client_and_session):
+    client, _ = client_and_session
+    headers = auth_headers()
+    created = client.post(
+        "/api/master/materials",
+        json={"code": "CODEX-CRUD-STATUS", "name": "状态回归物料"},
+        headers=headers,
+    ).json()["data"]
+
+    changed = client.post(
+        f"/api/master/materials/{created['id']}/status",
+        json={"status": "inactive"},
+        headers=headers,
+    ).json()
+    listed = client.get("/api/master/materials", headers=headers).json()
+
+    assert changed["data"]["status"] == "inactive"
+    assert listed["data"]["items"][0]["status"] == "inactive"
+
+
 def test_excel_import_reports_valid_and_invalid_rows(client_and_session):
     client, _ = client_and_session
     workbook = Workbook()

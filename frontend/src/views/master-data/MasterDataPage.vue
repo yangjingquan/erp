@@ -60,7 +60,10 @@ function ensureResponseSuccess(response: { data: { code: number; msg: string } }
 
 function resetForm(source?: Record<string, unknown>) {
   Object.keys(form).forEach((key) => delete form[key]);
-  props.fields.forEach((field) => { form[field.prop] = source?.[field.prop] ?? field.defaultValue ?? (field.type === "number" ? 0 : ""); });
+  props.fields.forEach((field) => {
+    const value = source?.[field.prop] ?? field.defaultValue ?? (field.type === "number" ? 0 : "");
+    form[field.prop] = field.type === "number" && value !== "" && value !== null ? Number(value) : value;
+  });
 }
 
 async function load() {

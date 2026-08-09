@@ -1,3 +1,6 @@
+// @ts-expect-error The project does not currently include @types/node; Vitest provides this runtime module.
+import { readFileSync } from "node:fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { getMock, postMock } = vi.hoisted(() => ({
@@ -31,5 +34,10 @@ describe("master data api", () => {
     expect(getMock).toHaveBeenCalledWith("/master/materials", {
       params: { keyword: "螺丝", page: 2, page_size: 20 },
     });
+  });
+
+  it("normalizes decimal strings before binding edit values to number controls", () => {
+    const source = readFileSync(new URL("../src/views/master-data/MasterDataPage.vue", import.meta.url), "utf8");
+    expect(source).toContain('field.type === "number" && value !== "" && value !== null ? Number(value) : value');
   });
 });

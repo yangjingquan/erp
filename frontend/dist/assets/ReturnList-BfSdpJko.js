@@ -1,0 +1,1 @@
+import{D as t}from"./DocumentExtensionPage-WiYFQ9NP.js";import{d as e,c as o,o as r}from"./index-BzVHiAx9.js";import"./sales-CY6dOkZC.js";import"./purchase-DwfwnEM_.js";import"./useMasterOptions-6k5gbRVy.js";const _=e({__name:"ReturnList",setup(n){return(a,p)=>(r(),o(t,{kind:"purchase-return",title:"采购退货单"}))}});export{_ as default};

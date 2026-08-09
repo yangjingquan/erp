@@ -134,6 +134,8 @@ def set_item_status(db: Session, resource: str, item_id: str, org_id: str, statu
 
 def serialize_item(item: Any, fields: list[str]) -> dict[str, Any]:
     result = {"id": item.id}
+    if hasattr(item, "status"):
+        result["status"] = item.status
     for field in fields:
         value = getattr(item, field, None)
         result[field] = str(value) if hasattr(value, "as_tuple") else value
