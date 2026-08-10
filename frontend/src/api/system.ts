@@ -8,6 +8,15 @@ export interface OperationLog {
   created_at: string;
 }
 
-export function listOperationLogs() {
-  return http.get("/system/operation-logs");
+export interface OperationLogPage {
+  items: OperationLog[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export function listOperationLogs(page = 1, pageSize = 20) {
+  return http.get<{ code: number; data: OperationLogPage | OperationLog[] }>("/system/operation-logs", {
+    params: { page, page_size: pageSize },
+  });
 }

@@ -76,7 +76,7 @@ onMounted(load);
     <el-space><el-button type="primary" @click="openCreate">新建检验单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert title="检验单必须先录入结构化结果，再选择处置结论关闭；不合格结果会自动生成不合格记录。" type="info" show-icon />
     <el-table v-loading="loading" :data="rows" stripe>
-      <el-table-column prop="inspection_type" label="检验类型" width="130" /><el-table-column prop="source_type" label="来源类型" width="130" /><el-table-column prop="source_id" label="来源单据" min-width="180" /><el-table-column prop="result" label="结果" width="100" /><el-table-column prop="disposition" label="处置" width="100" /><el-table-column prop="status" label="状态" width="100" />
+      <el-table-column prop="inspection_type" label="检验类型" width="130" /><el-table-column prop="source_type" label="来源类型" width="180" class-name="nowrap-column" /><el-table-column prop="source_id" label="来源单据" min-width="180" /><el-table-column prop="result" label="结果" width="100" /><el-table-column prop="disposition" label="处置" width="100" /><el-table-column prop="status" label="状态" width="100" />
       <el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openResult(scope.row)">录入结果</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="openClose(scope.row)">关闭检验</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无检验单" /></template>
     </el-table>
@@ -86,4 +86,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }</style>
+<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }.nowrap-column :deep(.cell) { white-space: nowrap; }</style>

@@ -26,9 +26,9 @@ describe("系统设置 API", () => {
   });
 
   it("loads operation logs from the system endpoint", async () => {
-    await listOperationLogs();
+    await listOperationLogs(2, 50);
 
-    expect(getMock).toHaveBeenCalledWith("/system/operation-logs");
+    expect(getMock).toHaveBeenCalledWith("/system/operation-logs", { params: { page: 2, page_size: 50 } });
   });
 
   it("loads and updates global parameters using the parameter key", async () => {

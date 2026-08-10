@@ -61,11 +61,12 @@ def _serialize_layer(row) -> dict:
 
 @router.get("/locations")
 def locations(
-    warehouse_id: str = Query(min_length=1),
+    warehouse_id: str | None = Query(default=None, min_length=1),
     context: UserContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return ok([_serialize_location(row) for row in list_locations(db, warehouse_id, context)])
+    rows = list_locations(db, warehouse_id, context)
+    return ok([_serialize_location(row) for row in rows])
 
 
 @router.post("/locations")

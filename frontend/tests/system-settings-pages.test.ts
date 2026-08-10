@@ -14,6 +14,8 @@ describe("系统设置页面交互契约", () => {
     expect(content).toContain("onMounted(load)");
     expect(content).toContain("v-loading=\"loading\"");
     expect(content).toContain("ElMessage.error");
+    expect(content).toContain("el-pagination");
+    expect(content).toContain("pageSize");
   });
 
   it("loads parameters and persists each edited value through the API", () => {

@@ -12,14 +12,14 @@ const selectedWarehouseId = ref("");
 const createForm = reactive({ warehouse_id: "", code: "", name: "" });
 const { warehouses, loadOptions } = useMasterOptions();
 
+function warehouseName(warehouseId: string | null | undefined) {
+  return warehouses.value.find((item) => item.value === warehouseId)?.label || warehouseId || "-";
+}
+
 async function load() {
-  if (!selectedWarehouseId.value) {
-    rows.value = [];
-    return;
-  }
   loading.value = true;
   try {
-    const response = await listLocations(selectedWarehouseId.value);
+    const response = await listLocations(selectedWarehouseId.value || undefined);
     if (response.data.code !== 0) throw new Error(response.data.msg);
     rows.value = response.data.data || [];
   } catch (error) {
@@ -51,11 +51,8 @@ async function save() {
     if (response.data.code !== 0) throw new Error(response.data.msg);
     ElMessage.success("库位已创建");
     visible.value = false;
-    if (selectedWarehouseId.value === warehouseId) {
-      await load();
-    } else {
-      selectedWarehouseId.value = warehouseId;
-    }
+    selectedWarehouseId.value = warehouseId;
+    await load();
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "库位创建失败");
   } finally {
@@ -63,8 +60,11 @@ async function save() {
   }
 }
 
-watch(selectedWarehouseId, load);
-onMounted(() => loadOptions(["warehouses"]));
+watch(selectedWarehouseId, () => { void load(); });
+onMounted(async () => {
+  await loadOptions(["warehouses"]);
+  await load();
+});
 </script>
 <template>
   <section class="page-stack">
@@ -79,9 +79,9 @@ onMounted(() => loadOptions(["warehouses"]));
     <el-table v-loading="loading" :data="rows" stripe>
       <el-table-column prop="code" label="库位编码" min-width="180" />
       <el-table-column prop="name" label="库位名称" min-width="220" />
-      <el-table-column prop="zone_id" label="库区" min-width="180" />
+      <el-table-column label="库区" min-width="180"><template #default="scope">{{ warehouseName(scope.row.warehouse_id) }}</template></el-table-column>
       <el-table-column prop="status" label="状态" width="120" />
-      <template #empty><el-empty description="请选择仓库或暂无库位" /></template>
+      <template #empty><el-empty description="暂无库位" /></template>
     </el-table>
     <el-dialog v-model="visible" title="新增库位" width="460px">
       <el-form label-width="90px">

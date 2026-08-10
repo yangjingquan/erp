@@ -603,17 +603,19 @@ def list_slow_moving(db: Session, context: UserContext, as_of: date | datetime) 
     return rows
 
 
-def list_locations(db: Session, warehouse_id: str, context: UserContext) -> list[InvLocation]:
-    _require_warehouse(db, warehouse_id, context)
-    return list(
-        db.scalars(
-            select(InvLocation).where(
-                InvLocation.org_id == context.org_id,
-                InvLocation.warehouse_id == warehouse_id,
-                InvLocation.is_deleted.is_(False),
-            ).order_by(InvLocation.code)
-        ).all()
+def list_locations(db: Session, warehouse_id: str | None, context: UserContext) -> list[InvLocation]:
+    statement = select(InvLocation).where(
+        InvLocation.org_id == context.org_id,
+        InvLocation.is_deleted.is_(False),
     )
+    if warehouse_id:
+        _require_warehouse(db, warehouse_id, context)
+        statement = statement.where(InvLocation.warehouse_id == warehouse_id)
+    else:
+        allowed = allowed_warehouse_ids(context)
+        if allowed is not None:
+            statement = statement.where(InvLocation.warehouse_id.in_(allowed))
+    return list(db.scalars(statement.order_by(InvLocation.warehouse_id, InvLocation.code)).all())
 
 
 def list_batches(db: Session, material_id: str | None, context: UserContext) -> list[InvBatch]:
