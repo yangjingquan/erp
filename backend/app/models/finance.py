@@ -70,6 +70,18 @@ class FinPayment(UUIDModel):
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
     payment_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    reconciles: Mapped[list["FinPaymentReconcile"]] = relationship(
+        back_populates="payment", cascade="all, delete-orphan"
+    )
+
+
+class FinPaymentReconcile(UUIDModel):
+    __tablename__ = "fin_payment_reconcile"
+
+    payment_id: Mapped[str] = mapped_column(ForeignKey("fin_payment.id"), nullable=False)
+    payable_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    payment: Mapped[FinPayment] = relationship(back_populates="reconciles")
 
 
 class FinExpense(UUIDModel):

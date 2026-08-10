@@ -6,11 +6,13 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
-from app.schemas.inventory_advanced import BatchCreate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, ScanProcessCreate
+from app.schemas.inventory_advanced import BatchCreate, BatchUpdate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, LocationUpdate, ScanProcessCreate
 from app.services.auth_service import UserContext
 from app.services.inventory_advanced_service import (
     create_batch,
     create_location,
+    delete_batch,
+    delete_location,
     create_scan_token,
     list_scan_tasks,
     list_locations,
@@ -19,6 +21,8 @@ from app.services.inventory_advanced_service import (
     post_fifo_inbound,
     post_fifo_outbound,
     process_scan,
+    update_batch,
+    update_location,
 )
 
 
@@ -82,6 +86,29 @@ def create_location_api(
     return ok(_serialize_location(row))
 
 
+@router.put("/locations/{location_id}")
+def update_location_api(
+    location_id: str,
+    payload: LocationUpdate,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = update_location(db, location_id, payload, context)
+    db.commit()
+    return ok(_serialize_location(row))
+
+
+@router.delete("/locations/{location_id}")
+def delete_location_api(
+    location_id: str,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    delete_location(db, location_id, context)
+    db.commit()
+    return ok(msg="库位已删除")
+
+
 @router.post("/batches")
 def create_batch_api(
     material_id: str = Query(min_length=1),
@@ -92,6 +119,29 @@ def create_batch_api(
     row = create_batch(db, material_id, payload, context)
     db.commit()
     return ok(_serialize_batch(row))
+
+
+@router.put("/batches/{batch_id}")
+def update_batch_api(
+    batch_id: str,
+    payload: BatchUpdate,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = update_batch(db, batch_id, payload, context)
+    db.commit()
+    return ok(_serialize_batch(row))
+
+
+@router.delete("/batches/{batch_id}")
+def delete_batch_api(
+    batch_id: str,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    delete_batch(db, batch_id, context)
+    db.commit()
+    return ok(msg="批次已删除")
 
 
 @router.get("/batches")

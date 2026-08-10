@@ -84,4 +84,5 @@ class PurchaseReturn(AuditMixin, UUIDModel):
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     return_date: Mapped[date] = mapped_column(Date, nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     items: Mapped[list["PurchaseReturnItem"]] = relationship(cascade="all, delete-orphan")

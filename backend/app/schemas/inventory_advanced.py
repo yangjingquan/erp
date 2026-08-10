@@ -12,7 +12,26 @@ class LocationCreate(BaseModel):
     status: str = Field(default="active", min_length=1, max_length=32)
 
 
+class LocationUpdate(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    status: str = Field(default="active", min_length=1, max_length=32)
+
+
 class BatchCreate(BaseModel):
+    batch_no: str = Field(min_length=1, max_length=64)
+    production_date: date | None = None
+    expiry_date: date | None = None
+    status: str = Field(default="active", min_length=1, max_length=32)
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.production_date and self.expiry_date and self.expiry_date < self.production_date:
+            raise ValueError("expiry_date must not precede production_date")
+        return self
+
+
+class BatchUpdate(BaseModel):
     batch_no: str = Field(min_length=1, max_length=64)
     production_date: date | None = None
     expiry_date: date | None = None

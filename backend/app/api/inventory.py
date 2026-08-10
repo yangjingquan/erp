@@ -11,6 +11,7 @@ from app.services.inventory_service import (
     complete_count,
     complete_transfer,
     create_count,
+    delete_count,
     create_transfer,
     list_counts,
     list_safety_warnings,
@@ -19,6 +20,7 @@ from app.services.inventory_service import (
     list_transfers,
     serialize_count,
     serialize_transfer,
+    update_count,
 )
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
@@ -91,6 +93,26 @@ def create_count_api(payload: CountCreate, context: UserContext = Depends(requir
     )
     db.commit()
     return ok(serialize_count(count))
+
+
+@router.put("/counts/{count_id}")
+def update_count_api(count_id: str, payload: CountCreate, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    count = update_count(
+        db,
+        count_id,
+        context,
+        warehouse_id=payload.warehouse_id,
+        items=[item.model_dump() for item in payload.items],
+    )
+    db.commit()
+    return ok(serialize_count(count))
+
+
+@router.delete("/counts/{count_id}")
+def delete_count_api(count_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    delete_count(db, count_id, context)
+    db.commit()
+    return ok(msg="盘点单已删除")
 
 
 @router.post("/counts/{count_id}/complete")

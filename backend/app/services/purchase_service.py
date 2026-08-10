@@ -23,6 +23,7 @@ def serialize_order(order: PurchaseOrder) -> dict:
         "status": order.status,
         "order_date": order.order_date.isoformat(),
         "expected_date": order.expected_date.isoformat() if order.expected_date else None,
+        "created_at": order.created_at.isoformat(timespec="seconds"),
         "total_amount": str(order.total_amount),
         "payable_amount": str(order.payable_amount),
         "items": [
@@ -81,6 +82,48 @@ def create_purchase_order(db: Session, payload, context: UserContext) -> Purchas
     db.commit()
     db.refresh(order)
     return order
+
+
+def update_purchase_order(db: Session, order_id: str, payload, context: UserContext) -> PurchaseOrder:
+    order = db.get(PurchaseOrder, order_id)
+    if order is None or order.org_id != context.org_id or order.is_deleted:
+        raise AppError("采购订单不存在", code=404)
+    if order.status != "draft":
+        raise AppError("只有草稿状态的采购订单可以修改", code=400)
+    order.supplier_id = payload.supplier_id
+    order.order_date = payload.order_date
+    order.expected_date = payload.expected_date
+    order.items = [
+        PurchaseOrderItem(
+            material_id=item.material_id,
+            warehouse_id=item.warehouse_id,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            tax_rate=item.tax_rate,
+            amount=(item.quantity * item.unit_price).quantize(Decimal("0.01")),
+            line_no=index,
+        )
+        for index, item in enumerate(payload.items, start=1)
+    ]
+    order.total_amount = _total(order.items)
+    order.payable_amount = order.total_amount
+    order.updated_by = context.id
+    order.version += 1
+    db.commit()
+    db.refresh(order)
+    return order
+
+
+def delete_purchase_order(db: Session, order_id: str, context: UserContext) -> None:
+    order = db.get(PurchaseOrder, order_id)
+    if order is None or order.org_id != context.org_id or order.is_deleted:
+        raise AppError("采购订单不存在", code=404)
+    if order.status != "draft":
+        raise AppError("只有草稿状态的采购订单可以删除", code=400)
+    order.is_deleted = True
+    order.updated_by = context.id
+    order.version += 1
+    db.commit()
 
 
 def _transition(db: Session, order_id: str, context: UserContext, expected: str, new_status: str) -> PurchaseOrder:

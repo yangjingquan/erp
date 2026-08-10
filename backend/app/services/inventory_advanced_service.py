@@ -389,6 +389,61 @@ def create_location(db: Session, warehouse_id: str, zone_id: str | None, payload
     return row
 
 
+def update_location(db: Session, location_id: str, payload, context: UserContext) -> InvLocation:
+    row = db.scalar(
+        select(InvLocation).where(
+            InvLocation.id == location_id,
+            InvLocation.org_id == context.org_id,
+            InvLocation.is_deleted.is_(False),
+        )
+    )
+    if row is None:
+        raise AppError("库位不存在", code=404)
+    assert_warehouse_access(context, row.warehouse_id)
+    duplicate = db.scalar(
+        select(InvLocation).where(
+            InvLocation.org_id == context.org_id,
+            InvLocation.warehouse_id == row.warehouse_id,
+            InvLocation.code == payload.code,
+            InvLocation.id != location_id,
+            InvLocation.is_deleted.is_(False),
+        )
+    )
+    if duplicate is not None:
+        raise AppError("同一仓库内库位编码已存在", code=409)
+    row.code = payload.code
+    row.name = payload.name
+    row.status = payload.status
+    row.version += 1
+    write_operation_log(db, user=context.user, action="update", resource="inv_location", target_id=row.id)
+    return row
+
+
+def delete_location(db: Session, location_id: str, context: UserContext) -> None:
+    row = db.scalar(
+        select(InvLocation).where(
+            InvLocation.id == location_id,
+            InvLocation.org_id == context.org_id,
+            InvLocation.is_deleted.is_(False),
+        )
+    )
+    if row is None:
+        raise AppError("库位不存在", code=404)
+    assert_warehouse_access(context, row.warehouse_id)
+    occupied = db.scalar(
+        select(InvCostLayer.id).where(
+            InvCostLayer.location_id == location_id,
+            InvCostLayer.remaining_quantity > 0,
+            InvCostLayer.is_deleted.is_(False),
+        )
+    )
+    if occupied is not None:
+        raise AppError("库位仍有可用库存，暂不能删除", code=400)
+    row.is_deleted = True
+    row.version += 1
+    write_operation_log(db, user=context.user, action="delete", resource="inv_location", target_id=row.id)
+
+
 def create_batch(db: Session, material_id: str, payload, context: UserContext) -> InvBatch:
     _require_material(db, material_id, context)
     if payload.production_date and payload.expiry_date and payload.expiry_date < payload.production_date:
@@ -414,6 +469,60 @@ def create_batch(db: Session, material_id: str, payload, context: UserContext) -
     db.flush()
     write_operation_log(db, user=context.user, action="create", resource="inv_batch", target_id=row.id)
     return row
+
+
+def update_batch(db: Session, batch_id: str, payload, context: UserContext) -> InvBatch:
+    row = db.scalar(
+        select(InvBatch).where(
+            InvBatch.id == batch_id,
+            InvBatch.org_id == context.org_id,
+            InvBatch.is_deleted.is_(False),
+        )
+    )
+    if row is None:
+        raise AppError("批次不存在", code=404)
+    duplicate = db.scalar(
+        select(InvBatch).where(
+            InvBatch.org_id == context.org_id,
+            InvBatch.material_id == row.material_id,
+            InvBatch.batch_no == payload.batch_no,
+            InvBatch.id != batch_id,
+            InvBatch.is_deleted.is_(False),
+        )
+    )
+    if duplicate is not None:
+        raise AppError("物料批次号已存在", code=409)
+    row.batch_no = payload.batch_no
+    row.production_date = payload.production_date
+    row.expiry_date = payload.expiry_date
+    row.status = payload.status
+    row.version += 1
+    write_operation_log(db, user=context.user, action="update", resource="inv_batch", target_id=row.id)
+    return row
+
+
+def delete_batch(db: Session, batch_id: str, context: UserContext) -> None:
+    row = db.scalar(
+        select(InvBatch).where(
+            InvBatch.id == batch_id,
+            InvBatch.org_id == context.org_id,
+            InvBatch.is_deleted.is_(False),
+        )
+    )
+    if row is None:
+        raise AppError("批次不存在", code=404)
+    occupied = db.scalar(
+        select(InvCostLayer.id).where(
+            InvCostLayer.batch_id == batch_id,
+            InvCostLayer.remaining_quantity > 0,
+            InvCostLayer.is_deleted.is_(False),
+        )
+    )
+    if occupied is not None:
+        raise AppError("批次仍有可用库存，暂不能删除", code=400)
+    row.is_deleted = True
+    row.version += 1
+    write_operation_log(db, user=context.user, action="delete", resource="inv_batch", target_id=row.id)
 
 
 def _assert_new_source(

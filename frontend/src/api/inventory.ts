@@ -47,6 +47,14 @@ export function createInventoryCount(payload: InventoryCountPayload) {
   return http.post("/inventory/counts", payload);
 }
 
+export function updateInventoryCount(countId: string, payload: InventoryCountPayload) {
+  return http.put(`/inventory/counts/${countId}`, payload);
+}
+
+export function deleteInventoryCount(countId: string) {
+  return http.delete(`/inventory/counts/${countId}`);
+}
+
 export function completeInventoryCount(countId: string) {
   return http.post(`/inventory/counts/${countId}/complete`);
 }

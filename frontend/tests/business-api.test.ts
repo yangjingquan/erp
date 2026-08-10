@@ -1,14 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getMock, postMock } = vi.hoisted(() => ({
+const { deleteMock, getMock, postMock, putMock } = vi.hoisted(() => ({
+  deleteMock: vi.fn(),
   getMock: vi.fn(),
   postMock: vi.fn(),
+  putMock: vi.fn(),
 }));
 
 vi.mock("../src/api/http", () => ({
   http: {
     get: getMock,
     post: postMock,
+    put: putMock,
+    delete: deleteMock,
   },
 }));
 
@@ -24,8 +28,18 @@ import {
   approvePurchaseOrder,
   createPurchaseOrder,
   createPurchaseReceipt,
+  deletePurchaseOrder,
   listPurchaseOrders,
+  createPurchaseRequest,
+  deletePurchaseRequest,
+  listPurchaseRequests,
   submitPurchaseOrder,
+  updatePurchaseOrder,
+  updatePurchaseRequest,
+  createPurchaseReturn,
+  deletePurchaseReturn,
+  listPurchaseReturns,
+  updatePurchaseReturn,
 } from "../src/api/purchase";
 import {
   approveInventoryTransfer,
@@ -109,6 +123,39 @@ describe("一期业务 API 路由", () => {
     expect(postMock).toHaveBeenNthCalledWith(2, "/purchase/orders/purchase-1/submit");
     expect(postMock).toHaveBeenNthCalledWith(3, "/purchase/orders/purchase-1/approve");
     expect(postMock).toHaveBeenNthCalledWith(4, "/purchase/orders/purchase-1/create-receipt");
+  });
+
+  it("uses the purchase request CRUD endpoints", async () => {
+    const payload = { supplier_id: "supplier-1", request_date: "2026-08-10", items: [{ material_id: "material-1", quantity: 2, estimated_price: 5 }] };
+
+    await listPurchaseRequests();
+    await createPurchaseRequest(payload);
+    await updatePurchaseRequest("request-1", payload);
+    await deletePurchaseRequest("request-1");
+
+    expect(getMock).toHaveBeenCalledWith("/purchase/requests");
+    expect(postMock).toHaveBeenCalledWith("/purchase/requests", payload);
+    expect(putMock).toHaveBeenCalledWith("/purchase/requests/request-1", payload);
+    expect(deleteMock).toHaveBeenCalledWith("/purchase/requests/request-1");
+  });
+
+  it("uses the purchase order and return CRUD endpoints", async () => {
+    const orderPayload = { supplier_id: "supplier-1", order_date: "2026-08-10", items: [{ material_id: "material-1", quantity: 2, unit_price: 5 }] };
+    const returnPayload = { supplier_id: "supplier-1", warehouse_id: "warehouse-1", return_date: "2026-08-10", items: [{ material_id: "material-1", quantity: 1, unit_price: 5 }] };
+
+    await updatePurchaseOrder("order-1", orderPayload);
+    await deletePurchaseOrder("order-1");
+    await listPurchaseReturns();
+    await createPurchaseReturn(returnPayload);
+    await updatePurchaseReturn("return-1", returnPayload);
+    await deletePurchaseReturn("return-1");
+
+    expect(putMock).toHaveBeenCalledWith("/purchase/orders/order-1", orderPayload);
+    expect(deleteMock).toHaveBeenCalledWith("/purchase/orders/order-1");
+    expect(getMock).toHaveBeenCalledWith("/purchase/returns");
+    expect(postMock).toHaveBeenCalledWith("/purchase/returns", returnPayload);
+    expect(putMock).toHaveBeenCalledWith("/purchase/returns/return-1", returnPayload);
+    expect(deleteMock).toHaveBeenCalledWith("/purchase/returns/return-1");
   });
 
   it("reserves all inventory list and transaction endpoints", async () => {

@@ -61,7 +61,7 @@ onMounted(async () => {
     <el-page-header content="人事员工档案" />
     <el-card shadow="never">
       <div class="toolbar"><div><strong>员工信息</strong><span>维护员工资料与系统登录账号</span></div><div><el-button v-if="canManage()" type="primary" @click="openCreate">新增员工</el-button><el-button :loading="loading" @click="load">刷新</el-button></div></div>
-      <el-table v-loading="loading" :data="rows" stripe>
+      <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
         <el-table-column prop="employee_no" label="工号" min-width="120" />
         <el-table-column prop="name" label="姓名" min-width="120" />
         <el-table-column label="部门" min-width="140"><template #default="scope">{{ departments.find((item) => item.id === scope.row.department_id)?.name || "-" }}</template></el-table-column>

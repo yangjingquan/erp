@@ -19,6 +19,10 @@ class PurchaseOrderCreate(BaseModel):
     items: list[PurchaseOrderItemCreate] = Field(min_length=1)
 
 
+class PurchaseOrderUpdate(PurchaseOrderCreate):
+    pass
+
+
 class PurchaseRequestItemCreate(BaseModel):
     material_id: str
     quantity: Decimal = Field(gt=0)
@@ -32,9 +36,17 @@ class PurchaseRequestCreate(BaseModel):
     items: list[PurchaseRequestItemCreate] = Field(min_length=1)
 
 
+class PurchaseRequestUpdate(PurchaseRequestCreate):
+    pass
+
+
 class PurchaseReturnCreate(BaseModel):
     source_receipt_id: str | None = None
     supplier_id: str
     warehouse_id: str
     return_date: date | None = None
     items: list[PurchaseOrderItemCreate] = Field(min_length=1)
+
+
+class PurchaseReturnUpdate(PurchaseReturnCreate):
+    pass

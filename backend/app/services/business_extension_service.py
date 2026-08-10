@@ -55,7 +55,7 @@ def transition_quote(db: Session, quote_id: str, new_status: str, context: UserC
 
 def serialize_request(row):
     items = _serialize_items(row.items, "estimated_price")
-    return {"id": row.id, "doc_no": row.doc_no, "department_id": row.department_id, "requester_id": row.requester_id, "supplier_id": row.supplier_id, "status": row.status, "request_date": row.request_date.isoformat(), "remark": row.remark, "total_amount": str(_total(row.items)), "items": items}
+    return {"id": row.id, "doc_no": row.doc_no, "department_id": row.department_id, "requester_id": row.requester_id, "supplier_id": row.supplier_id, "status": row.status, "request_date": row.request_date.isoformat(), "remark": row.remark, "created_at": row.created_at.isoformat(timespec="seconds"), "total_amount": str(_total(row.items)), "items": items}
 
 
 def list_requests(db: Session, context: UserContext):
@@ -73,6 +73,41 @@ def create_request(db: Session, payload, context: UserContext):
     return row
 
 
+def update_request(db: Session, request_id: str, payload, context: UserContext):
+    row = db.get(PurchaseRequest, request_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("采购申请不存在", code=404)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的采购申请可以修改", code=400)
+    row.supplier_id = payload.supplier_id
+    row.request_date = payload.request_date
+    row.remark = payload.remark
+    row.items = [
+        PurchaseRequestItem(
+            material_id=item.material_id,
+            quantity=item.quantity,
+            estimated_price=item.estimated_price,
+            line_no=index,
+        )
+        for index, item in enumerate(payload.items, 1)
+    ]
+    row.version += 1
+    row.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_request(db: Session, request_id: str, context: UserContext) -> None:
+    row = db.get(PurchaseRequest, request_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("采购申请不存在", code=404)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的采购申请可以删除", code=400)
+    db.delete(row)
+    db.commit()
+
+
 def transition_request(db: Session, request_id: str, new_status: str, context: UserContext):
     row = db.get(PurchaseRequest, request_id)
     if row is None or row.org_id != context.org_id:
@@ -88,7 +123,7 @@ def transition_request(db: Session, request_id: str, new_status: str, context: U
 
 
 def serialize_return(row):
-    return {"id": row.id, "doc_no": row.doc_no, "status": row.status, "return_date": row.return_date.isoformat(), "total_amount": str(row.total_amount), "customer_id": getattr(row, "customer_id", None), "supplier_id": getattr(row, "supplier_id", None), "warehouse_id": row.warehouse_id}
+    return {"id": row.id, "doc_no": row.doc_no, "status": row.status, "return_date": row.return_date.isoformat(), "created_at": row.created_at.isoformat(timespec="seconds"), "total_amount": str(row.total_amount), "customer_id": getattr(row, "customer_id", None), "supplier_id": getattr(row, "supplier_id", None), "warehouse_id": getattr(row, "warehouse_id", None), "source_delivery_id": getattr(row, "source_delivery_id", None), "source_receipt_id": getattr(row, "source_receipt_id", None), "items": _serialize_items(row.items)}
 
 
 def list_sales_returns(db: Session, context: UserContext):
@@ -113,3 +148,31 @@ def create_purchase_return(db: Session, payload, context: UserContext):
     db.commit()
     db.refresh(row)
     return row
+
+
+def update_purchase_return(db: Session, return_id: str, payload, context: UserContext):
+    row = db.get(PurchaseReturn, return_id)
+    if row is None or row.org_id != context.org_id or row.is_deleted:
+        raise AppError("采购退货单不存在", code=404)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的采购退货单可以修改", code=400)
+    row.source_receipt_id = payload.source_receipt_id
+    row.supplier_id = payload.supplier_id
+    row.warehouse_id = payload.warehouse_id
+    row.return_date = payload.return_date or date.today()
+    create_return_items(row, payload.items, PurchaseReturnItem)
+    row.version += 1
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_purchase_return(db: Session, return_id: str, context: UserContext) -> None:
+    row = db.get(PurchaseReturn, return_id)
+    if row is None or row.org_id != context.org_id or row.is_deleted:
+        raise AppError("采购退货单不存在", code=404)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的采购退货单可以删除", code=400)
+    row.is_deleted = True
+    row.version += 1
+    db.commit()

@@ -12,6 +12,7 @@ from app.models.finance import (
     FinReceipt,
     FinReceiptReconcile,
     FinPayment,
+    FinPaymentReconcile,
     FinVoucher,
     FinVoucherEntry,
     PurchasePayable,
@@ -151,6 +152,8 @@ def reconcile_receivable(db: Session, receipt_id: str, receivable_id: str, amoun
         db.add(FinReceiptReconcile(receipt_id=receipt.id, receivable_id=receivable.id, amount=amount))
     receivable.reconciled_amount += amount
     receivable.status = "settled" if receivable.reconciled_amount == receivable.total_amount else "partial"
+    receipt_reconciled = sum(item.amount for item in receipt.reconciles) + amount
+    receipt.status = "settled" if receipt_reconciled == receipt.amount else "partial"
     db.flush()
 
 
@@ -175,10 +178,28 @@ def reconcile_payable(db: Session, payment_id: str, payable_id: str, amount: Dec
     payable = db.get(PurchasePayable, payable_id)
     if payment is None or payable is None or payment.org_id != context.org_id or payable.org_id != context.org_id:
         raise AppError("付款或应付单不存在", code=404)
-    if amount <= 0 or amount > payable.total_amount - payable.reconciled_amount:
+    if payment.supplier_id != payable.supplier_id:
+        raise AppError("付款供应商与应付供应商不一致", code=400)
+    amount = Decimal(str(amount))
+    payment_reconciled = sum(item.amount for item in payment.reconciles)
+    payable_remaining = payable.total_amount - payable.reconciled_amount
+    payment_remaining = payment.amount - payment_reconciled
+    if amount <= 0 or amount > payable_remaining or amount > payment_remaining:
         raise AppError("核销金额超过可核销余额", code=400)
+    existing = db.scalar(
+        select(FinPaymentReconcile).where(
+            FinPaymentReconcile.payment_id == payment.id,
+            FinPaymentReconcile.payable_id == payable.id,
+        )
+    )
+    if existing:
+        existing.amount += amount
+    else:
+        db.add(FinPaymentReconcile(payment_id=payment.id, payable_id=payable.id, amount=amount))
     payable.reconciled_amount += amount
     payable.status = "settled" if payable.reconciled_amount == payable.total_amount else "partial"
+    payment_reconciled += amount
+    payment.status = "settled" if payment_reconciled == payment.amount else "partial"
     db.flush()
 
 
@@ -346,6 +367,7 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
             "account_name": row.account_name,
             "amount": _money(row.amount),
             "payment_date": row.payment_date.isoformat(),
+            "reconciled_amount": _money(sum(item.amount for item in row.reconciles)),
             "status": row.status,
         }
         for row in rows
@@ -354,6 +376,14 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
 
 def list_expenses(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinExpense).where(FinExpense.org_id == context.org_id).order_by(FinExpense.id.desc())).all()
+    voucher_source_ids = set(
+        db.scalars(
+            select(FinVoucher.source_id).where(
+                FinVoucher.org_id == context.org_id,
+                FinVoucher.source_type == "expense",
+            )
+        ).all()
+    )
     return [
         {
             "id": row.id,
@@ -365,6 +395,7 @@ def list_expenses(db: Session, context: UserContext) -> list[dict]:
             "expense_type": row.expense_type,
             "status": row.status,
             "description": row.description,
+            "voucher_generated": row.id in voucher_source_ids,
         }
         for row in rows
     ]

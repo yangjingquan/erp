@@ -14,6 +14,11 @@ const dialogVisible = ref(false);
 const form = reactive<InventoryTransferPayload>({ from_warehouse_id: "", to_warehouse_id: "", items: [{ material_id: "", quantity: 1, unit_cost: 0 }] });
 const { warehouses, materials, loadOptions } = useMasterOptions();
 
+const statusLabels: Record<string, string> = { draft: "草稿", approved: "已审核", completed: "已完成" };
+function warehouseLabel(id: unknown) { const value = String(id || ""); return warehouses.value.find((option) => option.value === value)?.label || value || "-"; }
+function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
+function statusTagType(status: string) { return ({ draft: "info", approved: "warning", completed: "success" } as Record<string, string>)[status] || "info"; }
+
 function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "库存调拨接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
 async function load() {
   loading.value = true; errorMessage.value = "";
@@ -44,9 +49,12 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
     <el-page-header content="库存调拨" />
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建调拨单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe width="100%" fit><el-table-column prop="doc_no" label="调拨单号" /><el-table-column prop="from_warehouse_id" label="调出仓库" /><el-table-column prop="to_warehouse_id" label="调入仓库" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="180"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button><el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'complete')">完成</el-button></template></el-table-column></el-table>
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column prop="doc_no" label="调拨单号" /><el-table-column label="调出仓库"><template #default="scope">{{ warehouseLabel(scope.row.from_warehouse_id) }}</template></el-table-column><el-table-column label="调入仓库"><template #default="scope">{{ warehouseLabel(scope.row.to_warehouse_id) }}</template></el-table-column><el-table-column label="状态"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="180"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button><el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'complete')">完成</el-button></template></el-table-column></el-table>
     <el-dialog v-model="dialogVisible" title="新建调拨单" width="520px"><el-form label-width="100px"><el-form-item label="调出仓库" required><el-select v-model="form.from_warehouse_id" filterable clearable style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="调入仓库" required><el-select v-model="form.to_warehouse_id" filterable clearable style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item label="单位成本"><el-input-number v-model="form.items[0].unit_cost" :min="0" :precision="2" /></el-form-item></el-form><template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template></el-dialog>
   </section>
 </template>
 
-<style scoped>.toolbar { margin: 16px 0; }</style>
+<style scoped>
+.toolbar { margin: 16px 0; }
+.status-tag { border-width: 1px; }
+</style>

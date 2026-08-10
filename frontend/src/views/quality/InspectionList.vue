@@ -15,14 +15,40 @@ const closeVisible = ref(false);
 const sourceLoading = ref(false);
 const selected = ref<Row | null>(null);
 const sourceDocuments = ref<Array<{ label: string; value: string }>>([]);
+const sourceDocumentNames = ref<Record<string, string>>({});
 const createForm = reactive({ inspection_type: "incoming", source_type: "purchase_receipt", source_id: "" });
 const resultForm = reactive({ item: "appearance", value: "pass", passed: true });
 const closeForm = reactive({ disposition: "accept" });
 
 function listFrom(response: any, fallbackMessage = "质量检验接口返回失败") { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || fallbackMessage); return Array.isArray(response?.data?.data) ? response.data.data : []; }
+const inspectionTypeLabels: Record<string, string> = { incoming: "来料检验", process: "过程检验", finished: "成品检验" };
+const sourceTypeLabels: Record<string, string> = { purchase_receipt: "采购入库单", mfg_work_order: "生产工单" };
+const resultLabels: Record<string, string> = { passed: "合格", failed: "不合格" };
+const dispositionLabels: Record<string, string> = { accept: "接受", rework: "返工", scrap: "报废" };
+const statusLabels: Record<string, string> = { draft: "草稿", submitted: "已提交", closed: "已关闭" };
+function labelOf(value: unknown, labels: Record<string, string>) { const key = String(value || ""); return labels[key] || key || "-"; }
 function sourceTypeForInspection(inspectionType: string) { return inspectionType === "incoming" ? "purchase_receipt" : "mfg_work_order"; }
-function sourceTypeLabel(sourceType: string) { return sourceType === "purchase_receipt" ? "采购入库单" : "生产工单"; }
+function sourceTypeLabel(sourceType: string) { return labelOf(sourceType, sourceTypeLabels); }
+function inspectionTypeLabel(inspectionType: string) { return labelOf(inspectionType, inspectionTypeLabels); }
+function resultLabel(result: string) { return result ? labelOf(result, resultLabels) : "待检验"; }
+function dispositionLabel(disposition: string) { return disposition ? labelOf(disposition, dispositionLabels) : "待处置"; }
+function statusLabel(status: string) { return labelOf(status, statusLabels); }
+function statusTagType(status: string) { return ({ draft: "info", submitted: "warning", closed: "success" } as Record<string, string>)[status] || "info"; }
+function resultTagType(result: string) { return result === "passed" ? "success" : result === "failed" ? "danger" : "info"; }
+function sourceDocumentKey(sourceType: unknown, sourceId: unknown) { return `${String(sourceType || "")}:${String(sourceId || "")}`; }
+function sourceDocumentLabel(row: Row) { return sourceDocumentNames.value[sourceDocumentKey(row.source_type, row.source_id)] || row.source_id || "-"; }
 function sourceStatusLabel(status: string) { return ({ draft: "草稿", released: "已下达", in_progress: "生产中", completed: "已完成" } as Record<string, string>)[status] || status || "未知"; }
+async function loadSourceNames() {
+  try {
+    const [purchaseResponse, workOrderResponse] = await Promise.all([listPurchaseReceipts(), listWorkOrders()]);
+    const map: Record<string, string> = {};
+    for (const row of listFrom(purchaseResponse, "采购入库单加载失败")) map[sourceDocumentKey("purchase_receipt", row.id)] = row.doc_no || String(row.id);
+    for (const row of listFrom(workOrderResponse, "生产工单加载失败")) map[sourceDocumentKey("mfg_work_order", row.id)] = row.doc_no || String(row.id);
+    sourceDocumentNames.value = map;
+  } catch {
+    sourceDocumentNames.value = {};
+  }
+}
 async function loadSourceDocuments() {
   sourceLoading.value = true;
   sourceDocuments.value = [];
@@ -67,7 +93,7 @@ async function close() {
   catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "检验关闭失败"); }
   finally { saving.value = false; }
 }
-onMounted(load);
+onMounted(async () => { await Promise.all([load(), loadSourceNames()]); });
 </script>
 
 <template>
@@ -75,8 +101,8 @@ onMounted(load);
     <el-page-header content="质量检验" />
     <el-space><el-button type="primary" @click="openCreate">新建检验单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert title="检验单必须先录入结构化结果，再选择处置结论关闭；不合格结果会自动生成不合格记录。" type="info" show-icon />
-    <el-table v-loading="loading" :data="rows" stripe>
-      <el-table-column prop="inspection_type" label="检验类型" width="130" /><el-table-column prop="source_type" label="来源类型" width="180" class-name="nowrap-column" /><el-table-column prop="source_id" label="来源单据" min-width="180" /><el-table-column prop="result" label="结果" width="100" /><el-table-column prop="disposition" label="处置" width="100" /><el-table-column prop="status" label="状态" width="100" />
+    <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+      <el-table-column label="检验类型" width="130"><template #default="scope">{{ inspectionTypeLabel(scope.row.inspection_type) }}</template></el-table-column><el-table-column label="来源类型" width="180" class-name="nowrap-column"><template #default="scope">{{ sourceTypeLabel(scope.row.source_type) }}</template></el-table-column><el-table-column label="来源单据" min-width="180"><template #default="scope">{{ sourceDocumentLabel(scope.row) }}</template></el-table-column><el-table-column label="结果" width="100"><template #default="scope"><el-tag class="status-tag" :type="resultTagType(scope.row.result)" effect="light">{{ resultLabel(scope.row.result) }}</el-tag></template></el-table-column><el-table-column label="处置" width="100"><template #default="scope">{{ dispositionLabel(scope.row.disposition) }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openResult(scope.row)">录入结果</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="openClose(scope.row)">关闭检验</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无检验单" /></template>
     </el-table>
@@ -86,4 +112,12 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }.nowrap-column :deep(.cell) { white-space: nowrap; }</style>
+<style scoped>
+.page-stack { display: flex; flex-direction: column; gap: 16px; }
+.nowrap-column :deep(.cell) { white-space: nowrap; }
+.status-tag { border-width: 1px; }
+.status-tag.el-tag--success { background: var(--erp-green-bg); border-color: var(--erp-green); color: var(--erp-green); }
+.status-tag.el-tag--warning { background: var(--erp-amber-bg); border-color: var(--erp-amber); color: var(--erp-amber); }
+.status-tag.el-tag--info { background: var(--erp-panel-soft); border-color: var(--erp-border); color: var(--erp-muted-text); }
+.status-tag.el-tag--danger { background: var(--erp-danger-bg, #f8e4dc); border-color: var(--erp-danger); color: var(--erp-danger); }
+</style>

@@ -7,19 +7,21 @@ from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.response import ok
 from app.models.purchase import PurchaseReceipt
-from app.schemas.purchase import PurchaseOrderCreate, PurchaseRequestCreate, PurchaseReturnCreate
+from app.schemas.purchase import PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseRequestCreate, PurchaseRequestUpdate, PurchaseReturnCreate, PurchaseReturnUpdate
 from app.services.auth_service import UserContext
 from app.services.purchase_service import (
     approve_purchase_order,
     create_purchase_order,
     create_receipt_from_order,
+    delete_purchase_order,
     list_purchase_orders,
     serialize_order,
     submit_purchase_order,
+    update_purchase_order,
 )
 from app.services.finance_service import create_payable_from_purchase_receipt
 from app.services.inventory_service import complete_purchase_receipt
-from app.services.business_extension_service import create_purchase_return, create_request, list_purchase_returns, list_requests, serialize_request, transition_request
+from app.services.business_extension_service import create_purchase_return, create_request, delete_purchase_return, delete_request, list_purchase_returns, list_requests, serialize_request, serialize_return, transition_request, update_purchase_return, update_request
 
 router = APIRouter(prefix="/api/purchase", tags=["purchase"])
 
@@ -36,6 +38,17 @@ def list_orders(
 @router.post("/orders")
 def create_order(payload: PurchaseOrderCreate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     return ok(serialize_order(create_purchase_order(db, payload, context)))
+
+
+@router.put("/orders/{order_id}")
+def edit_order(order_id: str, payload: PurchaseOrderUpdate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    return ok(serialize_order(update_purchase_order(db, order_id, payload, context)))
+
+
+@router.delete("/orders/{order_id}")
+def remove_order(order_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    delete_purchase_order(db, order_id, context)
+    return ok(msg="采购订单已删除")
 
 
 @router.post("/orders/{order_id}/submit")
@@ -91,6 +104,17 @@ def add_request(payload: PurchaseRequestCreate, context: UserContext = Depends(r
     return ok(serialize_request(create_request(db, payload, context)))
 
 
+@router.put("/requests/{request_id}")
+def edit_request(request_id: str, payload: PurchaseRequestUpdate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    return ok(serialize_request(update_request(db, request_id, payload, context)))
+
+
+@router.delete("/requests/{request_id}")
+def remove_request(request_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    delete_request(db, request_id, context)
+    return ok(msg="采购申请已删除")
+
+
 @router.post("/requests/{request_id}/{action}")
 def request_action(request_id: str, action: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     status = {"submit": "submitted", "approve": "approved", "reject": "rejected"}.get(action)
@@ -108,3 +132,14 @@ def purchase_returns(context: UserContext = Depends(get_current_user), db: Sessi
 def add_purchase_return(payload: PurchaseReturnCreate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     row = create_purchase_return(db, payload, context)
     return ok({"id": row.id, "doc_no": row.doc_no, "status": row.status})
+
+
+@router.put("/returns/{return_id}")
+def edit_purchase_return(return_id: str, payload: PurchaseReturnUpdate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    return ok(serialize_return(update_purchase_return(db, return_id, payload, context)))
+
+
+@router.delete("/returns/{return_id}")
+def remove_purchase_return(return_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    delete_purchase_return(db, return_id, context)
+    return ok(msg="采购退货单已删除")

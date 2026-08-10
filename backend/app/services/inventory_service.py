@@ -338,6 +338,53 @@ def create_count(db: Session, context: UserContext, *, warehouse_id: str, items:
     return count
 
 
+def update_count(db: Session, count_id: str, context: UserContext, *, warehouse_id: str, items: list[dict]) -> InvCount:
+    from app.services.inventory_advanced_service import assert_warehouse_access
+
+    count = db.get(InvCount, count_id)
+    if count is None or count.org_id != context.org_id:
+        raise AppError("盘点单不存在", code=404)
+    if count.status != "draft":
+        raise AppError("只有草稿状态的盘点单可以修改", code=400)
+    assert_warehouse_access(context, warehouse_id)
+    count.warehouse_id = warehouse_id
+    count.items = []
+    for item in items:
+        stock = db.scalar(
+            select(InvStock).where(
+                InvStock.org_id == context.org_id,
+                InvStock.warehouse_id == warehouse_id,
+                InvStock.material_id == item["material_id"],
+            )
+        )
+        system_quantity = stock.quantity if stock else Decimal("0")
+        actual_quantity = Decimal(item["actual_quantity"])
+        count.items.append(
+            InvCountItem(
+                material_id=item["material_id"],
+                system_quantity=system_quantity,
+                actual_quantity=actual_quantity,
+                difference_quantity=actual_quantity - system_quantity,
+                unit_cost=stock.average_cost if stock else Decimal("0"),
+            )
+        )
+    count.version += 1
+    db.flush()
+    return count
+
+
+def delete_count(db: Session, count_id: str, context: UserContext) -> None:
+    from app.services.inventory_advanced_service import assert_warehouse_access
+
+    count = db.get(InvCount, count_id)
+    if count is None or count.org_id != context.org_id:
+        raise AppError("盘点单不存在", code=404)
+    assert_warehouse_access(context, count.warehouse_id)
+    if count.status != "draft":
+        raise AppError("只有草稿状态的盘点单可以删除", code=400)
+    db.delete(count)
+
+
 def complete_count(db: Session, count_id: str, context: UserContext) -> InvCount:
     from app.services.inventory_advanced_service import assert_warehouse_access
 

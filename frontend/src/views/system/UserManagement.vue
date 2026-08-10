@@ -97,7 +97,7 @@ onMounted(load);
     <el-page-header content="用户管理" />
     <el-card shadow="never">
       <div class="toolbar"><div><strong>登录用户</strong><span>维护可登录系统的用户账号、角色和数据范围</span></div><div><el-button type="primary" @click="openCreate">新增用户</el-button><el-button :loading="loading" @click="load">刷新</el-button></div></div>
-      <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
+      <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
         <el-table-column prop="username" label="登录账号" min-width="150" />
         <el-table-column prop="display_name" label="用户名称" min-width="130" />
         <el-table-column label="所属部门" min-width="140"><template #default="scope">{{ departmentName(scope.row.department_id) }}</template></el-table-column>

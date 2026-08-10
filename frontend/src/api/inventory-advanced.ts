@@ -36,5 +36,9 @@ export function processScan(token: string, payload: ScanProcessPayload) {
 
 export function listLocations(warehouseId?: string) { return http.get("/inventory/advanced/locations", { params: warehouseId ? { warehouse_id: warehouseId } : undefined }); }
 export function createLocation(warehouseId: string, payload: { code: string; name: string; status?: string }) { return http.post("/inventory/advanced/locations", payload, { params: { warehouse_id: warehouseId } }); }
+export function updateLocation(locationId: string, payload: { code: string; name: string; status?: string }) { return http.put(`/inventory/advanced/locations/${locationId}`, payload); }
+export function deleteLocation(locationId: string) { return http.delete(`/inventory/advanced/locations/${locationId}`); }
 export function listBatches(materialId?: string) { return http.get("/inventory/advanced/batches", { params: { material_id: materialId } }); }
 export function createBatch(materialId: string, payload: { batch_no: string; production_date?: string | null; expiry_date?: string | null; status?: string }) { return http.post("/inventory/advanced/batches", payload, { params: { material_id: materialId } }); }
+export function updateBatch(batchId: string, payload: { batch_no: string; production_date?: string | null; expiry_date?: string | null; status?: string }) { return http.put(`/inventory/advanced/batches/${batchId}`, payload); }
+export function deleteBatch(batchId: string) { return http.delete(`/inventory/advanced/batches/${batchId}`); }
