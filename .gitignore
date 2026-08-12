@@ -1,3 +1,4 @@
+docs/
 backend/.venv/
 backend/.env
 backend/var/backups/
