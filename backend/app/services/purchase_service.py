@@ -1,10 +1,10 @@
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_today
 from app.models.purchase import PurchaseOrder, PurchaseOrderItem, PurchaseReceipt, PurchaseReceiptItem
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
@@ -162,7 +162,7 @@ def create_receipt_from_order(db: Session, order_id: str, context: UserContext) 
         supplier_id=order.supplier_id,
         warehouse_id=next((item.warehouse_id for item in order.items if item.warehouse_id), "warehouse-1"),
         status="draft",
-        receipt_date=date.today(),
+        receipt_date=local_today(),
         total_amount=order.total_amount,
     )
     receipt.items = [

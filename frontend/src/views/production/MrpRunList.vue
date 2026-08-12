@@ -3,10 +3,11 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createMps, listMps, runMrp } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false); const resultRows = ref<Row[]>([]); const runVisible = ref(false);
-const form = reactive({ material_id: "", warehouse_id: "", plan_date: new Date().toISOString().slice(0, 10), plan_quantity: 1 });
+const form = reactive({ material_id: "", warehouse_id: "", plan_date: localDateString(), plan_quantity: 1 });
 const { materials, warehouses, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { draft: "草稿", planned: "已计划" };
 const resultStatusLabels: Record<string, string> = { pending: "待确认", confirmed: "已确认" };
@@ -16,7 +17,7 @@ function resultStatusTagType(status: string) { return ({ pending: "warning", con
 function materialLabel(materialId: unknown) { const value = String(materialId || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
 function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "MPS 接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listMps()); } catch { ElMessage.error("MPS 列表加载失败"); } finally { loading.value = false; } }
-function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.plan_date = new Date().toISOString().slice(0, 10); form.plan_quantity = 1; dialogVisible.value = true; }
+function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.plan_date = localDateString(); form.plan_quantity = 1; dialogVisible.value = true; }
 async function save() { if (!form.material_id || !form.plan_date || form.plan_quantity <= 0) { ElMessage.warning("请填写计划物料、日期和大于 0 的计划数量"); return; } saving.value = true; try { const response = await createMps({ ...form, warehouse_id: form.warehouse_id || null }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("MPS 计划已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "MPS 创建失败"); } finally { saving.value = false; } }
 async function execute(row: Row) { const id = String(row.id || ""); if (!id) return; try { await ElMessageBox.confirm(`确认对计划“${row.doc_no || id}”运行 MRP 吗？`, "操作确认", { type: "warning" }); actionLoading.value = id; const response = await runMrp(id); if (response.data.code !== 0) throw new Error(response.data.msg); resultRows.value = response.data.data?.results || []; runVisible.value = true; ElMessage.success("MRP 运算完成"); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "MRP 运算失败"); } finally { actionLoading.value = null; } }
 onMounted(async () => { await Promise.all([load(), loadOptions(["materials", "warehouses"])]); });

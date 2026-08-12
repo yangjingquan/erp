@@ -2,10 +2,11 @@
 import { onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approvePayroll, calculatePayroll, listPayroll, payPayroll } from "../../api/hr";
+import { localMonthString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const period = ref(new Date().toISOString().slice(0, 7));
+const period = ref(localMonthString());
 const loading = ref(false);
 const saving = ref(false);
 function validPeriod(value: string) { return /^\d{4}-(0[1-9]|1[0-2])$/.test(value); }

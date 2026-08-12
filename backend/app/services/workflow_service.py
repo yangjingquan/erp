@@ -1,9 +1,8 @@
-from datetime import datetime, timezone
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_now
 from app.models.workflow import WfActionLog, WfDefinition, WfInstance, WfNode, WfTask
 from app.services.auth_service import UserContext
 
@@ -143,14 +142,14 @@ def approve_task(db: Session, task_id: str, context: UserContext, comment: str =
     task, instance, definition = _get_task(db, task_id, context)
     task.status = "approved"
     task.comment = comment
-    task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    task.completed_at = local_now()
     nodes = sorted(definition.nodes, key=lambda item: item.sort_order)
     current_index = next(index for index, node in enumerate(nodes) if node.node_key == task.node_key)
     next_node = nodes[current_index + 1] if current_index + 1 < len(nodes) else None
     if next_node is None:
         instance.current_node_key = None
         instance.status = "completed"
-        instance.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        instance.completed_at = local_now()
     else:
         instance.current_node_key = next_node.node_key
         next_task = _task_for_node(instance, next_node)
@@ -164,7 +163,7 @@ def reject_task(db: Session, task_id: str, context: UserContext, comment: str = 
     task, instance, _ = _get_task(db, task_id, context)
     task.status = "rejected"
     task.comment = comment
-    task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    task.completed_at = local_now()
     instance.status = "rejected"
     instance.current_node_key = None
     db.add(WfActionLog(instance_id=instance.id, task_id=task.id, action="reject", user_id=context.id, comment=comment))

@@ -1,5 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.core.time import to_local_naive
 
 class LeadCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
@@ -14,3 +16,8 @@ class OpportunityCreate(BaseModel):
 class FollowUpCreate(BaseModel):
     content: str = Field(min_length=1, max_length=1000)
     occurred_at: datetime
+
+    @field_validator("occurred_at")
+    @classmethod
+    def normalize_occurred_at(cls, value: datetime) -> datetime:
+        return to_local_naive(value)

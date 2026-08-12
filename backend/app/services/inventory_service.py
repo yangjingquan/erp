@@ -1,4 +1,3 @@
-from datetime import date
 from decimal import Decimal
 from uuid import uuid4
 
@@ -6,6 +5,7 @@ from sqlalchemy import false, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_today
 from app.models.inventory import (
     MFG_COMPLETION_SOURCE,
     MFG_MATERIAL_ISSUE_SOURCE,
@@ -48,7 +48,7 @@ PRODUCTION_STOCK_SOURCES = frozenset(
 
 
 def _new_inventory_doc_no(prefix: str) -> str:
-    return f"{prefix}-{date.today():%Y%m%d}-{uuid4().hex.upper()}"
+    return f"{prefix}-{local_today():%Y%m%d}-{uuid4().hex.upper()}"
 
 
 def get_stock_unit_cost(
@@ -117,7 +117,7 @@ def post_stock_transaction(
     from app.services.cost_service import assert_period_open
 
     assert_warehouse_access(context, warehouse_id)
-    assert_period_open(db, context.org_id, date.today())
+    assert_period_open(db, context.org_id, local_today())
     if quantity <= 0 or direction not in {"in", "out"}:
         raise AppError("库存数量或方向无效", code=400)
     duplicate = db.scalar(
@@ -171,7 +171,7 @@ def create_transfer(db: Session, context: UserContext, *, from_warehouse_id: str
         from_warehouse_id=from_warehouse_id,
         to_warehouse_id=to_warehouse_id,
         status="draft",
-        transfer_date=date.today(),
+        transfer_date=local_today(),
         created_by=context.id,
     )
     transfer.items = [InvTransferItem(material_id=item["material_id"], quantity=item["quantity"], unit_cost=item.get("unit_cost", 0)) for item in items]
@@ -316,7 +316,7 @@ def create_count(db: Session, context: UserContext, *, warehouse_id: str, items:
         doc_no=_new_inventory_doc_no("CT"),
         warehouse_id=warehouse_id,
         status="draft",
-        count_date=date.today(),
+        count_date=local_today(),
         created_by=context.id,
     )
     count.items = []

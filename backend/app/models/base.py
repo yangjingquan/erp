@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.time import local_now
 
 
 def new_uuid() -> str:
@@ -19,12 +20,12 @@ class UUIDModel(Base):
 
 class AuditMixin:
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=False), default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False
+        DateTime(timezone=False), default=local_now, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
+        onupdate=local_now,
         nullable=False,
     )
     is_deleted: Mapped[bool] = mapped_column(

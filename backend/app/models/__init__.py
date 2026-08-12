@@ -9,6 +9,14 @@ from app.models.business_extensions import (  # noqa: F401,E402
     SalesReturnItem,
 )
 from app.models.platform import ExtEventOutbox, SysApiClient  # noqa: F401,E402
+from app.models.collaboration import (  # noqa: F401,E402
+    BizAttachment,
+    BizComment,
+    BizDocument,
+    BizDocumentRelation,
+    SysIdempotencyRecord,
+    SysNotification,
+)
 from app.models.cost import CostAllocation, CostPeriodClose, CostProjectEntry  # noqa: F401,E402
 from app.models.crm import CrmContact, CrmFollowUp, CrmLead, CrmOpportunity  # noqa: F401,E402
 from app.models.quality import QaInspection, QaNonconformity, QaPlan  # noqa: F401,E402

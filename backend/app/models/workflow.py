@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import local_now
 from app.models.base import UUIDModel
 
 
@@ -46,7 +47,7 @@ class WfInstance(UUIDModel):
     started_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
         nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
@@ -66,7 +67,7 @@ class WfTask(UUIDModel):
     comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
         nullable=False,
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
@@ -83,6 +84,6 @@ class WfActionLog(UUIDModel):
     comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
         nullable=False,
     )

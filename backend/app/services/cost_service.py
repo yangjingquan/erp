@@ -1,10 +1,11 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal, ROUND_DOWN
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_now, local_today
 from app.models.cost import CostAllocation, CostPeriodClose, CostProjectEntry
 from app.models.inventory import InvStock
 from app.services.audit_service import write_operation_log
@@ -24,7 +25,7 @@ def assert_period_open(db: Session, org_id: str, business_date: date) -> None:
 
 
 def create_allocation(db: Session, payload: dict, context: UserContext) -> CostAllocation:
-    allocation_date = payload.get("allocation_date") or date.today()
+    allocation_date = payload.get("allocation_date") or local_today()
     if isinstance(allocation_date, str):
         allocation_date = date.fromisoformat(allocation_date)
     assert_period_open(db, context.org_id, allocation_date)
@@ -96,7 +97,7 @@ def close_period(db: Session, org_id: str, period: str, context: UserContext) ->
     if row.status == "closed":
         return row
     row.status = "closed"
-    row.closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    row.closed_at = local_now()
     row.closed_by = context.id
     write_operation_log(db, user=context.user, action="close", resource="cost_period_close", target_id=row.id, detail={"period": period})
     db.flush()
@@ -110,7 +111,7 @@ def reopen_period(db: Session, org_id: str, period: str, context: UserContext) -
     if row is None:
         raise AppError("会计期间不存在", code=404)
     row.status = "open"
-    row.reopened_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    row.reopened_at = local_now()
     row.reopened_by = context.id
     write_operation_log(db, user=context.user, action="reopen", resource="cost_period_close", target_id=row.id, detail={"period": period})
     db.flush()

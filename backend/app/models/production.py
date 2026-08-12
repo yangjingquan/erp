@@ -1,9 +1,10 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import Date, ForeignKey, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.time import local_now
 from app.models.base import AuditMixin, UUIDModel
 
 
@@ -231,7 +232,7 @@ class MfgReport(AuditMixin, UUIDModel):
     scrap_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     report_time: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False
+        default=local_now, nullable=False
     )
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     work_order: Mapped[MfgWorkOrder] = relationship(back_populates="reports")

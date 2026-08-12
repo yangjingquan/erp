@@ -1,6 +1,6 @@
 from decimal import Decimal
 import calendar
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -15,11 +15,12 @@ from app.models.quality import QaInspection
 from app.models.master_data import MdMaterial
 from app.models.purchase import PurchaseOrder
 from app.models.sales import SalesOrder
+from app.core.time import local_now, local_today
 from app.services.auth_service import UserContext
 
 
 def _period_bounds(period: str | None) -> tuple[date, date]:
-    selected = period or datetime.now(timezone.utc).strftime("%Y-%m")
+    selected = period or local_today().strftime("%Y-%m")
     try:
         year, month = (int(value) for value in selected.split("-"))
         if month < 1 or month > 12 or len(selected) != 7:
@@ -80,8 +81,8 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         ).order_by(MdMaterial.created_at.desc()).limit(3)
     ).all()
     pending_review = db.scalar(select(func.count()).select_from(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.status == "submitted")) or 0
-    overdue = db.scalar(select(func.count()).select_from(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.status != "settled", SalesReceivable.due_date.is_not(None), SalesReceivable.due_date < date.today())) or 0
-    today = date.today()
+    overdue = db.scalar(select(func.count()).select_from(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.status != "settled", SalesReceivable.due_date.is_not(None), SalesReceivable.due_date < local_today())) or 0
+    today = local_today()
     trend_end = min(end, today) if (end.year, end.month) == (today.year, today.month) else end
     trend_start = max(start, trend_end - timedelta(days=6))
     trend_orders = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(trend_start, trend_end), SalesOrder.status.not_in(["cancelled", "draft"]))).all()
@@ -134,7 +135,7 @@ def dashboard_phase2(db: Session, context: UserContext, period: str, warehouse_i
     quality_count = db.scalar(select(func.count()).select_from(QaInspection).where(QaInspection.org_id == context.org_id, QaInspection.created_at >= start_dt, QaInspection.created_at < end_dt)) or 0
     payroll_total = db.scalar(select(func.coalesce(func.sum(HrPayroll.total_amount), 0)).where(HrPayroll.org_id == context.org_id, HrPayroll.period == period)) or Decimal("0")
     cost_total = db.scalar(select(func.coalesce(func.sum(CostAllocation.amount), 0)).where(CostAllocation.org_id == context.org_id, CostAllocation.period == period, CostAllocation.status != "cancelled")) or Decimal("0")
-    now = datetime.now(timezone.utc).isoformat()
+    now = local_now().isoformat()
     base = {"period": period, "source": "erp operational tables", "updated_at": now}
     return {
         "production": {**base, "total": int(production_count), "unit": "work_orders"},

@@ -3,10 +3,11 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { cancelWorkOrder, completeWorkOrder, createWorkOrder, issueMaterial, listWorkOrders, releaseWorkOrder, reportWork } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false); const actionDialogVisible = ref(false); const actionKind = ref<"issue" | "report">("report"); const selected = ref<Row | null>(null);
-const form = reactive({ material_id: "", warehouse_id: "", quantity: 1, plan_date: new Date().toISOString().slice(0, 10) });
+const form = reactive({ material_id: "", warehouse_id: "", quantity: 1, plan_date: localDateString() });
 const actionForm = reactive({ good_quantity: 0, scrap_quantity: 0, hours: 0, items: [] as Array<{ material_id: string; quantity: number }> });
 const { materials, warehouses, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { draft: "草稿", released: "已下达", in_progress: "进行中", completed: "已完成", cancelled: "已取消" };
@@ -15,7 +16,7 @@ function statusTagType(status: string) { return ({ draft: "info", released: "war
 function materialLabel(materialId: unknown) { const value = String(materialId || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
 function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "生产工单接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listWorkOrders()); } catch { ElMessage.error("生产工单加载失败"); } finally { loading.value = false; } }
-function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.quantity = 1; form.plan_date = new Date().toISOString().slice(0, 10); dialogVisible.value = true; }
+function openCreate() { form.material_id = ""; form.warehouse_id = ""; form.quantity = 1; form.plan_date = localDateString(); dialogVisible.value = true; }
 async function save() { if (!form.material_id || !form.warehouse_id || form.quantity <= 0 || !form.plan_date) { ElMessage.warning("请填写物料、仓库、计划日期和有效数量"); return; } saving.value = true; try { const response = await createWorkOrder(form); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("生产工单已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "生产工单创建失败"); } finally { saving.value = false; } }
 function openAction(row: Row, kind: "issue" | "report") { selected.value = row; actionKind.value = kind; actionForm.good_quantity = 0; actionForm.scrap_quantity = 0; actionForm.hours = 0; actionForm.items = (row.materials || []).map((item: Row) => ({ material_id: item.material_id, quantity: Math.max(Number(item.planned_quantity || 0) - Number(item.issued_quantity || 0), 0) })); actionDialogVisible.value = true; }
 async function saveAction() { const row = selected.value; if (!row?.id) return; if (actionKind.value === "issue" && (actionForm.items.some((item) => item.quantity < 0) || actionForm.items.every((item) => item.quantity <= 0))) { ElMessage.warning("请填写大于 0 的领料数量，且不能超过计划未领数量"); return; } if (actionKind.value === "report" && actionForm.good_quantity + actionForm.scrap_quantity <= 0) { ElMessage.warning("合格数量和报废数量至少填写一项"); return; } saving.value = true; try { const response = actionKind.value === "issue" ? await issueMaterial(row.id, actionForm.items.filter((item) => item.quantity > 0)) : await reportWork(row.id, { good_quantity: actionForm.good_quantity, scrap_quantity: actionForm.scrap_quantity, hours: actionForm.hours }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(actionKind.value === "issue" ? "领料已登记" : "报工已登记"); actionDialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "工单操作失败"); } finally { saving.value = false; } }

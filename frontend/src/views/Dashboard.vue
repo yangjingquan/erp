@@ -6,10 +6,11 @@ import { Bell, CircleCheck, TopRight, Wallet } from "@element-plus/icons-vue";
 
 import { getDashboardOverview } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
+import { localMonthString } from "../utils/time";
 
 const router = useRouter();
 const app = useAppStore();
-const period = ref(new Date().toISOString().slice(0, 7));
+const period = ref(localMonthString());
 const loading = ref(false);
 const errorMessage = ref("");
 type DashboardOverview = {
@@ -34,7 +35,7 @@ const periodOptions = computed(() => Array.from({ length: 12 }, (_, index) => {
   const dateValue = new Date();
   dateValue.setDate(1);
   dateValue.setMonth(dateValue.getMonth() - index);
-  return dateValue.toISOString().slice(0, 7);
+  return localMonthString(dateValue);
 }));
 
 const periodLabel = computed(() => {

@@ -20,6 +20,7 @@ import { useAppStore } from "../stores/app";
 import { useAuthStore } from "../stores/auth";
 import { usePermissionStore } from "../stores/permission";
 import { globalSearch } from "../api/search";
+import NotificationCenter from "../components/NotificationCenter.vue";
 
 const app = useAppStore();
 const auth = useAuthStore();
@@ -191,6 +192,7 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           @select="selectResult"
         />
         <span class="spacer" />
+        <NotificationCenter />
         <el-button class="top-action" text @click="app.toggleTheme"><el-icon><Sunny /></el-icon>{{ app.theme === "light" ? "暖石" : "浅色" }}</el-button>
         <el-button class="top-action" text><el-icon><QuestionFilled /></el-icon>帮助</el-button>
         <el-dropdown>

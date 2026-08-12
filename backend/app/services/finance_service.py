@@ -1,4 +1,3 @@
-from datetime import date, datetime
 from decimal import Decimal
 from uuid import uuid4
 
@@ -7,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_now, local_today
 from app.models.finance import (
     FinExpense,
     FinReceipt,
@@ -26,7 +26,7 @@ from app.services.auth_service import UserContext
 
 def _new_finance_doc_no(prefix: str, context: UserContext) -> str:
     """Build a human-readable finance number with a collision-resistant suffix."""
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    timestamp = local_now().strftime("%Y%m%d%H%M%S%f")
     return f"{prefix}-{context.id[:8]}-{timestamp}-{uuid4().hex[:8]}"
 
 
@@ -122,7 +122,7 @@ def create_receipt(db: Session, context: UserContext, *, customer_id: str, amoun
         doc_no=_new_finance_doc_no("RC", context),
         customer_id=customer_id,
         amount=amount,
-        receipt_date=date.today(),
+        receipt_date=local_today(),
         status="confirmed",
     )
     db.add(receipt)
@@ -165,7 +165,7 @@ def create_payment(db: Session, context: UserContext, *, supplier_id: str, amoun
         doc_no=_new_finance_doc_no("PY", context),
         supplier_id=supplier_id,
         amount=amount,
-        payment_date=date.today(),
+        payment_date=local_today(),
         status="confirmed",
     )
     db.add(payment)
@@ -206,14 +206,14 @@ def reconcile_payable(db: Session, payment_id: str, payable_id: str, amount: Dec
 def create_expense(db: Session, context: UserContext, *, amount: Decimal, expense_type: str, description: str = "") -> FinExpense:
     from app.services.cost_service import assert_period_open
 
-    assert_period_open(db, context.org_id, date.today())
+    assert_period_open(db, context.org_id, local_today())
     expense = FinExpense(
         org_id=context.org_id,
         doc_no=_new_finance_doc_no("EX", context),
         applicant_id=context.id,
         department_id=context.department_id,
         amount=amount,
-        expense_date=date.today(),
+        expense_date=local_today(),
         expense_type=expense_type,
         status="draft",
         description=description,
@@ -282,8 +282,8 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
     voucher = FinVoucher(
         org_id=context.org_id,
         voucher_no=_new_finance_doc_no("FV", context),
-        voucher_date=date.today(),
-        period=date.today().strftime("%Y-%m"),
+        voucher_date=local_today(),
+        period=local_today().strftime("%Y-%m"),
         source_type=source_type,
         source_id=source_id,
         status="draft",

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.core.config import get_settings
+from app.core.time import local_today
 from app.models.configuration import CfgGlobalParameter
 from app.models.inventory import InvStock, InvStockTransaction
 from app.models.inventory_advanced import (
@@ -349,7 +350,7 @@ def _require_batch(
     )
     if batch is None:
         raise AppError("批次不存在、不属于当前物料或已停用", code=404)
-    if batch.expiry_date is not None and batch.expiry_date < date.today():
+    if batch.expiry_date is not None and batch.expiry_date < local_today():
         raise AppError("批次已过期", code=400)
     return batch
 
@@ -549,7 +550,7 @@ def post_fifo_inbound(
     from app.services.cost_service import assert_period_open
 
     quantity = _decimal(quantity)
-    assert_period_open(db, context.org_id, date.today())
+    assert_period_open(db, context.org_id, local_today())
     unit_cost = _decimal(unit_cost)
     if quantity <= 0 or unit_cost < 0:
         raise AppError("入库数量或单位成本无效", code=400)
@@ -589,7 +590,7 @@ def post_fifo_outbound(
     from app.services.cost_service import assert_period_open
 
     quantity = _decimal(quantity)
-    assert_period_open(db, context.org_id, date.today())
+    assert_period_open(db, context.org_id, local_today())
     if quantity <= 0:
         raise AppError("出库数量无效", code=400)
     _require_warehouse(db, warehouse_id, context)

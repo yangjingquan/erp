@@ -3,10 +3,11 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approveBom, createBom, disableBom, listBoms, submitBom } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const dialogVisible = ref(false);
-const form = reactive({ material_id: "", bom_version: "1.0", effective_from: new Date().toISOString().slice(0, 10), effective_to: "", items: [{ material_id: "", quantity: 1 }] });
+const form = reactive({ material_id: "", bom_version: "1.0", effective_from: localDateString(), effective_to: "", items: [{ material_id: "", quantity: 1 }] });
 const { materials, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { draft: "草稿", submitted: "已提交", approved: "已审核", disabled: "已停用" };
 function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
@@ -14,7 +15,7 @@ function statusTagType(status: string) { return ({ draft: "info", submitted: "wa
 function materialLabel(materialId: unknown) { const value = String(materialId || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
 function listFrom(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "BOM 接口返回失败"); return Array.isArray(response?.data?.data) ? response.data.data : []; }
 async function load() { loading.value = true; try { rows.value = listFrom(await listBoms()); } catch { ElMessage.error("BOM 列表加载失败"); } finally { loading.value = false; } }
-function reset() { form.material_id = ""; form.bom_version = "1.0"; form.effective_from = new Date().toISOString().slice(0, 10); form.effective_to = ""; form.items = [{ material_id: "", quantity: 1 }]; }
+function reset() { form.material_id = ""; form.bom_version = "1.0"; form.effective_from = localDateString(); form.effective_to = ""; form.items = [{ material_id: "", quantity: 1 }]; }
 function openCreate() { reset(); dialogVisible.value = true; }
 async function save() { if (!form.material_id || !form.items[0]?.material_id || form.items[0].quantity <= 0 || !form.effective_from) { ElMessage.warning("请填写成品、组件、数量和生效日期"); return; } saving.value = true; try { const response = await createBom({ ...form, effective_to: form.effective_to || null }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("BOM 已创建"); dialogVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "BOM 创建失败"); } finally { saving.value = false; } }
 async function action(row: Row, kind: "submit" | "approve" | "disable") { const id = String(row.id || ""); if (!id) return; const labels = { submit: "提交 BOM", approve: "审核 BOM", disable: "停用 BOM" }; try { await ElMessageBox.confirm(`确认${labels[kind]}“${row.bom_version || id}”吗？`, "操作确认", { type: "warning" }); actionLoading.value = id; const response = kind === "submit" ? await submitBom(id) : kind === "approve" ? await approveBom(id) : await disableBom(id); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success(`${labels[kind]}成功`); await load(); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${labels[kind]}失败`); } finally { actionLoading.value = null; } }

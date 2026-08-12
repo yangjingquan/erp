@@ -26,10 +26,12 @@ from app.api.crm import router as crm_router
 from app.api.quality import router as quality_router
 from app.api.hr import router as hr_router
 from app.api.platform import router as platform_router
+from app.api.documents import notification_router, router as documents_router
 from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_context import RequestContextMiddleware
+from app.middleware.idempotency import IdempotencyMiddleware
 from app.services.startup_check import check_schema
 from app.services.runtime_migrations import (
     ensure_api_client_schema,
@@ -73,6 +75,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -102,3 +105,5 @@ app.include_router(crm_router)
 app.include_router(quality_router)
 app.include_router(hr_router)
 app.include_router(platform_router)
+app.include_router(documents_router)
+app.include_router(notification_router)

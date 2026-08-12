@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.core.time import local_today
+
 
 class AllocationItem(BaseModel):
     project_id: str = Field(min_length=1, max_length=36)
@@ -13,7 +15,7 @@ class AllocationItem(BaseModel):
 
 
 class CostAllocationCreate(BaseModel):
-    allocation_date: date = date.today()
+    allocation_date: date = Field(default_factory=local_today)
     amount: Decimal = Field(gt=0)
     basis: Literal["quantity", "amount", "hours"]
     source_type: str = Field(default="expense", min_length=1, max_length=64)

@@ -1,11 +1,11 @@
 from collections import OrderedDict
-from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import AppError
+from app.core.time import local_now
 from app.models.inventory import InvStock
 from app.models.master_data import MdMaterial, MdWarehouse
 from app.models.production import MfgBom, MfgBomItem, MfgMps, MfgMrpResult, MfgMrpRun
@@ -480,7 +480,7 @@ def confirm_mrp_result(db: Session, result_id: str, context: UserContext) -> dic
     if result.net_requirement <= 0:
         raise AppError("净需求为零，无需确认", code=400)
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = local_now()
     request = PurchaseRequest(
         org_id=context.org_id,
         doc_no=next_doc_no(db, "purchase_request", context.org_id, now.date()),

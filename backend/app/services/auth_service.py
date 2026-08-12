@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, and_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -143,7 +143,7 @@ def data_scope_condition(model, user: object, scope_type: str = "department"):
         conditions.append(model.owner_id == getattr(user, "id"))
     elif scope_type == "department" and hasattr(model, "department_id"):
         conditions.append(model.department_id == getattr(user, "department_id"))
-    return or_(*conditions)
+    return and_(*conditions)
 
 
 def apply_data_scope(statement: Select, model, context: UserContext, scope_type=None):

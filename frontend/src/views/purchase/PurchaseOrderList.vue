@@ -13,6 +13,7 @@ import {
   type PurchaseOrderPayload,
 } from "../../api/purchase";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { formatLocalDateTime, localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
@@ -26,7 +27,7 @@ const selected = ref<Row | null>(null);
 const editingId = ref<string | null>(null);
 const form = reactive<PurchaseOrderPayload>({
   supplier_id: "",
-  order_date: new Date().toISOString().slice(0, 10),
+  order_date: localDateString(),
   expected_date: null,
   items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }],
 });
@@ -68,11 +69,6 @@ function statusTagType(status: string) {
   return ({ draft: "info", submitted: "warning", approved: "success", rejected: "danger", cancelled: "danger" } as Record<string, string>)[status] || "info";
 }
 
-function formatDateTime(value: unknown) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 19);
-}
-
 async function load() {
   loading.value = true;
   errorMessage.value = "";
@@ -88,7 +84,7 @@ async function load() {
 function resetForm() {
   editingId.value = null;
   form.supplier_id = "";
-  form.order_date = new Date().toISOString().slice(0, 10);
+  form.order_date = localDateString();
   form.expected_date = null;
   form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }];
 }
@@ -100,7 +96,7 @@ function copyToForm(row: Row) {
   editingId.value = null;
   const item = row.items?.[0];
   form.supplier_id = row.supplier_id || "";
-  form.order_date = row.order_date || new Date().toISOString().slice(0, 10);
+  form.order_date = row.order_date || localDateString();
   form.expected_date = row.expected_date || null;
   form.items = [{ material_id: item?.material_id || "", quantity: Number(item?.quantity || 1), unit_price: Number(item?.unit_price || 0), warehouse_id: item?.warehouse_id || null, tax_rate: Number(item?.tax_rate || 0) }];
   dialogVisible.value = true;
@@ -166,7 +162,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
-      <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template></el-table-column>
+      <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
       <el-table-column label="操作" width="300"><template #default="scope">
         <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button><el-button link @click="copyToForm(scope.row)">复制填充</el-button>
         <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>

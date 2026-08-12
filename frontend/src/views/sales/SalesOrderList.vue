@@ -2,19 +2,23 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import {
-  approveSalesOrder,
-  createSalesDelivery,
-  createSalesOrder,
-  listSalesOrders,
-  submitSalesOrder,
-  type SalesOrderPayload,
-} from "../../api/sales";
+import { createSalesOrder, type SalesOrderPayload } from "../../api/sales";
+import { getDocumentWorkspace, listDocuments, runDocumentCommand } from "../../api/documents";
+import DocumentListWorkbench from "../../components/DocumentListWorkbench.vue";
+import DocumentWorkbench from "../../components/DocumentWorkbench.vue";
+import StatusTag from "../../components/StatusTag.vue";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { formatLocalDateTime, localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
-
 const rows = ref<Row[]>([]);
+const summary = ref<Row>({});
+const total = ref(0);
+const page = ref(1);
+const pageSize = ref(20);
+const keyword = ref("");
+const status = ref("");
+const dateRange = ref<string[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -22,135 +26,99 @@ const errorMessage = ref("");
 const dialogVisible = ref(false);
 const detailVisible = ref(false);
 const selected = ref<Row | null>(null);
-const form = reactive<SalesOrderPayload>({
-  customer_id: "",
-  order_date: new Date().toISOString().slice(0, 10),
-  expected_date: null,
-  remark: "",
-  items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }],
-});
+const form = reactive<SalesOrderPayload>({ customer_id: "", order_date: localDateString(), expected_date: null, remark: "", items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }] });
 const { customers, materials, loadOptions } = useMasterOptions();
 
-function listFrom(response: any): Row[] {
+function unwrap(response: any): Row {
   if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "销售订单接口返回失败");
-  const data = response?.data?.data;
-  return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+  return response.data.data;
 }
 
 async function load() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    rows.value = listFrom(await listSalesOrders());
+    const data = unwrap(await listDocuments({ business_type: "sales_order", status: status.value || undefined, keyword: keyword.value.trim() || undefined, date_from: dateRange.value[0], date_to: dateRange.value[1], page: page.value, page_size: pageSize.value, sort: "-updated_at" }));
+    rows.value = data.items || [];
+    total.value = Number(data.total || 0);
+    summary.value = data.summary || {};
   } catch (error) {
-    errorMessage.value = "销售订单加载失败，请检查接口服务后重试";
+    errorMessage.value = error instanceof Error ? error.message : "销售订单加载失败，请检查接口服务后重试";
   } finally {
     loading.value = false;
   }
 }
 
-function resetForm() {
-  form.customer_id = "";
-  form.order_date = new Date().toISOString().slice(0, 10);
-  form.expected_date = null;
-  form.remark = "";
-  form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }];
-}
+function resetForm() { form.customer_id = ""; form.order_date = localDateString(); form.expected_date = null; form.remark = ""; form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }]; }
+function openCreate() { selected.value = null; resetForm(); dialogVisible.value = true; }
+function openDetail(row: Row) { selected.value = row; detailVisible.value = true; }
+function search() { page.value = 1; load(); }
+function resetFilters() { keyword.value = ""; status.value = ""; dateRange.value = []; page.value = 1; load(); }
 
-function openCreate() {
-  selected.value = null;
-  resetForm();
-  dialogVisible.value = true;
-}
-
-function openDetail(row: Row) {
-  selected.value = row;
-  detailVisible.value = true;
-}
-
-function copyToForm(row: Row) {
-  const item = row.items?.[0];
-  form.customer_id = row.customer_id || "";
-  form.order_date = row.order_date || new Date().toISOString().slice(0, 10);
-  form.expected_date = row.expected_date || null;
-  form.remark = row.remark || "复制自 " + (row.doc_no || "订单");
-  form.items = [{
-    material_id: item?.material_id || "",
-    quantity: Number(item?.quantity || 1),
-    unit_price: Number(item?.unit_price || 0),
-    warehouse_id: item?.warehouse_id || null,
-    tax_rate: Number(item?.tax_rate || 0),
-  }];
-  dialogVisible.value = true;
+async function copyToForm(row: Row) {
+  try {
+    const data = unwrap(await getDocumentWorkspace("sales_order", String(row.business_id)));
+    const source = data.details || {};
+    const item = source.items?.[0];
+    form.customer_id = source.customer_id || "";
+    form.order_date = source.order_date || localDateString();
+    form.expected_date = source.expected_date || null;
+    form.remark = source.remark || `复制自 ${source.doc_no || "订单"}`;
+    form.items = [{ material_id: item?.material_id || "", quantity: Number(item?.quantity || 1), unit_price: Number(item?.unit_price || 0), warehouse_id: item?.warehouse_id || null, tax_rate: Number(item?.tax_rate || 0) }];
+    dialogVisible.value = true;
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "复制订单失败");
+  }
 }
 
 async function save() {
-  if (!form.customer_id || !form.items[0]?.material_id || form.items[0].quantity <= 0) {
-    ElMessage.warning("请填写客户、物料和有效数量");
-    return;
-  }
+  if (!form.customer_id || !form.items[0]?.material_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写客户、物料和有效数量"); return; }
   saving.value = true;
   try {
     const response = await createSalesOrder(form);
     if (response.data.code !== 0) throw new Error(response.data.msg);
-    ElMessage.success("销售订单已创建");
-    dialogVisible.value = false;
-    await load();
-  } catch (error) {
-    ElMessage.error("销售订单创建失败");
-  } finally {
-    saving.value = false;
-  }
+    ElMessage.success("销售订单已创建"); dialogVisible.value = false; await load();
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "销售订单创建失败"); }
+  finally { saving.value = false; }
 }
 
-async function confirmAction(row: Row, action: "submit" | "approve" | "delivery") {
-  const id = String(row.id || "");
-  if (!id) {
-    ElMessage.error("订单缺少有效 ID，无法操作");
-    return;
-  }
-  const labels = { submit: "提交审核", approve: "审核订单", delivery: "创建出库单" };
+async function confirmAction(row: Row, action: Row) {
+  const id = String(row.business_id || "");
+  if (!id) { ElMessage.error("订单缺少有效 ID，无法操作"); return; }
   try {
-    await ElMessageBox.confirm(`确认${labels[action]}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" });
+    await ElMessageBox.confirm(`确认${action.label}“${row.doc_no || id}”吗？`, "业务操作确认", { type: "warning" });
     actionLoading.value = id;
-    const response = action === "submit" ? await submitSalesOrder(id) : action === "approve" ? await approveSalesOrder(id) : await createSalesDelivery(id);
-    if (response.data.code !== 0) throw new Error(response.data.msg);
-    ElMessage.success(`${labels[action]}成功`);
-    await load();
+    unwrap(await runDocumentCommand("sales_order", id, action.command));
+    ElMessage.success(`${action.label}成功`); await load();
   } catch (error: any) {
-    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${labels[action]}失败`);
-  } finally {
-    actionLoading.value = null;
-  }
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : `${action.label}失败`);
+  } finally { actionLoading.value = null; }
 }
 
-onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "materials"]) ]); });
+onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "materials"])]); });
 </script>
 
 <template>
-  <section>
-    <el-page-header content="销售订单" />
-    <el-space class="toolbar">
-      <el-button type="primary" @click="openCreate">新建订单</el-button>
-      <el-button :loading="loading" @click="load">刷新</el-button>
-    </el-space>
+  <DocumentListWorkbench v-model:keyword="keyword" v-model:status="status" v-model:date-range="dateRange" v-model:page="page" v-model:page-size="pageSize" title="销售订单" :summary="summary" :total="total" :loading="loading" @search="search" @reset="resetFilters" @refresh="load" @update:page="load" @update:page-size="search">
+    <template #actions><el-button type="primary" @click="openCreate">新建订单</el-button></template>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''">
       <template #default><el-button link type="primary" @click="load">重新加载</el-button></template>
     </el-alert>
     <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
-      <el-table-column prop="doc_no" label="订单号" />
-      <el-table-column label="客户"><template #default="scope">{{ scope.row.customer_name || scope.row.customer_id }}</template></el-table-column>
-      <el-table-column prop="status" label="状态" />
-      <el-table-column prop="total_amount" label="含税金额" />
-      <el-table-column label="操作" width="300">
+      <el-table-column label="订单号" min-width="160"><template #default="scope"><el-button link type="primary" @click="openDetail(scope.row)">{{ scope.row.doc_no }}</el-button></template></el-table-column>
+      <el-table-column prop="party_name" label="客户" min-width="180" show-overflow-tooltip />
+      <el-table-column label="状态" width="100"><template #default="scope"><StatusTag :status="scope.row.status" :label="scope.row.status_label" /></template></el-table-column>
+      <el-table-column prop="document_date" label="订单日期" width="115" />
+      <el-table-column label="含税金额" width="130" align="right"><template #default="scope">¥{{ scope.row.amount }}</template></el-table-column>
+      <el-table-column label="更新时间" width="165"><template #default="scope">{{ formatLocalDateTime(scope.row.updated_at) }}</template></el-table-column>
+      <el-table-column label="操作" width="260" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button>
           <el-button link @click="copyToForm(scope.row)">复制填充</el-button>
-          <el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'submit')">提交</el-button>
-          <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button>
-          <el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'delivery')">生成出库</el-button>
+          <el-button v-for="action in scope.row.available_actions" :key="action.command" link :type="action.type" :loading="actionLoading === scope.row.business_id" @click="confirmAction(scope.row, action)">{{ action.label }}</el-button>
         </template>
       </el-table-column>
+      <template #empty><el-empty description="当前筛选范围内暂无销售订单，可调整筛选或新建订单" /></template>
     </el-table>
 
     <el-dialog v-model="dialogVisible" title="新建销售订单" width="560px">
@@ -166,18 +134,6 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="detailVisible" title="销售订单详情" width="680px">
-      <el-descriptions v-if="selected" :column="2" border>
-        <el-descriptions-item label="订单号">{{ selected.doc_no }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ selected.status }}</el-descriptions-item>
-        <el-descriptions-item label="客户">{{ selected.customer_name || selected.customer_id }}</el-descriptions-item>
-        <el-descriptions-item label="金额">{{ selected.total_amount }}</el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">{{ selected.remark || "-" }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
-  </section>
+    <DocumentWorkbench v-if="selected" v-model:visible="detailVisible" business-type="sales_order" :business-id="String(selected.business_id)" @changed="load" />
+  </DocumentListWorkbench>
 </template>
-
-<style scoped>
-.toolbar { margin: 16px 0; }
-</style>

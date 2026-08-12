@@ -1,7 +1,7 @@
-from datetime import date, datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
+from app.core.time import local_today
 from app.models.crm import CrmContact, CrmFollowUp, CrmLead, CrmOpportunity
 from app.models.master_data import MdCustomer
 from app.services.auth_service import UserContext
@@ -12,7 +12,7 @@ LEAD_TRANSITIONS = {"new": {"contacted", "lost"}, "contacted": {"qualified", "lo
 def create_lead(db, payload, context):
     row = CrmLead(
         org_id=context.org_id,
-        lead_no=next_doc_no(db, "crm_lead", context.org_id, date.today()),
+        lead_no=next_doc_no(db, "crm_lead", context.org_id, local_today()),
         owner_id=context.id,
         **payload,
     )
@@ -37,7 +37,7 @@ def convert_lead(db, lead_id, context):
         contact = CrmContact(org_id=context.org_id, customer_id=customer.id, name=row.name, phone=row.phone, email=row.email); db.add(contact); db.flush()
     opp = CrmOpportunity(
         org_id=context.org_id,
-        opportunity_no=next_doc_no(db, "crm_opportunity", context.org_id, date.today()),
+        opportunity_no=next_doc_no(db, "crm_opportunity", context.org_id, local_today()),
         name=row.name,
         customer_id=customer.id,
         owner_id=context.id,
@@ -47,7 +47,7 @@ def convert_lead(db, lead_id, context):
 def create_opportunity(db, payload, context):
     row = CrmOpportunity(
         org_id=context.org_id,
-        opportunity_no=next_doc_no(db, "crm_opportunity", context.org_id, date.today()),
+        opportunity_no=next_doc_no(db, "crm_opportunity", context.org_id, local_today()),
         owner_id=context.id,
         **payload,
     ); db.add(row); db.flush(); return row

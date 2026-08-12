@@ -1,10 +1,10 @@
-from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_now, local_today
 from app.models.business_extensions import PurchaseRequest, PurchaseRequestItem, PurchaseReturnItem, SalesQuote, SalesQuoteItem, SalesReturnItem
 from app.models.purchase import PurchaseReturn
 from app.models.sales import SalesReturn
@@ -64,7 +64,7 @@ def list_requests(db: Session, context: UserContext):
 
 
 def create_request(db: Session, payload, context: UserContext):
-    now = datetime.now(UTC).replace(tzinfo=None)
+    now = local_now()
     row = PurchaseRequest(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_request", context.org_id, payload.request_date), department_id=context.department_id, requester_id=context.id, supplier_id=payload.supplier_id, request_date=payload.request_date, remark=payload.remark, created_by=context.id, created_at=now, updated_at=now)
     row.items = [PurchaseRequestItem(material_id=item.material_id, quantity=item.quantity, estimated_price=item.estimated_price, line_no=index) for index, item in enumerate(payload.items, 1)]
     db.add(row)
@@ -92,7 +92,7 @@ def update_request(db: Session, request_id: str, payload, context: UserContext):
         for index, item in enumerate(payload.items, 1)
     ]
     row.version += 1
-    row.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    row.updated_at = local_now()
     db.commit()
     db.refresh(row)
     return row
@@ -116,7 +116,7 @@ def transition_request(db: Session, request_id: str, new_status: str, context: U
     if new_status not in allowed.get(row.status, set()):
         raise AppError(f"采购申请状态 {row.status} 不允许此操作", code=400)
     row.status = new_status
-    row.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    row.updated_at = local_now()
     db.commit()
     db.refresh(row)
     return row
@@ -142,7 +142,7 @@ def create_return_items(row, items, item_model):
 
 
 def create_purchase_return(db: Session, payload, context: UserContext):
-    row = PurchaseReturn(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_return", context.org_id, payload.return_date or date.today()), source_receipt_id=payload.source_receipt_id, supplier_id=payload.supplier_id, warehouse_id=payload.warehouse_id, return_date=payload.return_date or date.today(), created_by=context.id)
+    row = PurchaseReturn(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_return", context.org_id, payload.return_date or local_today()), source_receipt_id=payload.source_receipt_id, supplier_id=payload.supplier_id, warehouse_id=payload.warehouse_id, return_date=payload.return_date or local_today(), created_by=context.id)
     create_return_items(row, payload.items, PurchaseReturnItem)
     db.add(row)
     db.commit()
@@ -159,7 +159,7 @@ def update_purchase_return(db: Session, return_id: str, payload, context: UserCo
     row.source_receipt_id = payload.source_receipt_id
     row.supplier_id = payload.supplier_id
     row.warehouse_id = payload.warehouse_id
-    row.return_date = payload.return_date or date.today()
+    row.return_date = payload.return_date or local_today()
     create_return_items(row, payload.items, PurchaseReturnItem)
     row.version += 1
     db.commit()

@@ -1,8 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.time import local_now
 from app.models.base import UUIDModel
 
 
@@ -21,7 +22,7 @@ class SysOperationLog(UUIDModel):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
         nullable=False,
     )
 
@@ -37,6 +38,6 @@ class SysLoginLog(UUIDModel):
     message: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False),
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        default=local_now,
         nullable=False,
     )

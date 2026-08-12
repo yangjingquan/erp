@@ -76,6 +76,12 @@ REQUIRED_TABLES = {
     "hr_leave_request",
     "hr_payroll_run",
     "ext_event_outbox",
+    "biz_document",
+    "biz_document_relation",
+    "biz_attachment",
+    "biz_comment",
+    "sys_notification",
+    "sys_idempotency_record",
 }
 
 

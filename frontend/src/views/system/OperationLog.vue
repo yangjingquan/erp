@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 
 import { listOperationLogs, type OperationLog as OperationLogRow } from "../../api/system";
+import { formatLocalDateTime } from "../../utils/time";
 
 const rows = ref<OperationLogRow[]>([]);
 const currentPage = ref(1);
@@ -56,7 +57,7 @@ onMounted(load);
     </el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''" />
     <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
-      <el-table-column prop="created_at" label="时间" min-width="180" />
+      <el-table-column label="时间" min-width="180"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
       <el-table-column prop="username" label="用户" width="140" />
       <el-table-column prop="action" label="动作" width="140" />
       <el-table-column prop="resource" label="资源" min-width="180" />

@@ -15,6 +15,7 @@ import {
   updatePurchaseRequest,
 } from "../api/purchase";
 import { useMasterOptions, type SelectOption } from "../composables/useMasterOptions";
+import { formatLocalDateTime, localDateString } from "../utils/time";
 
 type Kind = "quote" | "purchase-request" | "sales-return" | "purchase-return";
 
@@ -31,9 +32,9 @@ const form = reactive<any>({
   warehouse_id: "",
   source_delivery_id: "",
   source_receipt_id: "",
-  quote_date: new Date().toISOString().slice(0, 10),
-  request_date: new Date().toISOString().slice(0, 10),
-  return_date: new Date().toISOString().slice(0, 10),
+  quote_date: localDateString(),
+  request_date: localDateString(),
+  return_date: localDateString(),
   valid_until: null,
   remark: "",
   items: [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }],
@@ -79,11 +80,6 @@ function statusLabel(status: string) {
   return isPurchaseKind() ? purchaseStatusLabels[status] || status || "-" : status || "-";
 }
 
-function formatDateTime(value: unknown) {
-  if (!value) return "-";
-  return String(value).replace("T", " ").slice(0, 19);
-}
-
 function statusTagType(status: string) {
   return ({
     draft: "info",
@@ -115,9 +111,9 @@ function reset() {
   form.warehouse_id = "";
   form.source_delivery_id = "";
   form.source_receipt_id = "";
-  form.quote_date = new Date().toISOString().slice(0, 10);
-  form.request_date = new Date().toISOString().slice(0, 10);
-  form.return_date = new Date().toISOString().slice(0, 10);
+  form.quote_date = localDateString();
+  form.request_date = localDateString();
+  form.return_date = localDateString();
   form.valid_until = null;
   form.remark = "";
   form.items = [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }];
@@ -310,7 +306,7 @@ onMounted(async () => {
           </template>
         </el-table-column>
         <el-table-column label="创建时间" min-width="180">
-          <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
+          <template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="300">
           <template #default="scope">
@@ -352,7 +348,7 @@ onMounted(async () => {
             </template>
           </el-table-column>
           <el-table-column label="创建时间" min-width="180">
-            <template #default="scope">{{ formatDateTime(scope.row.created_at) }}</template>
+            <template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template>
           </el-table-column>
           <el-table-column label="操作" width="220">
             <template #default="scope">

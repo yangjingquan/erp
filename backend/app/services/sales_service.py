@@ -1,10 +1,10 @@
-from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.core.time import local_today
 from app.models.sales import SalesDelivery, SalesDeliveryItem, SalesOrder, SalesOrderItem, SalesReturn
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
@@ -121,7 +121,7 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
         customer_id=order.customer_id,
         warehouse_id=next((item.warehouse_id for item in order.items if item.warehouse_id), "warehouse-1"),
         status="draft",
-        delivery_date=date.today(),
+        delivery_date=local_today(),
         total_amount=order.total_amount,
     )
     delivery.items = [
@@ -150,12 +150,12 @@ def create_sales_return(db: Session, payload, context: UserContext) -> SalesRetu
             raise AppError("已完成出库单的退货必须走库存退货流程", code=400)
     result = SalesReturn(
         org_id=context.org_id,
-        doc_no=next_doc_no(db, "sales_return", context.org_id, payload.return_date or date.today()),
+        doc_no=next_doc_no(db, "sales_return", context.org_id, payload.return_date or local_today()),
         source_delivery_id=payload.source_delivery_id,
         customer_id=payload.customer_id,
         warehouse_id=payload.warehouse_id,
         status="draft",
-        return_date=payload.return_date or date.today(),
+        return_date=payload.return_date or local_today(),
     )
     from app.models.business_extensions import SalesReturnItem
     from app.services.business_extension_service import create_return_items

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8085
+    app_timezone: str = "Asia/Shanghai"
+    database_time_zone: str = "+08:00"
     database_url: str = (
         "mysql+pymysql://root:changeme_root@127.0.0.1:3306/erp"
         "?charset=utf8mb4"
@@ -36,6 +39,15 @@ class Settings(BaseSettings):
     def split_cors_origins(cls, value: object) -> object:
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
+        return value
+
+    @field_validator("app_timezone")
+    @classmethod
+    def validate_app_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError(f"未知时区：{value}") from exc
         return value
 
 

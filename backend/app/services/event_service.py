@@ -1,4 +1,3 @@
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import or_, select, update
@@ -6,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.platform import ExtEventOutbox
+from app.core.time import local_now
 
 
 def emit_event(
@@ -53,7 +53,7 @@ def claim_pending_events(db: Session, limit: int = 50) -> list[ExtEventOutbox]:
     if limit <= 0:
         return []
 
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = local_now()
     candidate_ids = db.scalars(
         select(ExtEventOutbox.id)
         .where(

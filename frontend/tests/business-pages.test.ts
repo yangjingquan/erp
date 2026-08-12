@@ -19,7 +19,7 @@ describe("一期业务页面加载契约", () => {
     const purchaseOrder = pageSources["../src/views/purchase/PurchaseOrderList.vue"];
     const expense = pageSources["../src/views/finance/ExpenseList.vue"];
 
-    expect(salesOrder).toContain('<el-table-column label="操作" width="300">');
+    expect(salesOrder).toContain('<el-table-column label="操作" width="260" fixed="right">');
     expect(purchaseOrder).toContain('<el-table-column label="操作" width="300">');
     expect(expense).toContain('<el-table-column label="操作" width="260">');
   });

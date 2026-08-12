@@ -15,7 +15,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=200,
-            content=fail(exc.code, exc.msg, exc.data),
+            content=fail(exc.code, exc.msg, exc.data, trace_id=getattr(request.state, "request_id", ""), extended=True),
             headers={"X-Request-ID": getattr(request.state, "request_id", "")},
         )
 
@@ -25,7 +25,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         return JSONResponse(
             status_code=200,
-            content=fail(422, "请求参数校验失败", exc.errors()),
+            content=fail(422, "请求参数校验失败", exc.errors(), trace_id=getattr(request.state, "request_id", ""), field_errors=exc.errors(), extended=True),
             headers={"X-Request-ID": getattr(request.state, "request_id", "")},
         )
 
@@ -37,6 +37,6 @@ def register_exception_handlers(app: FastAPI) -> None:
         logger.exception("Unhandled request error request_id=%s", request_id)
         return JSONResponse(
             status_code=200,
-            content=fail(500, "系统内部错误", {"request_id": request_id}),
+            content=fail(500, "系统内部错误", {"request_id": request_id}, trace_id=request_id, extended=True),
             headers={"X-Request-ID": request_id},
         )

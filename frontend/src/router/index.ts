@@ -63,6 +63,7 @@ export const router = createRouter({
         { path: "system/backup", name: "backup-restore", component: () => import("../views/system/BackupRestore.vue"), meta: { requiresAuth: true } },
         { path: "settings/parameters", name: "global-parameters", component: () => import("../views/settings/GlobalParameters.vue"), meta: { requiresAuth: true, permission: "config:view" } },
         { path: "settings/print-templates", name: "print-templates", component: () => import("../views/settings/PrintTemplates.vue"), meta: { requiresAuth: true, permission: "config:view" } },
+        { path: "documents/:businessType/:businessId", name: "document-center", component: () => import("../views/DocumentCenter.vue"), meta: { requiresAuth: true } },
       ],
     },
   ],
@@ -78,7 +79,7 @@ router.beforeEach((to) => {
   }
   if (to.meta.requiresAuth && auth.user && !auth.user.is_superuser && to.path !== "/profile") {
     const permissions = usePermissionStore();
-    if (!permissions.hasPagePermission(to.path)) return { name: "forbidden" };
+    if (!to.path.startsWith("/documents/") && !permissions.hasPagePermission(to.path)) return { name: "forbidden" };
   }
   return true;
 });

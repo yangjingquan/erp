@@ -36,6 +36,16 @@ docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-c
 
 脚本会自动创建 erp 数据库、一期业务表、配置表、日志表和二三期扩展基座，并写入默认权限与编号规则。脚本可重复执行。
 
+已有数据库不需要重跑完整初始化脚本，可按顺序执行版本化迁移：
+
+~~~bash
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/001_platform_workbench.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/002_document_department_scope.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/003_event_outbox_compatibility.sql
+~~~
+
+前三份迁移可直接重复执行。系统业务时区默认为 `Asia/Shanghai`，MySQL 会话固定为 `+08:00`。仅当已确认旧库所有 `DATETIME` 都是 UTC 并完成备份后，才执行 `database/migrations/004_local_timezone.sql`；它会且只会一次性将历史时间平移 8 小时，不能用于混合存储了 UTC 和本地时间的数据库。业务附件存储在 `backend/var/attachments`，数据库保存受组织权限保护的元数据与文件键。
+
 默认超级管理员：
 
 ~~~text
@@ -91,6 +101,9 @@ npm run dev
 - 库存流水、调拨、盘点、安全库存预警；库存余额不允许直接修改。
 - 费用报销、简易固定资产、业务单据自动生成财务凭证。
 - 配置化编号规则、字段定义、审批流、打印模板和全局参数。
+- 统一单据工作台：后端分页筛选、状态统计、动态状态动作、上下游关联、流程时间线、评论和真实附件。
+- 销售订单可在同一工作台追踪出库、库存事务、应收、收款核销和会计凭证；顶部通知中心支持未读与业务跳转。
+- 前端写请求自动携带 `Idempotency-Key`，后端保存 24 小时幂等响应；错误响应提供 `message`、`field_errors` 和 `trace_id`。
 - Dashboard、全局关键词检索、操作日志、登录日志、备份恢复。
 - 浅色/暗黑主题、侧栏收起、Element Plus 自适应界面和 ECharts 看板。
 
@@ -145,7 +158,7 @@ npm run typecheck
 npm run build
 ~~~
 
-测试覆盖认证、权限、主数据重复校验和 Excel、编号规则、审批节点、销售/采购状态流及报价/采购申请、库存台账、应收应付、自动凭证、Dashboard、搜索、备份恢复和一期端到端链路。
+测试覆盖认证、部门/个人数据范围、主数据重复校验和 Excel、编号规则、审批节点、销售/采购状态流及报价/采购申请、库存台账、应收应付、自动凭证、单据全链路追溯、附件/评论/通知、写接口幂等、Dashboard、搜索、备份恢复和一期端到端链路。
 
 ## 9. 目录结构
 
