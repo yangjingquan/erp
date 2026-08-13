@@ -35,7 +35,7 @@ const switchingOrganization = ref(false);
 const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
   const currentGroup = route.path.split("/")[1];
-  const group = currentGroup === "settings" ? "config" : currentGroup;
+  const group = ["settings", "analytics"].includes(currentGroup) ? "config" : currentGroup;
   return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "system", "config"].includes(group) ? [group] : [];
 });
 function canPage(path: string) { return !auth.user || auth.user.is_superuser || permissions.hasPagePermission(path); }
@@ -201,13 +201,14 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限设置</el-menu-item>
           <el-menu-item v-if="canPage('/system/backup')" index="/system/backup">备份恢复</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients', '/settings/platform-events'])" index="config">
+        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients', '/settings/platform-events', '/analytics/reports'])" index="config">
           <template #title><el-icon><Setting /></el-icon><span>系统配置</span></template>
           <el-menu-item v-if="canPage('/settings/parameters')" index="/settings/parameters">全局参数</el-menu-item>
           <el-menu-item v-if="canPage('/settings/workflow')" index="/settings/workflow">审批流程</el-menu-item>
           <el-menu-item v-if="canPage('/settings/print-templates')" index="/settings/print-templates">打印模板</el-menu-item>
           <el-menu-item v-if="canPage('/settings/api-clients')" index="/settings/api-clients">API 客户端</el-menu-item>
           <el-menu-item v-if="canPage('/settings/platform-events')" index="/settings/platform-events">事件订阅</el-menu-item>
+          <el-menu-item v-if="canPage('/analytics/reports')" index="/analytics/reports">BI 报表中心</el-menu-item>
         </el-sub-menu>
       </el-menu>
       <div class="sidebar-spacer" />

@@ -17,6 +17,7 @@ from app.api.inventory import router as inventory_router
 from app.api.inventory_advanced import router as inventory_advanced_router
 from app.api.finance import router as finance_router
 from app.api.dashboard import router as dashboard_router
+from app.api.analytics import router as analytics_router
 from app.api.search import router as search_router
 from app.api.backup import router as backup_router
 from app.api.admin import router as admin_router
@@ -96,6 +97,7 @@ app.include_router(inventory_router)
 app.include_router(inventory_advanced_router)
 app.include_router(finance_router)
 app.include_router(dashboard_router)
+app.include_router(analytics_router)
 app.include_router(search_router)
 app.include_router(backup_router)
 app.include_router(admin_router)

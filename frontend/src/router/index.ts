@@ -21,6 +21,7 @@ export const router = createRouter({
       children: [
         { path: "", redirect: "/dashboard" },
         { path: "dashboard", name: "dashboard", component: Dashboard, meta: { requiresAuth: true } },
+        { path: "analytics/reports", name: "analytics-reports", component: () => import("../views/analytics/ReportCenter.vue"), meta: { requiresAuth: true, permission: "dashboard:view" } },
         { path: "master-data/materials", name: "materials", component: MaterialList, meta: { requiresAuth: true } },
         { path: "master-data/customers", name: "customers", component: () => import("../views/master-data/CustomerList.vue"), meta: { requiresAuth: true } },
         { path: "master-data/suppliers", name: "suppliers", component: () => import("../views/master-data/SupplierList.vue"), meta: { requiresAuth: true } },

@@ -16,6 +16,8 @@ from app.models.collaboration import (  # noqa: F401,E402
     BizDocument,
     BizDocumentRelation,
     BizExportJob,
+    BizReportDefinition,
+    BizReportRun,
     BizSavedView,
     SysIdempotencyRecord,
     SysNotification,

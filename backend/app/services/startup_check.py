@@ -101,6 +101,8 @@ REQUIRED_TABLES = {
     "biz_export_job",
     "sys_notification",
     "sys_idempotency_record",
+    "biz_report_definition",
+    "biz_report_run",
 }
 
 

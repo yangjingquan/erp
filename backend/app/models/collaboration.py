@@ -103,6 +103,34 @@ class BizExportJob(AuditMixin, UUIDModel):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
 
+class BizReportDefinition(AuditMixin, UUIDModel):
+    __tablename__ = "biz_report_definition"
+    __table_args__ = (
+        UniqueConstraint("org_id", "report_key", name="uk_biz_report_definition_org_key"),
+    )
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    report_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    parameters_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+
+
+class BizReportRun(AuditMixin, UUIDModel):
+    __tablename__ = "biz_report_run"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    report_definition_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    report_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    requested_by: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    parameters_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="completed", nullable=False, index=True)
+    result_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
 class SysNotification(AuditMixin, UUIDModel):
     __tablename__ = "sys_notification"
 
