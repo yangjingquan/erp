@@ -50,6 +50,14 @@ export const useAuthStore = defineStore("auth", {
       usePermissionStore().loadMenus(this.user?.menus ?? [], this.user?.permissions ?? []);
       return this.user;
     },
+    async switchOrganization(orgId: string) {
+      const response = await http.post(`/auth/switch-organization/${orgId}`);
+      const data = response.data.data;
+      this.setTokens(data.access_token);
+      this.user = data.user;
+      usePermissionStore().loadMenus(data.user.menus ?? [], data.user.permissions ?? []);
+      return data.user as CurrentUser;
+    },
     logout() {
       this.token = null;
       this.refreshToken = null;

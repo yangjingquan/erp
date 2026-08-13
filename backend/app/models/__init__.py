@@ -8,7 +8,8 @@ from app.models.business_extensions import (  # noqa: F401,E402
     SalesQuoteItem,
     SalesReturnItem,
 )
-from app.models.platform import ExtEventOutbox, SysApiClient  # noqa: F401,E402
+from app.models.system import SysOrgMembership  # noqa: F401,E402
+from app.models.platform import ExtEventDelivery, ExtEventOutbox, ExtEventSubscription, SysApiClient  # noqa: F401,E402
 from app.models.collaboration import (  # noqa: F401,E402
     BizAttachment,
     BizComment,
@@ -29,6 +30,8 @@ from app.models.finance import (  # noqa: F401,E402
     FinAssetDepreciation,
     FinBankAccount,
     FinFiscalPeriod,
+    FinCurrency,
+    FinExchangeRate,
 )
 from app.models.inventory_advanced import (  # noqa: F401,E402
     InvBatch,

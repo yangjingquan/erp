@@ -23,6 +23,7 @@ def _create_token(
     token_type: str,
     expires_delta: timedelta,
     permissions: list[str] | None = None,
+    active_org_id: str | None = None,
 ) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
@@ -34,16 +35,19 @@ def _create_token(
     }
     if permissions is not None:
         payload["permissions"] = permissions
+    if active_org_id:
+        payload["active_org_id"] = active_org_id
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
-def create_access_token(subject: str, permissions: list[str] | None = None) -> str:
+def create_access_token(subject: str, permissions: list[str] | None = None, active_org_id: str | None = None) -> str:
     settings = get_settings()
     return _create_token(
         subject,
         "access",
         timedelta(minutes=settings.access_token_expire_minutes),
         permissions,
+        active_org_id,
     )
 
 

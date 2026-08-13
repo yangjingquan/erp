@@ -10,7 +10,7 @@ from app.core.security import create_access_token, create_refresh_token, hash_pa
 from app.services.audit_service import write_login_log, write_operation_log
 from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest
 from app.models.system import SysOrg, SysUser
-from app.services.auth_service import UserContext, authenticate_user, build_user_context
+from app.services.auth_service import UserContext, authenticate_user, build_user_context, list_user_organizations
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -21,7 +21,8 @@ def serialize_user(context: UserContext) -> dict:
         "id": user.id,
         "username": user.username,
         "display_name": user.display_name,
-        "org_id": user.org_id,
+        "org_id": context.org_id,
+        "active_org_id": context.org_id,
         "department_id": user.department_id,
         "is_superuser": user.is_superuser,
         "permissions": sorted(context.permissions),
@@ -79,6 +80,25 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
 @router.get("/me")
 def me(context: UserContext = Depends(get_current_user)) -> dict:
     return ok(serialize_user(context))
+
+
+@router.get("/organizations")
+def organizations(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    return ok(list_user_organizations(db, context.user))
+
+
+@router.post("/switch-organization/{org_id}")
+def switch_organization(org_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    available = {item["id"] for item in list_user_organizations(db, context.user)}
+    if org_id not in available and not context.user.is_superuser:
+        raise AppError("当前用户无权切换到该组织", code=403)
+    target = db.scalar(select(SysOrg).where(SysOrg.id == org_id, SysOrg.status == "active", SysOrg.is_deleted.is_(False)))
+    if target is None:
+        raise AppError("组织不存在或已停用", code=404)
+    permissions = sorted(context.permissions)
+    token = create_access_token(context.user.id, permissions, active_org_id=org_id)
+    target_context = build_user_context(db, context.user, permissions if context.user.is_superuser else None, active_org_id=org_id)
+    return ok({"access_token": token, "token_type": "bearer", "user": serialize_user(target_context), "organization": {"id": target.id, "code": target.code, "name": target.name}})
 
 
 @router.post("/change-password")

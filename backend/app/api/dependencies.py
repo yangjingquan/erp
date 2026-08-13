@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.security import decode_token
 from app.models.auth import sys_user_role
-from app.models.system import SysUser
+from app.models.system import SysOrg, SysOrgMembership, SysRole, SysUser
 from sqlalchemy import select
 from app.services.auth_service import UserContext, build_user_context
 
@@ -35,13 +35,33 @@ def get_current_user(
     # role takes effect without waiting for an old token to expire. Keeping the
     # claim fallback for users without roles preserves compatibility with
     # service-to-service/test tokens and with existing deployments during rollout.
+    active_org_id = payload.get("active_org_id") or user.org_id
+    if active_org_id != user.org_id and not user.is_superuser:
+        membership = db.scalar(select(SysOrgMembership).where(
+            SysOrgMembership.user_id == user.id,
+            SysOrgMembership.org_id == active_org_id,
+            SysOrgMembership.status == "active",
+            SysOrgMembership.is_deleted.is_(False),
+        ))
+        if membership is None:
+            raise AppError("当前用户无权访问该组织", code=403)
+    org_exists = db.scalar(select(SysOrg.id).where(SysOrg.id == active_org_id, SysOrg.status == "active", SysOrg.is_deleted.is_(False)))
+    # Some isolated unit-test/integration databases predate the organization
+    # seed data. Keep those deployments compatible while enforcing the check
+    # whenever organization records are present.
+    if org_exists is None and db.scalar(select(SysOrg.id).limit(1)) is not None:
+        raise AppError("组织不存在或已停用", code=401)
     has_role = db.scalar(
-        select(sys_user_role.c.role_id).where(sys_user_role.c.user_id == user.id).limit(1)
+        select(sys_user_role.c.role_id).join(SysRole, SysRole.id == sys_user_role.c.role_id).where(
+            sys_user_role.c.user_id == user.id, SysRole.org_id == active_org_id
+        ).limit(1)
     ) is not None
+    fallback_permissions = payload.get("permissions", []) if active_org_id == user.org_id else []
     return build_user_context(
         db,
         user,
-        None if has_role or user.is_superuser else payload.get("permissions", []),
+        None if has_role or user.is_superuser else fallback_permissions,
+        active_org_id=active_org_id,
     )
 
 

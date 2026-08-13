@@ -40,6 +40,11 @@ export const runAssetDepreciation = (assetId: string, period: string) => http.po
 export const createManualVoucher = (payload: unknown) => http.post("/finance/vouchers", payload);
 export const postVoucher = (voucherId: string) => http.post(`/finance/vouchers/${voucherId}/post`);
 export const reverseVoucher = (voucherId: string) => http.post(`/finance/vouchers/${voucherId}/reverse`);
+export const listCurrencies = () => http.get("/finance/currencies");
+export const createCurrency = (payload: unknown) => http.post("/finance/currencies", payload);
+export const listExchangeRates = (currency?: string) => http.get("/finance/exchange-rates", { params: currency ? { currency } : undefined });
+export const upsertExchangeRate = (payload: unknown) => http.post("/finance/exchange-rates", payload);
+export const convertCurrency = (params: Record<string, unknown>) => http.get("/finance/currency-convert", { params });
 
 export function createReceipt(payload: { customer_id: string; amount: number }) {
   return http.post("/finance/receipts", payload);

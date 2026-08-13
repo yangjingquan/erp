@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditMixin, UUIDModel
@@ -10,6 +10,19 @@ class SysOrg(AuditMixin, UUIDModel):
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     parent_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+
+class SysOrgMembership(AuditMixin, UUIDModel):
+    """用户可访问的组织，用于集团多组织上下文切换。"""
+
+    __tablename__ = "sys_org_membership"
+    __table_args__ = (UniqueConstraint("user_id", "org_id", name="uk_sys_org_membership_user_org"),)
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("sys_user.id"), nullable=False, index=True)
+    org_id: Mapped[str] = mapped_column(ForeignKey("sys_org.id"), nullable=False, index=True)
+    membership_type: Mapped[str] = mapped_column(String(32), default="member", nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
 
 

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -12,6 +14,8 @@ from app.schemas.finance import (
     DimensionCreate,
     FiscalPeriodCreate,
     ManualVoucherCreate,
+    CurrencyCreate,
+    ExchangeRateCreate,
 )
 from app.services.auth_service import UserContext
 from app.services.finance_service import (
@@ -48,8 +52,37 @@ from app.services.ledger_service import (
     reverse_voucher,
     run_asset_depreciation,
 )
+from app.services.currency_service import convert_amount, create_currency, list_currencies, list_exchange_rates, upsert_exchange_rate
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
+
+
+@router.get("/currencies")
+def currencies(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_currencies(db, context))
+
+
+@router.post("/currencies")
+def currency(payload: CurrencyCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_currency(db, payload, context); db.commit()
+    return ok({"id": row.id, "code": row.code, "name": row.name, "is_base": row.is_base, "status": row.status})
+
+
+@router.get("/exchange-rates")
+def exchange_rates(currency: str | None = Query(default=None, min_length=3, max_length=8), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_exchange_rates(db, context, currency))
+
+
+@router.post("/exchange-rates")
+def exchange_rate(payload: ExchangeRateCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = upsert_exchange_rate(db, payload, context); db.commit()
+    return ok({"id": row.id, "base_currency": row.base_currency, "quote_currency": row.quote_currency, "rate_date": row.rate_date.isoformat(), "rate": str(row.rate), "source": row.source})
+
+
+@router.get("/currency-convert")
+def currency_convert(amount: Decimal = Query(gt=0), base_currency: str = Query(min_length=3, max_length=8), quote_currency: str = Query(min_length=3, max_length=8), rate_date: str = Query(pattern=r"^\d{4}-\d{2}-\d{2}$"), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    from datetime import date
+    return ok(convert_amount(db, amount, base_currency, quote_currency, date.fromisoformat(rate_date), context))
 
 
 @router.get("/accounts")

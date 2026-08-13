@@ -740,6 +740,7 @@ def complete_work_order(db: Session, work_order_id: str, context: UserContext) -
         "mfg_work_order",
         row.id,
         {"work_order_id": row.id, "quantity": f"{completion_quantity:.6f}"},
+        org_id=context.org_id,
     )
     write_operation_log(
         db,

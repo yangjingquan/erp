@@ -61,6 +61,31 @@ class FinBankAccount(AuditMixin, UUIDModel):
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
 
 
+class FinCurrency(AuditMixin, UUIDModel):
+    __tablename__ = "fin_currency"
+    __table_args__ = (UniqueConstraint("org_id", "code", name="uk_fin_currency_org_code"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(8), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    decimal_places: Mapped[int] = mapped_column(default=2, nullable=False)
+    is_base: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+
+class FinExchangeRate(AuditMixin, UUIDModel):
+    __tablename__ = "fin_exchange_rate"
+    __table_args__ = (UniqueConstraint("org_id", "base_currency", "quote_currency", "rate_date", name="uk_fin_exchange_rate_day"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    base_currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    quote_currency: Mapped[str] = mapped_column(String(8), nullable=False)
+    rate_date: Mapped[date] = mapped_column(Date, nullable=False)
+    rate: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), default="manual", nullable=False)
+
+
 class SalesReceivable(UUIDModel):
     __tablename__ = "sales_receivable"
 

@@ -34,3 +34,31 @@ class SysApiClient(AuditMixin, UUIDModel):
     secret_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     scopes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+
+
+class ExtEventSubscription(AuditMixin, UUIDModel):
+    __tablename__ = "ext_event_subscription"
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uk_ext_event_subscription_name"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    endpoint_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    event_types: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    secret_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    signing_secret: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class ExtEventDelivery(AuditMixin, UUIDModel):
+    __tablename__ = "ext_event_delivery"
+    __table_args__ = (UniqueConstraint("event_id", "subscription_id", name="uk_ext_event_delivery_event_subscription"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    event_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    subscription_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    response_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_body: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

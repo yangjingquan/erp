@@ -48,6 +48,29 @@ class BankAccountCreate(FinanceSchema):
     ledger_account_id: str = Field(min_length=1, max_length=36)
 
 
+class CurrencyCreate(FinanceSchema):
+    code: str = Field(min_length=3, max_length=8, pattern=r"^[A-Za-z]{3,8}$")
+    name: str = Field(min_length=1, max_length=64)
+    symbol: str | None = Field(default=None, max_length=8)
+    decimal_places: int = Field(default=2, ge=0, le=6)
+    is_base: bool = False
+    status: str = Field(default="active", pattern="^(active|inactive)$")
+
+
+class ExchangeRateCreate(FinanceSchema):
+    base_currency: str = Field(min_length=3, max_length=8)
+    quote_currency: str = Field(min_length=3, max_length=8)
+    rate_date: date
+    rate: Decimal = Field(gt=0)
+    source: str = Field(default="manual", min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def validate_pair(self):
+        if self.base_currency.upper() == self.quote_currency.upper():
+            raise ValueError("基础币种和目标币种不能相同")
+        return self
+
+
 class VoucherEntryCreate(FinanceSchema):
     account_code: str = Field(min_length=1, max_length=64)
     summary: str = Field(default="", max_length=255)

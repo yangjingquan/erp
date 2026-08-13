@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -20,6 +20,7 @@ import { useAppStore } from "../stores/app";
 import { useAuthStore } from "../stores/auth";
 import { usePermissionStore } from "../stores/permission";
 import { globalSearch } from "../api/search";
+import { listOrganizations } from "../api/auth";
 import NotificationCenter from "../components/NotificationCenter.vue";
 
 const app = useAppStore();
@@ -29,6 +30,8 @@ const route = useRoute();
 const router = useRouter();
 const searchKeyword = ref("");
 const searchResults = ref<Array<Record<string, any>>>([]);
+const organizations = ref<Array<Record<string, any>>>([]);
+const switchingOrganization = ref(false);
 const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
   const currentGroup = route.path.split("/")[1];
@@ -76,6 +79,31 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
   await search();
   callback(searchResults.value.map((item) => ({ ...item, value: resultLabel(item) })));
 }
+
+async function loadOrganizations() {
+  try {
+    const response = await listOrganizations();
+    if (response.data.code === 0) organizations.value = Array.isArray(response.data.data) ? response.data.data : [];
+  } catch {
+    organizations.value = [];
+  }
+}
+
+async function switchOrganization(orgId: string) {
+  if (!orgId || orgId === auth.user?.org_id) return;
+  switchingOrganization.value = true;
+  try {
+    await auth.switchOrganization(orgId);
+    ElMessage.success("已切换组织");
+    await router.replace(route.fullPath);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "组织切换失败");
+  } finally {
+    switchingOrganization.value = false;
+  }
+}
+
+onMounted(loadOrganizations);
 </script>
 
 <template>
@@ -130,13 +158,14 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/inventory/batches')" index="/inventory/batches">批次管理</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/control-center')" index="/inventory/control-center">库存控制中心</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation'])" index="finance">
+        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation', '/finance/currencies'])" index="finance">
           <template #title><el-icon><Wallet /></el-icon><span>财务管理</span></template>
           <el-menu-item v-if="canPage('/finance/receivables')" index="/finance/receivables">应收账款</el-menu-item>
           <el-menu-item v-if="canPage('/finance/payables')" index="/finance/payables">应付账款</el-menu-item>
           <el-menu-item v-if="canPage('/finance/expenses')" index="/finance/expenses">费用报销</el-menu-item>
           <el-menu-item v-if="canPage('/finance/vouchers')" index="/finance/vouchers">会计凭证</el-menu-item>
           <el-menu-item v-if="canPage('/finance/foundation')" index="/finance/foundation">总账基础</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/currencies')" index="/finance/currencies">多币种与汇率</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities'])" index="crm">
           <template #title><el-icon><UserFilled /></el-icon><span>CRM 管理</span></template>
@@ -172,12 +201,13 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限设置</el-menu-item>
           <el-menu-item v-if="canPage('/system/backup')" index="/system/backup">备份恢复</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients'])" index="config">
+        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients', '/settings/platform-events'])" index="config">
           <template #title><el-icon><Setting /></el-icon><span>系统配置</span></template>
           <el-menu-item v-if="canPage('/settings/parameters')" index="/settings/parameters">全局参数</el-menu-item>
           <el-menu-item v-if="canPage('/settings/workflow')" index="/settings/workflow">审批流程</el-menu-item>
           <el-menu-item v-if="canPage('/settings/print-templates')" index="/settings/print-templates">打印模板</el-menu-item>
           <el-menu-item v-if="canPage('/settings/api-clients')" index="/settings/api-clients">API 客户端</el-menu-item>
+          <el-menu-item v-if="canPage('/settings/platform-events')" index="/settings/platform-events">事件订阅</el-menu-item>
         </el-sub-menu>
       </el-menu>
       <div class="sidebar-spacer" />
@@ -199,6 +229,9 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           @select="selectResult"
         />
         <span class="spacer" />
+        <el-select v-if="organizations.length > 1" class="org-switcher" :model-value="auth.user?.org_id" :loading="switchingOrganization" size="small" @change="switchOrganization">
+          <el-option v-for="item in organizations" :key="item.id" :label="item.name || item.code" :value="item.id" />
+        </el-select>
         <NotificationCenter />
         <el-button class="top-action" text @click="app.toggleTheme"><el-icon><Sunny /></el-icon>{{ app.theme === "light" ? "暖石" : "浅色" }}</el-button>
         <el-button class="top-action" text><el-icon><QuestionFilled /></el-icon>帮助</el-button>

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.core.security import verify_password
 from app.models.auth import sys_role_menu, sys_role_permission, sys_user_role
-from app.models.system import SysMenu, SysPermission, SysRole, SysUser
+from app.models.system import SysMenu, SysOrgMembership, SysPermission, SysRole, SysUser
 
 
 @dataclass
@@ -16,6 +16,7 @@ class UserContext:
     warehouse_ids: set[str] = None
     menus: list[dict] = None
     data_scope_type: str = "department"
+    active_org_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.warehouse_ids is None:
@@ -29,7 +30,7 @@ class UserContext:
 
     @property
     def org_id(self) -> str:
-        return self.user.org_id
+        return self.active_org_id or self.user.org_id
 
     @property
     def department_id(self) -> str | None:
@@ -50,7 +51,7 @@ def authenticate_user(db: Session, username: str, password: str) -> SysUser:
     return user
 
 
-def load_permissions(db: Session, user: SysUser) -> set[str]:
+def load_permissions(db: Session, user: SysUser, org_id: str | None = None) -> set[str]:
     if user.is_superuser:
         return {"*"}
     statement = (
@@ -60,18 +61,19 @@ def load_permissions(db: Session, user: SysUser) -> set[str]:
             sys_role_permission.c.permission_id == SysPermission.id,
         )
         .join(sys_user_role, sys_user_role.c.role_id == sys_role_permission.c.role_id)
-        .where(sys_user_role.c.user_id == user.id)
+        .join(SysRole, SysRole.id == sys_user_role.c.role_id)
+        .where(sys_user_role.c.user_id == user.id, SysRole.org_id == (org_id or user.org_id))
     )
     return set(db.scalars(statement).all())
 
 
-def load_data_scope_type(db: Session, user: SysUser) -> str:
+def load_data_scope_type(db: Session, user: SysUser, org_id: str | None = None) -> str:
     if user.is_superuser:
         return "all"
     values = db.scalars(
         select(SysRole.data_scope_type)
         .join(sys_user_role, sys_user_role.c.role_id == SysRole.id)
-        .where(sys_user_role.c.user_id == user.id, SysRole.status == "active")
+        .where(sys_user_role.c.user_id == user.id, SysRole.status == "active", SysRole.org_id == (org_id or user.org_id))
     ).all()
     if "all" in values:
         return "all"
@@ -82,7 +84,7 @@ def load_data_scope_type(db: Session, user: SysUser) -> str:
     return "department"
 
 
-def load_menus(db: Session, user: SysUser) -> list[dict]:
+def load_menus(db: Session, user: SysUser, org_id: str | None = None) -> list[dict]:
     statement = select(SysMenu).where(SysMenu.status == "active").order_by(SysMenu.sort_order, SysMenu.code)
     if not user.is_superuser:
         statement = statement.join(
@@ -91,7 +93,14 @@ def load_menus(db: Session, user: SysUser) -> list[dict]:
         ).join(
             sys_user_role,
             sys_user_role.c.role_id == sys_role_menu.c.role_id,
-        ).where(sys_user_role.c.user_id == user.id).distinct()
+        ).join(
+            SysRole,
+            SysRole.id == sys_user_role.c.role_id,
+        ).where(
+            sys_user_role.c.user_id == user.id,
+            SysRole.org_id == (org_id or user.org_id),
+            SysRole.status == "active",
+        ).distinct()
     rows = db.scalars(statement).all()
     nodes = {
         row.id: {
@@ -114,13 +123,13 @@ def load_menus(db: Session, user: SysUser) -> list[dict]:
     return roots
 
 
-def build_user_context(db: Session, user: SysUser, permissions=None) -> UserContext:
+def build_user_context(db: Session, user: SysUser, permissions=None, active_org_id: str | None = None) -> UserContext:
     from app.models.inventory_advanced import InvWarehouseAccess
 
     warehouse_ids = set(
         db.scalars(
             select(InvWarehouseAccess.warehouse_id).where(
-                InvWarehouseAccess.org_id == user.org_id,
+                InvWarehouseAccess.org_id == (active_org_id or user.org_id),
                 InvWarehouseAccess.user_id == user.id,
                 InvWarehouseAccess.is_deleted.is_(False),
             )
@@ -128,11 +137,30 @@ def build_user_context(db: Session, user: SysUser, permissions=None) -> UserCont
     )
     return UserContext(
         user=user,
-        permissions=set(permissions) if permissions is not None else load_permissions(db, user),
+        permissions=set(permissions) if permissions is not None else load_permissions(db, user, active_org_id),
         warehouse_ids=warehouse_ids,
-        menus=load_menus(db, user),
-        data_scope_type=load_data_scope_type(db, user),
+        menus=load_menus(db, user, active_org_id),
+        data_scope_type=load_data_scope_type(db, user, active_org_id),
+        active_org_id=active_org_id,
     )
+
+
+def list_user_organizations(db: Session, user: SysUser) -> list[dict]:
+    from app.models.system import SysOrg
+    if user.is_superuser:
+        return [{"id": row.id, "code": row.code, "name": row.name, "is_default": row.id == user.org_id} for row in db.scalars(select(SysOrg).where(SysOrg.status == "active", SysOrg.is_deleted.is_(False)).order_by(SysOrg.code)).all()]
+    rows = db.execute(
+        select(SysOrgMembership, SysOrgMembership.org_id)
+        .where(SysOrgMembership.user_id == user.id, SysOrgMembership.status == "active", SysOrgMembership.is_deleted.is_(False))
+        .order_by(SysOrgMembership.is_default.desc(), SysOrgMembership.created_at)
+    ).all()
+    org_ids = [membership.org_id for membership, _ in rows]
+    orgs = {row.id: row for row in db.scalars(select(SysOrg).where(SysOrg.id.in_(org_ids), SysOrg.status == "active", SysOrg.is_deleted.is_(False))).all()} if org_ids else {}
+    result = [{"id": row.org_id, "code": orgs[row.org_id].code, "name": orgs[row.org_id].name, "is_default": row.is_default} for row, _ in rows if row.org_id in orgs]
+    own = db.get(SysOrg, user.org_id)
+    if own is not None and own.status == "active" and all(item["id"] != own.id for item in result):
+        result.insert(0, {"id": own.id, "code": own.code, "name": own.name, "is_default": True})
+    return result
 
 
 def data_scope_condition(model, user: object, scope_type: str = "department"):

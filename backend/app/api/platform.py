@@ -4,10 +4,11 @@ from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.response import ok
-from app.schemas.platform import ApiClientCreate
+from app.schemas.platform import ApiClientCreate, EventSubscriptionCreate
 from app.services.auth_service import UserContext
 from app.services.openapi_service import create_api_client
 from app.models.platform import ExtEventOutbox, SysApiClient
+from app.services.event_service import create_subscription, dispatch_event, list_subscriptions, set_subscription_status
 from sqlalchemy import select
 router=APIRouter(prefix="/api/platform",tags=["platform"])
 @router.post("/api-clients")
@@ -26,3 +27,29 @@ def api_client_status(client_id:str,payload:dict,context:UserContext=Depends(req
 @router.get("/events")
 def events(status:str|None=None,context:UserContext=Depends(get_current_user),db:Session=Depends(get_db)):
  q=select(ExtEventOutbox).where(ExtEventOutbox.org_id==context.org_id);q=q.where(ExtEventOutbox.status==status) if status else q;return ok([{"id":r.id,"status":r.status,"event_type":r.event_type,"retry_count":r.retry_count} for r in db.scalars(q).all()])
+
+
+@router.get("/subscriptions")
+def subscriptions(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_subscriptions(db, context.org_id))
+
+
+@router.post("/subscriptions")
+def subscription(payload: EventSubscriptionCreate, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    row, secret = create_subscription(db, payload.model_dump(), context.org_id)
+    db.commit()
+    return ok({"id": row.id, "name": row.name, "endpoint_url": row.endpoint_url, "event_types": row.event_types, "secret": secret, "status": row.status})
+
+
+@router.post("/subscriptions/{subscription_id}/status")
+def subscription_status(subscription_id: str, payload: dict, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    row = set_subscription_status(db, subscription_id, context.org_id, str(payload.get("status", "")))
+    db.commit()
+    return ok({"id": row.id, "status": row.status})
+
+
+@router.post("/events/{event_id}/dispatch")
+def dispatch(event_id: str, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    result = dispatch_event(db, event_id, context.org_id)
+    db.commit()
+    return ok(result)
