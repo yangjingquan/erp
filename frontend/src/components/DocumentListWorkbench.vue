@@ -24,8 +24,19 @@ const emit = defineEmits<{
   reset: [];
   refresh: [];
 }>();
-const statusMetrics = computed(() => ["draft", "submitted", "approved", "completed"].map((key) => ({ key, count: props.summary?.statuses?.[key]?.count || 0, amount: props.summary?.statuses?.[key]?.amount || "0.00" })));
-const labels: Record<string, string> = { draft: "草稿", submitted: "待审核", approved: "已审核", completed: "已完成", open: "待处理", partial: "部分完成", settled: "已结清" };
+const preferredStatuses = ["draft", "submitted", "approved", "released", "in_progress", "partial", "partially_received", "confirmed", "posted", "completed", "passed", "failed", "open", "settled", "reversed", "cancelled"];
+const statusMetrics = computed(() => {
+  const statuses = props.summary?.statuses || {};
+  const populated = preferredStatuses.filter((key) => Number(statuses[key]?.count || 0) > 0);
+  const remaining = preferredStatuses.filter((key) => !populated.includes(key));
+  return [...populated, ...remaining].slice(0, 4).map((key) => ({ key, count: statuses[key]?.count || 0, amount: statuses[key]?.amount || "0.00" }));
+});
+const labels: Record<string, string> = {
+  draft: "草稿", submitted: "待审核", approved: "已审核", released: "已下达", in_progress: "进行中",
+  confirmed: "已确认", posted: "已记账", completed: "已完成", passed: "已通过", failed: "未通过",
+  open: "待处理", partial: "部分完成", partially_received: "部分收货", settled: "已结清",
+  reversed: "已冲销", cancelled: "已取消",
+};
 </script>
 
 <template>

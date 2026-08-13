@@ -115,8 +115,11 @@ def create_payable_from_subcontract_receipt(
 
 
 def create_receipt(db: Session, context: UserContext, *, customer_id: str, amount: Decimal) -> FinReceipt:
+    from app.services.ledger_service import assert_fiscal_period_open
+
     if amount <= 0:
         raise AppError("收款金额必须大于 0", code=400)
+    assert_fiscal_period_open(db, context.org_id, local_today())
     receipt = FinReceipt(
         org_id=context.org_id,
         doc_no=_new_finance_doc_no("RC", context),
@@ -158,8 +161,11 @@ def reconcile_receivable(db: Session, receipt_id: str, receivable_id: str, amoun
 
 
 def create_payment(db: Session, context: UserContext, *, supplier_id: str, amount: Decimal) -> FinPayment:
+    from app.services.ledger_service import assert_fiscal_period_open
+
     if amount <= 0:
         raise AppError("付款金额必须大于 0", code=400)
+    assert_fiscal_period_open(db, context.org_id, local_today())
     payment = FinPayment(
         org_id=context.org_id,
         doc_no=_new_finance_doc_no("PY", context),
@@ -246,13 +252,19 @@ def settle_expense(db: Session, expense_id: str, context: UserContext) -> FinExp
 
 
 def generate_voucher(db: Session, source_type: str, source_id: str, context: UserContext) -> FinVoucher:
-    existing = db.scalar(select(FinVoucher).where(FinVoucher.source_type == source_type, FinVoucher.source_id == source_id))
+    from app.services.ledger_service import assert_fiscal_period_open, ensure_default_accounts
+
+    existing = db.scalar(select(FinVoucher).where(
+        FinVoucher.org_id == context.org_id,
+        FinVoucher.source_type == source_type,
+        FinVoucher.source_id == source_id,
+    ))
     if existing:
         return existing
     amount = Decimal("0")
     if source_type == "expense":
         source = db.get(FinExpense, source_id)
-        if source is None:
+        if source is None or source.org_id != context.org_id:
             raise AppError("凭证来源单据不存在", code=404)
         amount = source.amount
         entries = [
@@ -261,7 +273,7 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         ]
     elif source_type == "receipt":
         source = db.get(FinReceipt, source_id)
-        if source is None:
+        if source is None or source.org_id != context.org_id:
             raise AppError("凭证来源单据不存在", code=404)
         amount = source.amount
         entries = [
@@ -270,7 +282,7 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         ]
     elif source_type == "payment":
         source = db.get(FinPayment, source_id)
-        if source is None:
+        if source is None or source.org_id != context.org_id:
             raise AppError("凭证来源单据不存在", code=404)
         amount = source.amount
         entries = [
@@ -279,6 +291,21 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         ]
     else:
         raise AppError("暂不支持该凭证来源", code=400)
+    assert_fiscal_period_open(db, context.org_id, local_today())
+    ensure_default_accounts(db, context.org_id)
+    from app.models.finance import FinAccount
+    account_map = {row.code: row for row in db.scalars(select(FinAccount).where(
+        FinAccount.org_id == context.org_id,
+        FinAccount.code.in_({entry.account_code for entry in entries}),
+        FinAccount.status == "active",
+        FinAccount.is_deleted.is_(False),
+    )).all()}
+    if len(account_map) != len({entry.account_code for entry in entries}):
+        raise AppError("凭证所需会计科目不存在或已停用", code=409)
+    for entry in entries:
+        entry.account_id = account_map[entry.account_code].id
+        entry.account_name = account_map[entry.account_code].name
+        entry.dimensions_json = {}
     voucher = FinVoucher(
         org_id=context.org_id,
         voucher_no=_new_finance_doc_no("FV", context),
@@ -414,6 +441,8 @@ def list_vouchers(db: Session, context: UserContext) -> list[dict]:
             "status": row.status,
             "total_debit": _money(row.total_debit),
             "total_credit": _money(row.total_credit),
+            "posted_at": row.posted_at.isoformat(timespec="seconds") if row.posted_at else None,
+            "reversal_voucher_id": row.reversal_voucher_id,
         }
         for row in rows
     ]

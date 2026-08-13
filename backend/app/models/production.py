@@ -96,6 +96,8 @@ class MfgWorkCenter(AuditMixin, UUIDModel):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     daily_capacity_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=8, nullable=False)
     efficiency_rate: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=1, nullable=False)
+    labor_rate: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    overhead_rate: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -175,6 +177,28 @@ class MfgWorkOrder(AuditMixin, UUIDModel):
     )
     issues: Mapped[list["MfgMaterialIssue"]] = relationship(back_populates="work_order")
     reports: Mapped[list["MfgReport"]] = relationship(back_populates="work_order")
+    cost: Mapped["MfgWorkOrderCost | None"] = relationship(back_populates="work_order", uselist=False)
+
+
+class MfgWorkOrderCost(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_work_order_cost"
+    __table_args__ = (UniqueConstraint("org_id", "work_order_id", name="uk_mfg_work_order_cost_order"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False, index=True)
+    material_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    labor_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    overhead_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    subcontract_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    scrap_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    total_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    actual_unit_cost: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    standard_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    variance_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    voucher_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="calculated", nullable=False)
+    cost_detail_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    work_order: Mapped[MfgWorkOrder] = relationship(back_populates="cost")
 
 
 class MfgWorkOrderMaterial(AuditMixin, UUIDModel):

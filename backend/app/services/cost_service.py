@@ -22,6 +22,11 @@ def assert_period_open(db: Session, org_id: str, business_date: date) -> None:
     row = db.scalar(select(CostPeriodClose).where(CostPeriodClose.org_id == org_id, CostPeriodClose.period == _period(business_date)))
     if row is not None and row.status == "closed":
         raise AppError("会计期间已结账", code=400)
+    # Cost and general-ledger postings share the same business-period guard.
+    # Import locally to avoid making the cost/ledger service dependency cyclic.
+    from app.services.ledger_service import assert_fiscal_period_open
+
+    assert_fiscal_period_open(db, org_id, business_date)
 
 
 def create_allocation(db: Session, payload: dict, context: UserContext) -> CostAllocation:

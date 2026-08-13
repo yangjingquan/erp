@@ -74,6 +74,35 @@ class BizComment(AuditMixin, UUIDModel):
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class BizSavedView(AuditMixin, UUIDModel):
+    __tablename__ = "biz_saved_view"
+    __table_args__ = (
+        UniqueConstraint("org_id", "owner_id", "name", name="uk_biz_saved_view_owner_name"),
+    )
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    business_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    filters_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    is_shared: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+
+class BizExportJob(AuditMixin, UUIDModel):
+    __tablename__ = "biz_export_job"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    owner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    business_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    filters_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    file_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    row_count: Mapped[int] = mapped_column(default=0, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+
+
 class SysNotification(AuditMixin, UUIDModel):
     __tablename__ = "sys_notification"
 

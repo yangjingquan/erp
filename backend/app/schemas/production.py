@@ -74,12 +74,16 @@ class WorkCenterCreate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     daily_capacity_hours: Decimal = Field(default=Decimal("8"), gt=0)
     efficiency_rate: Decimal = Field(default=Decimal("1"), gt=0, le=2)
+    labor_rate: Decimal = Field(default=Decimal("0"), ge=0)
+    overhead_rate: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class WorkCenterUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     daily_capacity_hours: Decimal = Field(gt=0)
     efficiency_rate: Decimal = Field(gt=0, le=2)
+    labor_rate: Decimal = Field(default=Decimal("0"), ge=0)
+    overhead_rate: Decimal = Field(default=Decimal("0"), ge=0)
     status: str = Field(pattern="^(active|inactive)$")
 
 

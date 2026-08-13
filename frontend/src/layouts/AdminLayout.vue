@@ -95,6 +95,9 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
         <el-menu-item v-if="canPage('/dashboard')" index="/dashboard">
           <el-icon><DataAnalysis /></el-icon><template #title>经营看板</template>
         </el-menu-item>
+        <el-menu-item v-if="canPage('/documents')" index="/documents">
+          <el-icon><Document /></el-icon><template #title>业务单据中心</template>
+        </el-menu-item>
         <el-sub-menu v-if="canAny(['/master-data/materials', '/master-data/customers', '/master-data/suppliers', '/master-data/warehouses', '/master-data/units', '/master-data/tax-rates'])" index="master-data">
           <template #title><el-icon><Collection /></el-icon><span>基础资料</span></template>
           <el-menu-item v-if="canPage('/master-data/materials')" index="/master-data/materials">物料档案</el-menu-item>
@@ -126,12 +129,13 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/inventory/locations')" index="/inventory/locations">仓位管理</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/batches')" index="/inventory/batches">批次管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers'])" index="finance">
+        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation'])" index="finance">
           <template #title><el-icon><Wallet /></el-icon><span>财务管理</span></template>
           <el-menu-item v-if="canPage('/finance/receivables')" index="/finance/receivables">应收账款</el-menu-item>
           <el-menu-item v-if="canPage('/finance/payables')" index="/finance/payables">应付账款</el-menu-item>
           <el-menu-item v-if="canPage('/finance/expenses')" index="/finance/expenses">费用报销</el-menu-item>
           <el-menu-item v-if="canPage('/finance/vouchers')" index="/finance/vouchers">会计凭证</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/foundation')" index="/finance/foundation">总账基础</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities'])" index="crm">
           <template #title><el-icon><UserFilled /></el-icon><span>CRM 管理</span></template>

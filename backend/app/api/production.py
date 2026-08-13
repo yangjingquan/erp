@@ -75,6 +75,7 @@ from app.services.production_resource_service import (
     upsert_capacity_calendar,
     work_order_readiness,
 )
+from app.services.production_cost_service import get_work_order_cost
 from app.models.production import MfgWorkOrder
 
 router = APIRouter(prefix="/api/production", tags=["production"])
@@ -285,6 +286,12 @@ def release_work_order_api(work_order_id: str, context: UserContext = Depends(re
 @router.get("/work-orders/{work_order_id}/readiness")
 def work_order_readiness_api(work_order_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(work_order_readiness(db, _get_work_order(db, work_order_id, context), context))
+
+
+@router.get("/work-orders/{work_order_id}/cost")
+def work_order_cost_api(work_order_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    _get_work_order(db, work_order_id, context)
+    return ok(get_work_order_cost(db, work_order_id, context))
 
 
 @router.post("/work-orders/{work_order_id}/issue")

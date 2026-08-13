@@ -23,6 +23,17 @@ export function runDocumentCommand(businessType: string, businessId: string, com
   return http.post(`/documents/${businessType}/${businessId}/commands`, { command, payload });
 }
 
+export function runBulkDocumentCommand(businessType: string, businessIds: string[], command: string, payload: Record<string, unknown> = {}) {
+  return http.post("/documents/bulk-commands", { business_type: businessType, business_ids: businessIds, command, payload });
+}
+
+export const listSavedDocumentViews = () => http.get("/documents/views");
+export const createSavedDocumentView = (payload: { name: string; business_type?: string; filters: Record<string, unknown>; is_shared?: boolean }) => http.post("/documents/views", payload);
+export const deleteSavedDocumentView = (id: string) => http.delete(`/documents/views/${id}`);
+export const listDocumentExports = () => http.get("/documents/exports");
+export const startDocumentExport = (payload: { business_type?: string; filters: Record<string, unknown> }) => http.post("/documents/exports", payload);
+export const downloadDocumentExport = (id: string) => http.get(`/documents/exports/${id}/download`, { responseType: "blob" });
+
 export function addDocumentComment(businessType: string, businessId: string, content: string) {
   return http.post(`/documents/${businessType}/${businessId}/comments`, { content });
 }

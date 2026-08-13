@@ -65,6 +65,7 @@ STATUS_LABELS = {
     "draft": "草稿", "submitted": "待审核", "approved": "已审核", "completed": "已完成",
     "open": "待核销", "partial": "部分核销", "settled": "已结清", "confirmed": "已确认",
     "posted": "已过账", "rejected": "已驳回", "cancelled": "已取消", "closed": "已关闭",
+    "released": "已下达", "in_progress": "进行中", "reversed": "已冲销",
 }
 
 ACTION_CONFIG = {
@@ -74,6 +75,20 @@ ACTION_CONFIG = {
         "approved": [("create_delivery", "生成出库单", "warning")],
     },
     "sales_delivery": {"draft": [("complete", "完成出库", "success")]},
+    "purchase_order": {
+        "draft": [("submit", "提交审核", "primary")],
+        "submitted": [("approve", "审核通过", "success")],
+        "approved": [("create_receipt", "生成入库单", "warning")],
+    },
+    "purchase_receipt": {"draft": [("complete", "完成入库", "success")]},
+    "mfg_work_order": {
+        "draft": [("release", "下达工单", "primary")],
+        "released": [("complete", "完工结转", "success"), ("cancel", "取消", "danger")],
+        "in_progress": [("complete", "完工结转", "success"), ("cancel", "取消", "danger")],
+    },
+    "inv_transfer": {"draft": [("approve", "审核", "primary")], "approved": [("complete", "完成调拨", "success")]},
+    "inv_count": {"draft": [("complete", "完成盘点", "success")]},
+    "fin_voucher": {"draft": [("post", "记账", "success")], "posted": [("reverse", "冲销", "danger")]},
 }
 
 TYPE_MODULE = {
@@ -100,6 +115,17 @@ def _can_access_type(context: UserContext, business_type: str) -> bool:
 def _assert_type_access(context: UserContext, business_type: str) -> None:
     if not _can_access_type(context, business_type):
         raise AppError("无权访问该业务单据", code=403)
+
+
+def _can_manage_type(context: UserContext, business_type: str) -> bool:
+    module = TYPE_MODULE.get(business_type)
+    return "*" in context.permissions or bool(module and f"{module}:manage" in context.permissions)
+
+
+def _assert_command_access(context: UserContext, business_type: str) -> None:
+    _assert_type_access(context, business_type)
+    if not _can_manage_type(context, business_type):
+        raise AppError("无权执行该业务单据操作", code=403)
 
 
 def _plain(value: Any) -> Any:
@@ -262,7 +288,7 @@ def _sync_inferred_relations(db: Session, org_id: str) -> None:
     db.flush()
 
 
-def _serialize_document(row: BizDocument) -> dict[str, Any]:
+def _serialize_document(row: BizDocument, context: UserContext | None = None) -> dict[str, Any]:
     return {
         "id": row.id, "business_type": row.business_type, "business_id": row.business_id,
         "doc_no": row.doc_no, "title": row.title, "status": row.status,
@@ -274,7 +300,7 @@ def _serialize_document(row: BizDocument) -> dict[str, Any]:
         "available_actions": [
             {"command": command, "label": label, "type": action_type}
             for command, label, action_type in ACTION_CONFIG.get(row.business_type, {}).get(row.status, [])
-        ],
+        ] if context is None or _can_manage_type(context, row.business_type) else [],
     }
 
 
@@ -338,37 +364,38 @@ def list_documents(
     if business_type:
         _assert_type_access(context, business_type)
     sync_documents(db, context, business_type)
-    filters = [BizDocument.org_id == context.org_id, BizDocument.is_deleted.is_(False)]
+    base_filters = [BizDocument.org_id == context.org_id, BizDocument.is_deleted.is_(False)]
     scope_condition = data_scope_condition(BizDocument, context.user, context.data_scope_type)
     if scope_condition is not True:
-        filters.append(scope_condition)
+        base_filters.append(scope_condition)
     if business_type:
-        filters.append(BizDocument.business_type == business_type)
+        base_filters.append(BizDocument.business_type == business_type)
     else:
         allowed_types = [type_name for type_name in TYPE_CONFIG if _can_access_type(context, type_name)]
-        filters.append(BizDocument.business_type.in_(allowed_types))
-    if status:
-        filters.append(BizDocument.status == status)
+        base_filters.append(BizDocument.business_type.in_(allowed_types))
     if keyword:
         pattern = f"%{keyword.strip()}%"
-        filters.append(or_(BizDocument.doc_no.ilike(pattern), BizDocument.title.ilike(pattern), BizDocument.party_name.ilike(pattern)))
+        base_filters.append(or_(BizDocument.doc_no.ilike(pattern), BizDocument.title.ilike(pattern), BizDocument.party_name.ilike(pattern)))
     if date_from:
-        filters.append(BizDocument.document_date >= date_from)
+        base_filters.append(BizDocument.document_date >= date_from)
     if date_to:
-        filters.append(BizDocument.document_date <= date_to)
+        base_filters.append(BizDocument.document_date <= date_to)
+    filters = [*base_filters]
+    if status:
+        filters.append(BizDocument.status == status)
     sort_columns = {"document_date": BizDocument.document_date, "amount": BizDocument.amount, "doc_no": BizDocument.doc_no, "updated_at": BizDocument.updated_at}
     descending = sort.startswith("-")
     sort_column = sort_columns.get(sort.lstrip("-"), BizDocument.updated_at)
     order = sort_column.desc() if descending else sort_column.asc()
     total = db.scalar(select(func.count()).select_from(BizDocument).where(*filters)) or 0
     rows = db.scalars(select(BizDocument).where(*filters).order_by(order, BizDocument.id).offset((page - 1) * page_size).limit(page_size)).all()
-    status_rows = db.execute(select(BizDocument.status, func.count(BizDocument.id), func.coalesce(func.sum(BizDocument.amount), 0)).where(*filters).group_by(BizDocument.status)).all()
+    status_rows = db.execute(select(BizDocument.status, func.count(BizDocument.id), func.coalesce(func.sum(BizDocument.amount), 0)).where(*base_filters).group_by(BizDocument.status)).all()
     summary = {
-        "total": total,
+        "total": sum(row[1] for row in status_rows),
         "amount": str(sum((row[2] for row in status_rows), Decimal("0"))),
         "statuses": {row[0]: {"count": row[1], "amount": str(row[2])} for row in status_rows},
     }
-    return {"items": [_serialize_document(row) for row in rows], "total": total, "page": page, "page_size": page_size, "summary": summary}
+    return {"items": [_serialize_document(row, context) for row in rows], "total": total, "page": page, "page_size": page_size, "summary": summary}
 
 
 def _get_source_row(db: Session, business_type: str, business_id: str, context: UserContext) -> Any:
@@ -430,7 +457,7 @@ def get_document_workspace(db: Session, context: UserContext, business_type: str
                 "relation_type": relation.relation_type,
                 "direction": "downstream" if current == from_key else "upstream",
                 "depth": depth + 1,
-                "document": _serialize_document(other) if other else {"business_type": other_key[0], "business_id": other_key[1], "doc_no": other_key[1]},
+                "document": _serialize_document(other, context) if other else {"business_type": other_key[0], "business_id": other_key[1], "doc_no": other_key[1]},
             })
     comments = db.scalars(select(BizComment).where(BizComment.org_id == context.org_id, BizComment.object_type == business_type, BizComment.object_id == business_id, BizComment.is_deleted.is_(False)).order_by(BizComment.created_at)).all()
     attachments = db.scalars(select(BizAttachment).where(BizAttachment.org_id == context.org_id, BizAttachment.object_type == business_type, BizAttachment.object_id == business_id, BizAttachment.is_deleted.is_(False)).order_by(BizAttachment.created_at.desc())).all()
@@ -444,7 +471,7 @@ def get_document_workspace(db: Session, context: UserContext, business_type: str
     timeline.sort(key=lambda item: item["time"])
     display_details, display_items = _display_payload(db, document, source)
     return {
-        "document": _serialize_document(document), "details": _model_dict(source),
+        "document": _serialize_document(document, context), "details": _model_dict(source),
         "display_details": display_details, "display_items": display_items,
         "relations": relation_items, "relation_graph": {"root": {"business_type": business_type, "business_id": business_id}, "edges": graph_edges}, "timeline": timeline,
         "comments": [{"id": row.id, "author_id": row.author_id, "author_name": row.author_name, "content": row.content, "created_at": row.created_at.isoformat(timespec="seconds")} for row in comments],
@@ -529,20 +556,25 @@ def mark_notification_read(db: Session, context: UserContext, notification_id: s
 
 
 def execute_command(db: Session, context: UserContext, business_type: str, business_id: str, command: str) -> dict[str, Any]:
+    _assert_command_access(context, business_type)
     if business_type == "sales_order":
         from app.services.sales_service import approve_sales_order, create_delivery_from_order, submit_sales_order
         if command == "submit":
             result = submit_sales_order(db, business_id, context)
-            return {"document": _serialize_document(_sync_row(db, business_type, result))}
+            document = _sync_row(db, business_type, result)
+            db.commit()
+            return {"document": _serialize_document(document, context)}
         if command == "approve":
             result = approve_sales_order(db, business_id, context)
-            return {"document": _serialize_document(_sync_row(db, business_type, result))}
+            document = _sync_row(db, business_type, result)
+            db.commit()
+            return {"document": _serialize_document(document, context)}
         if command == "create_delivery":
             result = create_delivery_from_order(db, business_id, context)
             _sync_row(db, "sales_delivery", result)
             _sync_inferred_relations(db, context.org_id)
             db.commit()
-            return {"created": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == result.id)))}
+            return {"created": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == result.id)), context)}
     if business_type == "sales_delivery" and command == "complete":
         from app.services.finance_service import create_receivable_from_sales_delivery
         from app.services.inventory_service import complete_sales_delivery
@@ -552,5 +584,79 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
         _sync_row(db, "sales_receivable", receivable)
         _sync_inferred_relations(db, context.org_id)
         db.commit()
-        return {"document": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == delivery.id))), "created": {"business_type": "sales_receivable", "business_id": receivable.id}}
+        return {"document": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == delivery.id)), context), "created": {"business_type": "sales_receivable", "business_id": receivable.id}}
+    if business_type == "purchase_order":
+        from app.services.purchase_service import approve_purchase_order, create_receipt_from_order, submit_purchase_order
+        if command == "submit":
+            result = submit_purchase_order(db, business_id, context)
+        elif command == "approve":
+            result = approve_purchase_order(db, business_id, context)
+        elif command == "create_receipt":
+            result = create_receipt_from_order(db, business_id, context)
+            _sync_row(db, "purchase_receipt", result)
+            _sync_inferred_relations(db, context.org_id)
+            db.commit()
+            return {"created": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "purchase_receipt", BizDocument.business_id == result.id)), context)}
+        else:
+            raise AppError("当前采购订单不支持该操作", code=400)
+        document = _sync_row(db, business_type, result)
+        db.commit()
+        return {"document": _serialize_document(document, context)}
+    if business_type == "purchase_receipt" and command == "complete":
+        from app.services.finance_service import create_payable_from_purchase_receipt
+        from app.services.inventory_service import complete_purchase_receipt
+        receipt = complete_purchase_receipt(db, business_id, context)
+        payable = create_payable_from_purchase_receipt(db, receipt.id, context)
+        _sync_row(db, business_type, receipt)
+        _sync_row(db, "purchase_payable", payable)
+        _sync_inferred_relations(db, context.org_id)
+        db.commit()
+        return {"document": _serialize_document(_sync_row(db, business_type, receipt), context), "created": {"business_type": "purchase_payable", "business_id": payable.id}}
+    if business_type == "mfg_work_order":
+        from app.services.production_service import cancel_work_order, complete_work_order, release_work_order
+        if command == "release":
+            result = release_work_order(db, business_id, context)
+        elif command == "complete":
+            result = complete_work_order(db, business_id, context)
+        elif command == "cancel":
+            result = cancel_work_order(db, business_id, context)
+        else:
+            raise AppError("当前生产工单不支持该操作", code=400)
+        document = _sync_row(db, business_type, result)
+        _sync_inferred_relations(db, context.org_id)
+        db.commit()
+        return {"document": _serialize_document(document, context)}
+    if business_type == "inv_transfer":
+        from app.services.inventory_service import approve_transfer, complete_transfer
+        if command == "approve":
+            result = approve_transfer(db, business_id, context)
+        elif command == "complete":
+            result = complete_transfer(db, business_id, context)
+        else:
+            raise AppError("当前调拨单不支持该操作", code=400)
+        document = _sync_row(db, business_type, result)
+        _sync_inferred_relations(db, context.org_id)
+        db.commit()
+        return {"document": _serialize_document(document, context)}
+    if business_type == "inv_count" and command == "complete":
+        from app.services.inventory_service import complete_count
+        result = complete_count(db, business_id, context)
+        document = _sync_row(db, business_type, result)
+        _sync_inferred_relations(db, context.org_id)
+        db.commit()
+        return {"document": _serialize_document(document, context)}
+    if business_type == "fin_voucher":
+        from app.services.ledger_service import post_voucher, reverse_voucher
+        if command == "post":
+            result = post_voucher(db, business_id, context)
+            document = _sync_row(db, business_type, result)
+        elif command == "reverse":
+            result = reverse_voucher(db, business_id, context)
+            _sync_row(db, business_type, result)
+            document = _sync_row(db, business_type, db.get(FinVoucher, business_id))
+        else:
+            raise AppError("当前会计凭证不支持该操作", code=400)
+        _sync_inferred_relations(db, context.org_id)
+        db.commit()
+        return {"document": _serialize_document(document, context)}
     raise AppError("当前单据状态不支持该操作", code=400)

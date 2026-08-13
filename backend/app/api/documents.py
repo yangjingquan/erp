@@ -1,14 +1,20 @@
 from datetime import date
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_user, require_permission
+from app.api.dependencies import get_current_user
 from app.core.database import get_db
 from app.core.response import ok
-from app.schemas.documents import DocumentCommand, DocumentCommentCreate
+from app.schemas.documents import (
+    DocumentBulkCommand,
+    DocumentCommand,
+    DocumentCommentCreate,
+    DocumentExportCreate,
+    SavedViewCreate,
+)
 from app.services.auth_service import UserContext
 from app.services.document_service import (
     add_comment,
@@ -20,6 +26,16 @@ from app.services.document_service import (
     list_notifications,
     mark_notification_read,
     save_attachment,
+)
+from app.services.document_operations_service import (
+    create_export_job,
+    create_saved_view,
+    delete_saved_view,
+    get_export_file,
+    list_export_jobs,
+    list_saved_views,
+    process_export_job,
+    run_bulk_command,
 )
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -85,10 +101,62 @@ def run_command(
     business_type: str,
     business_id: str,
     payload: DocumentCommand,
-    context: UserContext = Depends(require_permission("sales:manage")),
+    context: UserContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return ok(execute_command(db, context, business_type, business_id, payload.command))
+
+
+@router.post("/bulk-commands")
+def bulk_commands(
+    payload: DocumentBulkCommand,
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ok(run_bulk_command(db, payload, context))
+
+
+@router.get("/views")
+def saved_views(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_saved_views(db, context))
+
+
+@router.post("/views")
+def save_view(payload: SavedViewCreate, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    row = create_saved_view(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "name": row.name, "business_type": row.business_type, "filters": row.filters_json, "is_shared": row.is_shared})
+
+
+@router.delete("/views/{view_id}")
+def remove_saved_view(view_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    delete_saved_view(db, view_id, context)
+    db.commit()
+    return ok({"id": view_id}, "保存视图已删除")
+
+
+@router.get("/exports")
+def export_jobs(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_export_jobs(db, context))
+
+
+@router.post("/exports")
+def start_export(
+    payload: DocumentExportCreate,
+    background_tasks: BackgroundTasks,
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = create_export_job(db, payload, context)
+    db.commit()
+    background_tasks.add_task(process_export_job, row.id)
+    return ok({"id": row.id, "status": row.status}, "导出任务已提交")
+
+
+@router.get("/exports/{job_id}/download")
+def download_export(job_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    row, path = get_export_file(db, job_id, context)
+    return FileResponse(path, media_type="text/csv; charset=utf-8", filename=row.file_name or "ERP业务单据.csv")
 
 
 @router.post("/{business_type}/{business_id}/comments")

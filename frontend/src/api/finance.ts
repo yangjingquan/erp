@@ -24,6 +24,23 @@ export function listVouchers(params?: Record<string, unknown>) {
   return http.get("/finance/vouchers", { params });
 }
 
+export const listFinanceAccounts = (params?: { page?: number; page_size?: number }) => http.get("/finance/accounts", { params });
+export const createFinanceAccount = (payload: unknown) => http.post("/finance/accounts", payload);
+export const listAccountingDimensions = () => http.get("/finance/dimensions");
+export const createAccountingDimension = (payload: unknown) => http.post("/finance/dimensions", payload);
+export const listFiscalPeriods = () => http.get("/finance/periods");
+export const createFiscalPeriod = (payload: unknown) => http.post("/finance/periods", payload);
+export const closeFiscalPeriod = (period: string) => http.post(`/finance/periods/${period}/close`);
+export const reopenFiscalPeriod = (period: string) => http.post(`/finance/periods/${period}/reopen`);
+export const listBankAccounts = () => http.get("/finance/bank-accounts");
+export const createBankAccount = (payload: unknown) => http.post("/finance/bank-accounts", payload);
+export const listAssets = () => http.get("/finance/assets");
+export const createAsset = (payload: unknown) => http.post("/finance/assets", payload);
+export const runAssetDepreciation = (assetId: string, period: string) => http.post(`/finance/assets/${assetId}/depreciation`, { period });
+export const createManualVoucher = (payload: unknown) => http.post("/finance/vouchers", payload);
+export const postVoucher = (voucherId: string) => http.post(`/finance/vouchers/${voucherId}/post`);
+export const reverseVoucher = (voucherId: string) => http.post(`/finance/vouchers/${voucherId}/reverse`);
+
 export function createReceipt(payload: { customer_id: string; amount: number }) {
   return http.post("/finance/receipts", payload);
 }

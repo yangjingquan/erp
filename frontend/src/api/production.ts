@@ -15,6 +15,7 @@ export const reportWork = (id: string, payload: unknown) => http.post(`/producti
 export const completeWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/complete`);
 export const cancelWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/cancel`);
 export const getWorkOrderReadiness = (id: string) => http.get(`/production/work-orders/${id}/readiness`);
+export const getWorkOrderCost = (id: string) => http.get(`/production/work-orders/${id}/cost`);
 export const listWorkCenters = () => http.get("/production/work-centers");
 export const createWorkCenter = (payload: unknown) => http.post("/production/work-centers", payload);
 export const updateWorkCenter = (id: string, payload: unknown) => http.put(`/production/work-centers/${id}`, payload);

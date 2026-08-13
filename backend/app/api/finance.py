@@ -1,9 +1,18 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
+from app.schemas.finance import (
+    AccountCreate,
+    AssetCreate,
+    BankAccountCreate,
+    DepreciationRun,
+    DimensionCreate,
+    FiscalPeriodCreate,
+    ManualVoucherCreate,
+)
 from app.services.auth_service import UserContext
 from app.services.finance_service import (
     approve_expense,
@@ -21,8 +30,116 @@ from app.services.finance_service import (
     reconcile_payable,
     reconcile_receivable,
 )
+from app.services.ledger_service import (
+    close_fiscal_period,
+    create_account,
+    create_asset,
+    create_bank_account,
+    create_dimension,
+    create_manual_voucher,
+    create_period,
+    list_accounts,
+    list_assets,
+    list_bank_accounts,
+    list_dimensions,
+    list_periods,
+    post_voucher,
+    reopen_fiscal_period,
+    reverse_voucher,
+    run_asset_depreciation,
+)
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
+
+
+@router.get("/accounts")
+def accounts(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=200),
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    result = list_accounts(db, context, page, page_size)
+    db.commit()
+    return ok(result)
+
+
+@router.post("/accounts")
+def account(payload: AccountCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_account(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "code": row.code, "name": row.name, "status": row.status})
+
+
+@router.get("/dimensions")
+def dimensions(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_dimensions(db, context))
+
+
+@router.post("/dimensions")
+def dimension(payload: DimensionCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_dimension(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "code": row.code, "name": row.name, "status": row.status})
+
+
+@router.get("/periods")
+def periods(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    result = list_periods(db, context)
+    db.commit()
+    return ok(result)
+
+
+@router.post("/periods")
+def period(payload: FiscalPeriodCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_period(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "period": row.period, "status": row.status})
+
+
+@router.post("/periods/{period}/close")
+def close_period_api(period: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = close_fiscal_period(db, period, context)
+    db.commit()
+    return ok({"id": row.id, "period": row.period, "status": row.status})
+
+
+@router.post("/periods/{period}/reopen")
+def reopen_period_api(period: str, context: UserContext = Depends(require_permission("cost:period:reopen")), db: Session = Depends(get_db)):
+    row = reopen_fiscal_period(db, period, context)
+    db.commit()
+    return ok({"id": row.id, "period": row.period, "status": row.status})
+
+
+@router.get("/bank-accounts")
+def bank_accounts(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_bank_accounts(db, context))
+
+
+@router.post("/bank-accounts")
+def bank_account(payload: BankAccountCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_bank_account(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "name": row.name, "status": row.status})
+
+
+@router.get("/assets")
+def assets(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_assets(db, context))
+
+
+@router.post("/assets")
+def asset(payload: AssetCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_asset(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "asset_code": row.asset_code, "status": row.status})
+
+
+@router.post("/assets/{asset_id}/depreciation")
+def depreciate_asset(asset_id: str, payload: DepreciationRun, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = run_asset_depreciation(db, asset_id, payload.period, context)
+    db.commit()
+    return ok({"id": row.id, "asset_id": row.asset_id, "period": row.period, "amount": str(row.amount), "voucher_id": row.voucher_id})
 
 
 @router.get("/receivables")
@@ -53,6 +170,27 @@ def expenses(context: UserContext = Depends(get_current_user), db: Session = Dep
 @router.get("/vouchers")
 def vouchers(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_vouchers(db, context))
+
+
+@router.post("/vouchers")
+def manual_voucher(payload: ManualVoucherCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_manual_voucher(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "voucher_no": row.voucher_no, "status": row.status})
+
+
+@router.post("/vouchers/{voucher_id}/post")
+def post_voucher_api(voucher_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = post_voucher(db, voucher_id, context)
+    db.commit()
+    return ok({"id": row.id, "voucher_no": row.voucher_no, "status": row.status})
+
+
+@router.post("/vouchers/{voucher_id}/reverse")
+def reverse_voucher_api(voucher_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = reverse_voucher(db, voucher_id, context)
+    db.commit()
+    return ok({"id": row.id, "voucher_no": row.voucher_no, "status": row.status, "reversed_from_id": row.reversed_from_id})
 
 
 @router.post("/receipts")

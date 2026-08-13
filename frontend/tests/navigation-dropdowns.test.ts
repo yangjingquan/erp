@@ -17,6 +17,8 @@ describe("导航和关联字段交互", () => {
     expect(layout).toContain("<el-menu-item v-if=\"canPage('/master-data/customers')\"");
     expect(layout).toContain("<span>基础资料</span>");
     expect(layout).toContain("index=\"/production/work-orders\"");
+    expect(layout).toContain("index=\"/documents\"");
+    expect(layout).toContain("index=\"/finance/foundation\"");
     expect(layout).toContain("index=\"/settings/api-clients\"");
     expect(layout).toContain("index=\"config\"");
     expect(layout).not.toContain("navigation-tabs");

@@ -36,6 +36,7 @@ from app.services.planning_service import (
     _require_warehouse,
     _validate_source_reference,
 )
+from app.services.production_cost_service import calculate_and_post_work_order_cost, serialize_work_order_cost
 from app.services.production_resource_service import (
     approved_routing_for_work_order,
     routing_snapshot,
@@ -83,6 +84,7 @@ def serialize_work_order(row: MfgWorkOrder) -> dict:
         "source_type": row.source_type,
         "source_id": row.source_id,
         "materials": [_serialize_material(item) for item in row.materials if not item.is_deleted],
+        "actual_cost": serialize_work_order_cost(row.cost),
     }
 
 
@@ -717,6 +719,7 @@ def complete_work_order(db: Session, work_order_id: str, context: UserContext) -
     )
     if material is None:
         raise AppError("成品物料不存在或不属于当前组织", code=404)
+    cost = calculate_and_post_work_order_cost(db, row, completion_quantity, material, context)
     post_stock_transaction(
         db,
         context,
@@ -726,7 +729,7 @@ def complete_work_order(db: Session, work_order_id: str, context: UserContext) -
         material_id=row.material_id,
         quantity=completion_quantity,
         direction="in",
-        unit_cost=_quantity(material.standard_cost),
+        unit_cost=_quantity(cost.actual_unit_cost),
     )
     row.completed_quantity = _quantity(row.completed_quantity + completion_quantity)
     row.status = "completed"
@@ -738,7 +741,14 @@ def complete_work_order(db: Session, work_order_id: str, context: UserContext) -
         row.id,
         {"work_order_id": row.id, "quantity": f"{completion_quantity:.6f}"},
     )
-    write_operation_log(db, user=context.user, action="complete", resource="mfg_work_order", target_id=row.id)
+    write_operation_log(
+        db,
+        user=context.user,
+        action="complete",
+        resource="mfg_work_order",
+        target_id=row.id,
+        detail={"actual_cost_id": cost.id, "actual_unit_cost": str(cost.actual_unit_cost), "voucher_id": cost.voucher_id},
+    )
     db.flush()
     return row
 

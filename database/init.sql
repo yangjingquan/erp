@@ -724,6 +724,12 @@ CREATE TABLE IF NOT EXISTS fin_asset (
   purchase_date DATE NULL,
   original_value DECIMAL(18,2) NOT NULL DEFAULT 0,
   accumulated_depreciation DECIMAL(18,2) NOT NULL DEFAULT 0,
+  useful_life_months INT NOT NULL DEFAULT 60,
+  residual_rate DECIMAL(8,4) NOT NULL DEFAULT 0,
+  depreciation_method VARCHAR(32) NOT NULL DEFAULT 'straight_line',
+  depreciation_account_code VARCHAR(64) NOT NULL DEFAULT '1602',
+  expense_account_code VARCHAR(64) NOT NULL DEFAULT '6602',
+  last_depreciation_period VARCHAR(7) NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'active',
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_fin_asset_org_code (org_id, asset_code)
@@ -740,25 +746,72 @@ CREATE TABLE IF NOT EXISTS fin_voucher (
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   total_debit DECIMAL(18,2) NOT NULL DEFAULT 0,
   total_credit DECIMAL(18,2) NOT NULL DEFAULT 0,
+  posted_at DATETIME(6) NULL,
+  posted_by CHAR(36) NULL,
+  reversed_from_id CHAR(36) NULL,
+  reversal_voucher_id CHAR(36) NULL,
   created_by CHAR(36) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_fin_voucher_no (org_id, voucher_no),
-  UNIQUE KEY uk_fin_voucher_source (source_type, source_id)
+  UNIQUE KEY uk_fin_voucher_source (org_id, source_type, source_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS fin_voucher_entry (
   id CHAR(36) PRIMARY KEY,
   voucher_id CHAR(36) NOT NULL,
   line_no INT NOT NULL,
+  account_id CHAR(36) NULL,
   account_code VARCHAR(64) NOT NULL,
   account_name VARCHAR(128) NOT NULL,
   summary VARCHAR(255) NULL,
   debit_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
   credit_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+  dimensions_json JSON NOT NULL,
   customer_id CHAR(36) NULL,
   supplier_id CHAR(36) NULL,
   department_id CHAR(36) NULL,
   KEY idx_fin_voucher_entry_voucher (voucher_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_account (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, code VARCHAR(64) NOT NULL,
+  name VARCHAR(128) NOT NULL, account_type VARCHAR(32) NOT NULL, balance_direction VARCHAR(8) NOT NULL,
+  parent_id CHAR(36) NULL, allow_posting TINYINT(1) NOT NULL DEFAULT 1, status VARCHAR(32) NOT NULL DEFAULT 'active',
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), version INT NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_fin_account_org_code (org_id, code), KEY idx_fin_account_parent (parent_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_accounting_dimension (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, code VARCHAR(64) NOT NULL, name VARCHAR(128) NOT NULL,
+  dimension_type VARCHAR(32) NOT NULL, required TINYINT(1) NOT NULL DEFAULT 0, status VARCHAR(32) NOT NULL DEFAULT 'active',
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), version INT NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_fin_dimension_org_code (org_id, code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_fiscal_period (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, period VARCHAR(7) NOT NULL, start_date DATE NOT NULL, end_date DATE NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'open', closed_at DATETIME(6) NULL, closed_by CHAR(36) NULL,
+  reopened_at DATETIME(6) NULL, reopened_by CHAR(36) NULL, is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version INT NOT NULL DEFAULT 1, UNIQUE KEY uk_fin_fiscal_period_org (org_id, period)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_bank_account (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, name VARCHAR(128) NOT NULL, bank_name VARCHAR(128) NOT NULL,
+  account_no VARCHAR(64) NOT NULL, currency VARCHAR(8) NOT NULL DEFAULT 'CNY', ledger_account_id CHAR(36) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'active', is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version INT NOT NULL DEFAULT 1, UNIQUE KEY uk_fin_bank_account_org_no (org_id, account_no), KEY idx_fin_bank_account_ledger (ledger_account_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS fin_asset_depreciation (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, asset_id CHAR(36) NOT NULL, period VARCHAR(7) NOT NULL,
+  amount DECIMAL(18,2) NOT NULL, voucher_id CHAR(36) NULL, status VARCHAR(32) NOT NULL DEFAULT 'posted',
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), version INT NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_fin_asset_depreciation_period (asset_id, period), KEY idx_fin_asset_depreciation_org (org_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS wf_definition (
@@ -1084,6 +1137,8 @@ CREATE TABLE IF NOT EXISTS mfg_work_center (
   name VARCHAR(128) NOT NULL,
   daily_capacity_hours DECIMAL(18,6) NOT NULL DEFAULT 8,
   efficiency_rate DECIMAL(8,4) NOT NULL DEFAULT 1,
+  labor_rate DECIMAL(18,2) NOT NULL DEFAULT 0,
+  overhead_rate DECIMAL(18,2) NOT NULL DEFAULT 0,
   status VARCHAR(32) NOT NULL DEFAULT 'active',
   created_by CHAR(36) NULL,
   updated_by CHAR(36) NULL,
@@ -1168,6 +1223,19 @@ CREATE TABLE IF NOT EXISTS mfg_work_order_material (
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   version INT NOT NULL DEFAULT 1,
   KEY idx_mfg_work_order_material_order (work_order_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS mfg_work_order_cost (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, work_order_id CHAR(36) NOT NULL,
+  material_cost DECIMAL(18,2) NOT NULL DEFAULT 0, labor_cost DECIMAL(18,2) NOT NULL DEFAULT 0,
+  overhead_cost DECIMAL(18,2) NOT NULL DEFAULT 0, subcontract_cost DECIMAL(18,2) NOT NULL DEFAULT 0,
+  scrap_cost DECIMAL(18,2) NOT NULL DEFAULT 0, total_cost DECIMAL(18,2) NOT NULL DEFAULT 0,
+  actual_unit_cost DECIMAL(18,6) NOT NULL DEFAULT 0, standard_cost DECIMAL(18,2) NOT NULL DEFAULT 0,
+  variance_amount DECIMAL(18,2) NOT NULL DEFAULT 0, voucher_id CHAR(36) NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'calculated', cost_detail_json JSON NOT NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6), version INT NOT NULL DEFAULT 1,
+  UNIQUE KEY uk_mfg_work_order_cost_order (org_id, work_order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS mfg_material_issue (
@@ -2232,6 +2300,23 @@ CREATE TABLE IF NOT EXISTS biz_comment (
   KEY idx_biz_comment_object (org_id, object_type, object_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS biz_saved_view (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, owner_id CHAR(36) NOT NULL,
+  name VARCHAR(128) NOT NULL, business_type VARCHAR(64) NULL, filters_json JSON NOT NULL,
+  is_shared TINYINT(1) NOT NULL DEFAULT 0, is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version INT NOT NULL DEFAULT 1, UNIQUE KEY uk_biz_saved_view_owner_name (org_id, owner_id, name), KEY idx_biz_saved_view_type (business_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS biz_export_job (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, owner_id CHAR(36) NOT NULL,
+  business_type VARCHAR(64) NULL, filters_json JSON NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  file_key VARCHAR(255) NULL, file_name VARCHAR(255) NULL, row_count INT NOT NULL DEFAULT 0,
+  error_message VARCHAR(500) NULL, completed_at DATETIME(6) NULL, is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version INT NOT NULL DEFAULT 1, KEY idx_biz_export_job_owner_status (org_id, owner_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS sys_notification (
   id CHAR(36) PRIMARY KEY,
   org_id CHAR(36) NOT NULL,
@@ -2340,6 +2425,16 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VA
 INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
 SELECT '10000000-0000-0000-0000-000000000015', id, 'page:quality:nonconformances:view', '不合格与 CAPA', '/quality/nonconformances', 'NonconformanceList', 'menu', 2
 FROM sys_menu WHERE code = 'quality:view'
+ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
+
+INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
+SELECT '10000000-0000-0000-0000-000000000017', id, 'page:finance:foundation:view', '总账基础', '/finance/foundation', 'FinanceFoundation', 'menu', 6
+FROM sys_menu WHERE code = 'finance:view'
+ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
+
+INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
+SELECT '10000000-0000-0000-0000-000000000018', NULL, 'page:documents:workspace:view', '业务单据中心', '/documents', 'UnifiedDocumentCenter', 'menu', 80
+FROM sys_menu WHERE code = 'dashboard:view'
 ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
 
 INSERT INTO sys_permission (id, menu_id, code, name, permission_type)

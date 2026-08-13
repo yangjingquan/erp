@@ -34,6 +34,8 @@ def serialize_work_center(row: MfgWorkCenter) -> dict:
         "name": row.name,
         "daily_capacity_hours": _decimal_text(row.daily_capacity_hours),
         "efficiency_rate": f"{_decimal(row.efficiency_rate):.4f}",
+        "labor_rate": f"{_decimal(row.labor_rate):.2f}",
+        "overhead_rate": f"{_decimal(row.overhead_rate):.2f}",
         "status": row.status,
     }
 
@@ -101,6 +103,8 @@ def create_work_center(db: Session, payload, context: UserContext) -> MfgWorkCen
         name=payload.name.strip(),
         daily_capacity_hours=payload.daily_capacity_hours,
         efficiency_rate=payload.efficiency_rate,
+        labor_rate=payload.labor_rate,
+        overhead_rate=payload.overhead_rate,
         status="active",
         created_by=context.id,
         updated_by=context.id,
@@ -135,6 +139,8 @@ def update_work_center(db: Session, work_center_id: str, payload, context: UserC
     row.name = payload.name.strip()
     row.daily_capacity_hours = payload.daily_capacity_hours
     row.efficiency_rate = payload.efficiency_rate
+    row.labor_rate = payload.labor_rate
+    row.overhead_rate = payload.overhead_rate
     row.status = payload.status
     row.updated_by = context.id
     write_operation_log(db, user=context.user, action="update", resource="mfg_work_center", target_id=row.id)
