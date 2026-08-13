@@ -42,3 +42,7 @@ export function listBatches(materialId?: string) { return http.get("/inventory/a
 export function createBatch(materialId: string, payload: { batch_no: string; production_date?: string | null; expiry_date?: string | null; status?: string }) { return http.post("/inventory/advanced/batches", payload, { params: { material_id: materialId } }); }
 export function updateBatch(batchId: string, payload: { batch_no: string; production_date?: string | null; expiry_date?: string | null; status?: string }) { return http.put(`/inventory/advanced/batches/${batchId}`, payload); }
 export function deleteBatch(batchId: string) { return http.delete(`/inventory/advanced/batches/${batchId}`); }
+export function listReservations(status?: string) { return http.get("/inventory/advanced/reservations", { params: { status } }); }
+export function createReservation(payload: unknown) { return http.post("/inventory/advanced/reservations", payload); }
+export function releaseReservation(id: string) { return http.post(`/inventory/advanced/reservations/${id}/release`); }
+export function listTraceEvents(params?: { material_id?: string; batch_id?: string }) { return http.get("/inventory/advanced/trace", { params }); }

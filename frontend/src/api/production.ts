@@ -20,6 +20,7 @@ export const listWorkCenters = () => http.get("/production/work-centers");
 export const createWorkCenter = (payload: unknown) => http.post("/production/work-centers", payload);
 export const updateWorkCenter = (id: string, payload: unknown) => http.put(`/production/work-centers/${id}`, payload);
 export const listCapacityCalendar = (params?: { date_from?: string; date_to?: string }) => http.get("/production/capacity-calendar", { params });
+export const listCapacityLoad = (params?: { date_from?: string; date_to?: string }) => http.get("/production/capacity-load", { params });
 export const upsertCapacityCalendar = (payload: unknown) => http.post("/production/capacity-calendar", payload);
 export const listRoutings = () => http.get("/production/routings");
 export const createRouting = (payload: unknown) => http.post("/production/routings", payload);

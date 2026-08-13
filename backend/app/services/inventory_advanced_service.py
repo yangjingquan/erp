@@ -15,6 +15,8 @@ from app.models.inventory_advanced import (
     InvBatch,
     InvCostLayer,
     InvCostLayerConsumption,
+    InvReservation,
+    InvTraceEvent,
     InvLocation,
     InvSlowMovingRule,
     InvScanRecord,
@@ -578,6 +580,12 @@ def post_fifo_inbound(
         unit_cost=unit_cost,
     )
     db.add(layer)
+    db.add(InvTraceEvent(
+        org_id=context.org_id, material_id=material_id, batch_id=batch_id,
+        transaction_id=transaction.id, source_type=source_type, source_id=source_id,
+        direction="in", quantity=quantity, warehouse_id=warehouse_id,
+        location_id=location_id, event_time=local_today(),
+    ))
     db.flush()
     write_operation_log(db, user=context.user, action="fifo_inbound", resource="inv_cost_layer", target_id=layer.id)
     return [layer]
@@ -646,6 +654,12 @@ def post_fifo_outbound(
             unit_cost=_decimal(layer.unit_cost),
         )
         db.add(consumption)
+        db.add(InvTraceEvent(
+            org_id=context.org_id, material_id=material_id, batch_id=layer.batch_id,
+            transaction_id=transaction.id, source_type=source_type, source_id=source_id,
+            direction="out", quantity=consumed_quantity, warehouse_id=warehouse_id,
+            location_id=location_id, event_time=local_today(),
+        ))
         consumed.append(
             {"cost_layer_id": layer.id, "quantity": _number(consumed_quantity), "unit_cost": _number(layer.unit_cost)}
         )
@@ -734,3 +748,105 @@ def list_batches(db: Session, material_id: str | None, context: UserContext) -> 
         _require_material(db, material_id, context)
         statement = statement.where(InvBatch.material_id == material_id)
     return list(db.scalars(statement.order_by(InvBatch.created_at.desc())).all())
+
+
+def _serialize_reservation(row: InvReservation) -> dict:
+    return {
+        "id": row.id, "source_type": row.source_type, "source_id": row.source_id,
+        "material_id": row.material_id, "warehouse_id": row.warehouse_id,
+        "quantity": _number(row.quantity), "released_quantity": _number(row.released_quantity),
+        "reserved_quantity": _number(_decimal(row.quantity) - _decimal(row.released_quantity)),
+        "status": row.status, "note": row.note,
+    }
+
+
+def create_reservation(db: Session, payload, context: UserContext) -> InvReservation:
+    from app.services.inventory_service import _get_or_create_stock
+
+    _require_warehouse(db, payload.warehouse_id, context)
+    _require_material(db, payload.material_id, context)
+    quantity = _decimal(payload.quantity)
+    duplicate = db.scalar(select(InvReservation).where(
+        InvReservation.org_id == context.org_id,
+        InvReservation.source_type == payload.source_type,
+        InvReservation.source_id == payload.source_id,
+        InvReservation.material_id == payload.material_id,
+        InvReservation.warehouse_id == payload.warehouse_id,
+        InvReservation.is_deleted.is_(False),
+    ).with_for_update())
+    if duplicate is not None:
+        if duplicate.status == "released":
+            raise AppError("原来源单据的库存预留已释放，不能重复预留", code=409)
+        if _decimal(duplicate.quantity) != quantity:
+            raise AppError("同一来源单据的预留数量不可变更，请先释放后重新预留", code=409)
+        return duplicate
+    stock = _get_or_create_stock(db, context, payload.warehouse_id, payload.material_id)
+    if _decimal(stock.available_quantity) < quantity:
+        raise AppError("可用库存不足，无法预留", code=400)
+    stock.locked_quantity = _decimal(stock.locked_quantity) + quantity
+    stock.available_quantity = _decimal(stock.quantity) - _decimal(stock.locked_quantity)
+    row = InvReservation(
+        org_id=context.org_id, source_type=payload.source_type, source_id=payload.source_id,
+        material_id=payload.material_id, warehouse_id=payload.warehouse_id,
+        quantity=quantity, note=payload.note,
+    )
+    db.add(row)
+    db.flush()
+    write_operation_log(db, user=context.user, action="reserve", resource="inv_reservation", target_id=row.id)
+    return row
+
+
+def release_reservation(db: Session, reservation_id: str, context: UserContext) -> InvReservation:
+    from app.services.inventory_service import _get_or_create_stock
+
+    row = db.scalar(select(InvReservation).where(
+        InvReservation.id == reservation_id, InvReservation.org_id == context.org_id,
+        InvReservation.is_deleted.is_(False),
+    ).with_for_update())
+    if row is None:
+        raise AppError("库存预留不存在", code=404)
+    remaining = _decimal(row.quantity) - _decimal(row.released_quantity)
+    if remaining <= 0 or row.status == "released":
+        return row
+    stock = _get_or_create_stock(db, context, row.warehouse_id, row.material_id)
+    stock.locked_quantity = max(Decimal("0"), _decimal(stock.locked_quantity) - remaining)
+    stock.available_quantity = _decimal(stock.quantity) - _decimal(stock.locked_quantity)
+    row.released_quantity = _decimal(row.quantity)
+    row.status = "released"
+    row.version += 1
+    write_operation_log(db, user=context.user, action="release", resource="inv_reservation", target_id=row.id)
+    db.flush()
+    return row
+
+
+def list_reservations(db: Session, context: UserContext, status: str | None = None) -> list[dict]:
+    statement = select(InvReservation).where(
+        InvReservation.org_id == context.org_id, InvReservation.is_deleted.is_(False)
+    )
+    if status:
+        statement = statement.where(InvReservation.status == status)
+    allowed = allowed_warehouse_ids(context)
+    if allowed is not None:
+        statement = statement.where(InvReservation.warehouse_id.in_(allowed))
+    return [_serialize_reservation(row) for row in db.scalars(statement.order_by(InvReservation.created_at.desc())).all()]
+
+
+def list_trace_events(db: Session, context: UserContext, *, material_id: str | None = None, batch_id: str | None = None) -> list[dict]:
+    statement = select(InvTraceEvent).where(
+        InvTraceEvent.org_id == context.org_id, InvTraceEvent.is_deleted.is_(False)
+    )
+    if material_id:
+        _require_material(db, material_id, context)
+        statement = statement.where(InvTraceEvent.material_id == material_id)
+    if batch_id:
+        statement = statement.where(InvTraceEvent.batch_id == batch_id)
+    allowed = allowed_warehouse_ids(context)
+    if allowed is not None:
+        statement = statement.where(InvTraceEvent.warehouse_id.in_(allowed))
+    return [{
+        "id": row.id, "material_id": row.material_id, "batch_id": row.batch_id,
+        "transaction_id": row.transaction_id, "source_type": row.source_type,
+        "source_id": row.source_id, "direction": row.direction,
+        "quantity": _number(row.quantity), "warehouse_id": row.warehouse_id,
+        "location_id": row.location_id, "event_time": row.event_time.isoformat() if row.event_time else None,
+    } for row in db.scalars(statement.order_by(InvTraceEvent.event_time.desc(), InvTraceEvent.created_at.desc())).all()]

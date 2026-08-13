@@ -54,3 +54,5 @@ export function listPurchaseReturns() { return http.get("/purchase/returns"); }
 export function createPurchaseReturn(payload: Record<string, unknown>) { return http.post("/purchase/returns", payload); }
 export function updatePurchaseReturn(id: string, payload: Record<string, unknown>) { return http.put(`/purchase/returns/${id}`, payload); }
 export function deletePurchaseReturn(id: string) { return http.delete(`/purchase/returns/${id}`); }
+export function submitPurchaseReturn(id: string) { return http.post(`/purchase/returns/${id}/submit`); }
+export function completePurchaseReturn(id: string) { return http.post(`/purchase/returns/${id}/complete`); }

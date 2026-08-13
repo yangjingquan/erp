@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
-from app.schemas.inventory_advanced import BatchCreate, BatchUpdate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, LocationUpdate, ScanProcessCreate
+from app.schemas.inventory_advanced import BatchCreate, BatchUpdate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, LocationUpdate, ReservationCreate, ScanProcessCreate
 from app.services.auth_service import UserContext
 from app.services.inventory_advanced_service import (
     create_batch,
@@ -23,6 +23,10 @@ from app.services.inventory_advanced_service import (
     process_scan,
     update_batch,
     update_location,
+    create_reservation,
+    release_reservation,
+    list_reservations,
+    list_trace_events,
 )
 
 
@@ -178,6 +182,30 @@ def slow_moving(
     db: Session = Depends(get_db),
 ):
     return ok(list_slow_moving(db, context, as_of))
+
+
+@router.get("/reservations")
+def reservations(status: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_reservations(db, context, status))
+
+
+@router.post("/reservations")
+def reserve(payload: ReservationCreate, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    row = create_reservation(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "status": row.status, "quantity": str(row.quantity)})
+
+
+@router.post("/reservations/{reservation_id}/release")
+def release(reservation_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    row = release_reservation(db, reservation_id, context)
+    db.commit()
+    return ok({"id": row.id, "status": row.status, "released_quantity": str(row.released_quantity)})
+
+
+@router.get("/trace")
+def trace(material_id: str | None = Query(default=None), batch_id: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_trace_events(db, context, material_id=material_id, batch_id=batch_id))
 
 
 @router.post("/scan/token")

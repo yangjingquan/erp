@@ -5,17 +5,37 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.core.time import local_now, local_today
-from app.models.quality import QaCapaAction, QaInspection, QaNonconformity, QaPlan
+from app.models.quality import QaCapaAction, QaDefectCatalog, QaInspection, QaNonconformity, QaPlan
 from app.models.system import SysUser
 from app.services.audit_service import write_operation_log
 from app.services.auth_service import UserContext
 
 
 def create_quality_plan(db: Session, payload: dict, context: UserContext) -> QaPlan:
+    if any(not isinstance(item, dict) or not str(item.get("item", "")).strip() for item in payload["items"]):
+        raise AppError("检验计划项目必须包含 item 字段", code=422)
     row = QaPlan(org_id=context.org_id, name=payload["name"], items_json=payload["items"])
     db.add(row)
     db.flush()
     return row
+
+
+def list_quality_plans(db: Session, context: UserContext) -> list[dict]:
+    rows = db.scalars(select(QaPlan).where(QaPlan.org_id == context.org_id, QaPlan.is_deleted.is_(False)).order_by(QaPlan.created_at.desc())).all()
+    return [{"id": row.id, "name": row.name, "items": row.items_json} for row in rows]
+
+
+def list_defects(db: Session, context: UserContext) -> list[dict]:
+    rows = db.scalars(select(QaDefectCatalog).where(QaDefectCatalog.org_id == context.org_id, QaDefectCatalog.is_deleted.is_(False)).order_by(QaDefectCatalog.code)).all()
+    return [{"id": row.id, "code": row.code, "name": row.name, "severity": row.severity, "status": row.status} for row in rows]
+
+
+def create_defect(db: Session, payload: dict, context: UserContext) -> QaDefectCatalog:
+    duplicate = db.scalar(select(QaDefectCatalog).where(QaDefectCatalog.org_id == context.org_id, QaDefectCatalog.code == payload["code"], QaDefectCatalog.is_deleted.is_(False)))
+    if duplicate is not None:
+        raise AppError("缺陷编码已存在", code=409)
+    row = QaDefectCatalog(org_id=context.org_id, code=payload["code"].strip().upper(), name=payload["name"].strip(), severity=payload["severity"], status=payload["status"])
+    db.add(row); db.flush(); return row
 
 
 def create_inspection(
@@ -24,12 +44,22 @@ def create_inspection(
     source_type: str,
     source_id: str,
     context: UserContext,
+    *, plan_id: str | None = None,
+    sample_size: int | None = None,
 ) -> QaInspection:
+    plan = None
+    if plan_id:
+        plan = db.scalar(select(QaPlan).where(QaPlan.id == plan_id, QaPlan.org_id == context.org_id, QaPlan.is_deleted.is_(False)))
+        if plan is None:
+            raise AppError("检验计划不存在", code=404)
     row = QaInspection(
         org_id=context.org_id,
         inspection_type=inspection_type,
         source_type=source_type,
         source_id=source_id,
+        plan_id=plan_id,
+        sample_size=sample_size,
+        results_json=[{"item": item.get("item"), "value": "待检", "passed": None} for item in (plan.items_json if plan else [])],
     )
     db.add(row)
     db.flush()

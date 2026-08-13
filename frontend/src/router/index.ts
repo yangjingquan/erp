@@ -51,6 +51,7 @@ export const router = createRouter({
         { path: "production/resources", name: "production-resources", component: () => import("../views/production/ProductionResources.vue"), meta: { requiresAuth: true, permission: "production:view" } },
         { path: "inventory/locations", name: "inventory-locations", component: () => import("../views/inventory-advanced/LocationList.vue"), meta: { requiresAuth: true, permission: "inventory:view" } },
         { path: "inventory/batches", name: "inventory-batches", component: () => import("../views/inventory-advanced/BatchList.vue"), meta: { requiresAuth: true, permission: "inventory:view" } },
+        { path: "inventory/control-center", name: "inventory-control-center", component: () => import("../views/inventory-advanced/ControlCenter.vue"), meta: { requiresAuth: true, permission: "inventory:view" } },
         { path: "cost/allocations", name: "cost-allocations", component: () => import("../views/cost/AllocationList.vue"), meta: { requiresAuth: true, permission: "cost:view" } },
         { path: "cost/period-close", name: "cost-period-close", component: () => import("../views/cost/PeriodClose.vue"), meta: { requiresAuth: true, permission: "cost:close" } },
         { path: "quality/inspections", name: "quality-inspections", component: () => import("../views/quality/InspectionList.vue"), meta: { requiresAuth: true, permission: "quality:view" } },

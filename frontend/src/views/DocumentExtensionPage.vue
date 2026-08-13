@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { createSalesQuote, createSalesReturn, listSalesQuotes, listSalesReturns, quoteAction } from "../api/sales";
+import { completeSalesReturn, createSalesQuote, createSalesReturn, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn } from "../api/sales";
 import {
   createPurchaseRequest,
   createPurchaseReturn,
@@ -11,6 +11,8 @@ import {
   listPurchaseRequests,
   listPurchaseReturns,
   requestAction,
+  completePurchaseReturn,
+  submitPurchaseReturn,
   updatePurchaseReturn,
   updatePurchaseRequest,
 } from "../api/purchase";
@@ -232,6 +234,10 @@ async function action(row: any, name: "submit" | "approve" | "reject") {
   }
 }
 
+async function returnAction(row: any, name: "submit" | "complete") {
+  try { await ElMessageBox.confirm(`确认${name === "submit" ? "提交" : "完成"}退货单“${row.doc_no}”？`, "操作确认", { type: "warning" }); actionLoading.value = row.id; const response = isSalesReturn() ? (name === "submit" ? await submitSalesReturn(row.id) : await completeSalesReturn(row.id)) : (name === "submit" ? await submitPurchaseReturn(row.id) : await completePurchaseReturn(row.id)); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("退货单状态已更新"); await load(); } catch (error: any) { if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "退货操作失败"); } finally { actionLoading.value = ""; }
+}
+
 async function removeRequest(row: any) {
   try {
     await ElMessageBox.confirm(`确认删除采购申请“${row.doc_no}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
@@ -353,7 +359,9 @@ onMounted(async () => {
           <el-table-column label="操作" width="220">
             <template #default="scope">
               <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
-              <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removePurchaseReturn(scope.row)">删除</el-button>
+            <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removePurchaseReturn(scope.row)">删除</el-button>
+              <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="returnAction(scope.row, 'submit')">提交</el-button>
+              <el-button v-if="scope.row.status === 'submitted'" link type="success" @click="returnAction(scope.row, 'complete')">完成</el-button>
             </template>
           </el-table-column>
         </template>
@@ -365,11 +373,13 @@ onMounted(async () => {
             <template #default="scope">{{ scope.row.customer_name || scope.row.customer_id || '-' }}</template>
           </el-table-column>
           <el-table-column prop="total_amount" label="金额" min-width="140" />
-          <el-table-column label="操作" width="220" v-if="isQuote()">
+          <el-table-column label="操作" width="220" v-if="isQuote() || isSalesReturn()">
             <template #default="scope">
-              <el-button v-if="scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button>
-              <el-button v-if="scope.row.status === 'submitted'" link type="success" @click="action(scope.row, 'approve')">审核</el-button>
-              <el-button v-if="scope.row.status === 'submitted'" link type="danger" @click="action(scope.row, 'reject')">驳回</el-button>
+              <el-button v-if="isQuote() && scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button>
+              <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="success" @click="action(scope.row, 'approve')">审核</el-button>
+              <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="danger" @click="action(scope.row, 'reject')">驳回</el-button>
+              <el-button v-if="isSalesReturn() && scope.row.status === 'draft'" link type="primary" @click="returnAction(scope.row, 'submit')">提交</el-button>
+              <el-button v-if="isSalesReturn() && scope.row.status === 'submitted'" link type="success" @click="returnAction(scope.row, 'complete')">完成</el-button>
             </template>
           </el-table-column>
         </template>

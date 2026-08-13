@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import or_, select
@@ -190,6 +190,35 @@ def upsert_capacity_calendar(db: Session, payload, context: UserContext) -> MfgC
     db.flush()
     write_operation_log(db, user=context.user, action=action, resource="mfg_capacity_calendar", target_id=row.id)
     return row
+
+
+def capacity_load(db: Session, context: UserContext, date_from: date | None = None, date_to: date | None = None) -> list[dict]:
+    start = date_from or date.today()
+    end = date_to or (start + timedelta(days=13))
+    if end < start or (end - start).days > 92:
+        raise AppError("产能负荷查询范围必须为 1-93 天", code=422)
+    centers = db.scalars(select(MfgWorkCenter).where(MfgWorkCenter.org_id == context.org_id, MfgWorkCenter.is_deleted.is_(False))).all()
+    calendars = {(row.work_center_id, row.capacity_date): row for row in db.scalars(select(MfgCapacityCalendar).where(MfgCapacityCalendar.org_id == context.org_id, MfgCapacityCalendar.capacity_date.between(start, end), MfgCapacityCalendar.is_deleted.is_(False))).all()}
+    orders = db.scalars(select(MfgWorkOrder).where(MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.plan_date.between(start, end), MfgWorkOrder.status.not_in(["cancelled", "completed"]), MfgWorkOrder.is_deleted.is_(False))).all()
+    load: dict[tuple[str, date], Decimal] = {}
+    for order in orders:
+        quantity = _decimal(order.quantity)
+        for operation in (order.routing_snapshot or {}).get("operations", []):
+            center_id = operation.get("work_center_id")
+            if not center_id:
+                continue
+            hours = _decimal(operation.get("setup_hours")) + quantity * _decimal(operation.get("run_hours_per_unit"))
+            key = (center_id, order.plan_date)
+            load[key] = load.get(key, Decimal("0")) + hours
+    result = []
+    cursor = start
+    while cursor <= end:
+        for center in centers:
+            capacity = _decimal(calendars[(center.id, cursor)].available_hours) if (center.id, cursor) in calendars else _decimal(center.daily_capacity_hours) * _decimal(center.efficiency_rate)
+            scheduled = load.get((center.id, cursor), Decimal("0"))
+            result.append({"work_center_id": center.id, "code": center.code, "name": center.name, "capacity_date": cursor.isoformat(), "available_hours": f"{capacity:.6f}", "scheduled_hours": f"{scheduled:.6f}", "remaining_hours": f"{capacity - scheduled:.6f}", "overloaded": scheduled > capacity})
+        cursor += timedelta(days=1)
+    return result
 
 
 def list_routings(db: Session, context: UserContext) -> list[dict]:

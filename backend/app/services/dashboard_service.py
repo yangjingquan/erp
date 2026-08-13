@@ -14,7 +14,7 @@ from app.models.production import MfgWorkOrder
 from app.models.quality import QaInspection
 from app.models.master_data import MdMaterial
 from app.models.purchase import PurchaseOrder
-from app.models.sales import SalesOrder
+from app.models.sales import SalesOrder, SalesDelivery
 from app.core.time import local_now, local_today
 from app.services.auth_service import UserContext
 
@@ -145,3 +145,30 @@ def dashboard_phase2(db: Session, context: UserContext, period: str, warehouse_i
         "hr": {**base, "total": Decimal(payroll_total), "unit": "amount"},
         "project_cost": {**base, "total": Decimal(cost_total), "unit": "amount"},
     }
+
+
+def report_center(db: Session, context: UserContext, period: str | None = None) -> dict:
+    """Stable, export-friendly KPI contract for management reports."""
+    start, end = _period_bounds(period)
+    sales = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(start, end), SalesOrder.status.not_in(["draft", "cancelled"]))).all()
+    deliveries = db.scalars(select(SalesDelivery).where(SalesDelivery.org_id == context.org_id, SalesDelivery.delivery_date.between(start, end), SalesDelivery.status == "completed")).all()
+    sales_amount = sum((Decimal(row.total_amount) for row in sales), Decimal("0"))
+    delivered_amount = sum((Decimal(row.total_amount) for row in deliveries), Decimal("0"))
+    order_lines = sum((len(row.items) for row in sales), 0)
+    delivered_lines = sum((len(row.items) for row in deliveries), 0)
+    stock_value = db.scalar(select(func.coalesce(func.sum(InvStock.quantity * InvStock.average_cost), 0)).where(InvStock.org_id == context.org_id)) or 0
+    overdue_amount = db.scalar(select(func.coalesce(func.sum(SalesReceivable.total_amount - SalesReceivable.reconciled_amount), 0)).where(SalesReceivable.org_id == context.org_id, SalesReceivable.status != "settled", SalesReceivable.due_date < local_today())) or 0
+    failed_quality = db.scalar(select(func.count()).select_from(QaInspection).where(QaInspection.org_id == context.org_id, QaInspection.created_at >= datetime.combine(start, datetime.min.time()), QaInspection.created_at < datetime.combine(end + timedelta(days=1), datetime.min.time()), QaInspection.result == "failed")) or 0
+    work_orders = db.scalars(select(MfgWorkOrder).where(MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.plan_date.between(start, end), MfgWorkOrder.is_deleted.is_(False))).all()
+    planned = sum((Decimal(row.quantity) for row in work_orders), Decimal("0"))
+    completed = sum((Decimal(row.completed_quantity) for row in work_orders), Decimal("0"))
+    return {"period": start.strftime("%Y-%m"), "generated_at": local_now().isoformat(), "metrics": {
+        "sales_amount": str(sales_amount.quantize(Decimal("0.01"))),
+        "delivery_amount": str(delivered_amount.quantize(Decimal("0.01"))),
+        "fulfillment_rate": round(float(delivered_amount / sales_amount * 100), 2) if sales_amount else 0,
+        "order_line_fulfillment_rate": round(delivered_lines / order_lines * 100, 2) if order_lines else 0,
+        "inventory_value": str(Decimal(stock_value).quantize(Decimal("0.01"))),
+        "overdue_receivable": str(Decimal(overdue_amount).quantize(Decimal("0.01"))),
+        "failed_inspections": int(failed_quality),
+        "production_completion_rate": round(float(completed / planned * 100), 2) if planned else 0,
+    }, "definitions": {"fulfillment_rate": "已完成销售出库金额/期间已审核销售订单金额", "inventory_value": "库存数量×当前平均成本", "production_completion_rate": "完工数量/计划数量"}}

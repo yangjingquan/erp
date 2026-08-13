@@ -65,3 +65,8 @@ export const completeCapaAction = (id: string, completionEvidence: string) =>
   http.post(`/quality/capa-actions/${id}/complete`, { completion_evidence: completionEvidence });
 export const closeNonconformance = (id: string, closureEvidence: string) =>
   http.post(`/quality/nonconformances/${id}/close`, { closure_evidence: closureEvidence });
+export const listQualityPlans = () => http.get("/quality/plans");
+export const createQualityPlan = (payload: unknown) => http.post("/quality/plans", payload);
+export const listDefects = () => http.get("/quality/defects");
+export const createDefect = (payload: unknown) => http.post("/quality/defects", payload);
+export const createInspectionFromPlan = (payload: unknown) => http.post("/quality/inspections/from-plan", payload);

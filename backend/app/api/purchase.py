@@ -21,7 +21,7 @@ from app.services.purchase_service import (
 )
 from app.services.finance_service import create_payable_from_purchase_receipt
 from app.services.inventory_service import complete_purchase_receipt
-from app.services.business_extension_service import create_purchase_return, create_request, delete_purchase_return, delete_request, list_purchase_returns, list_requests, serialize_request, serialize_return, transition_request, update_purchase_return, update_request
+from app.services.business_extension_service import complete_purchase_return, create_purchase_return, create_request, delete_purchase_return, delete_request, list_purchase_returns, list_requests, serialize_request, serialize_return, submit_purchase_return, transition_request, update_purchase_return, update_request
 
 router = APIRouter(prefix="/api/purchase", tags=["purchase"])
 
@@ -137,6 +137,16 @@ def add_purchase_return(payload: PurchaseReturnCreate, context: UserContext = De
 @router.put("/returns/{return_id}")
 def edit_purchase_return(return_id: str, payload: PurchaseReturnUpdate, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     return ok(serialize_return(update_purchase_return(db, return_id, payload, context)))
+
+
+@router.post("/returns/{return_id}/submit")
+def submit_return(return_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    row = submit_purchase_return(db, return_id, context); db.commit(); return ok({"id": row.id, "status": row.status})
+
+
+@router.post("/returns/{return_id}/complete")
+def complete_return(return_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    row = complete_purchase_return(db, return_id, context); db.commit(); return ok({"id": row.id, "status": row.status})
 
 
 @router.delete("/returns/{return_id}")

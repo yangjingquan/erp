@@ -105,3 +105,40 @@ class InvScanRecord(AuditMixin, UUIDModel):
     response_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     __table_args__ = (UniqueConstraint("org_id", "scan_id", name="uk_inv_scan_record_org_scan"),)
+
+
+class InvReservation(AuditMixin, UUIDModel):
+    """库存预留，统一扣减 available_quantity，避免订单/工单重复占用。"""
+
+    __tablename__ = "inv_reservation"
+    __table_args__ = (
+        UniqueConstraint("org_id", "source_type", "source_id", "material_id", "warehouse_id", name="uk_inv_reservation_source_line"),
+    )
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    released_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="reserved", nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class InvTraceEvent(AuditMixin, UUIDModel):
+    """批次/物料正向与反向追溯事件。"""
+
+    __tablename__ = "inv_trace_event"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    batch_id: Mapped[str | None] = mapped_column(ForeignKey("inv_batch.id"), nullable=True, index=True)
+    transaction_id: Mapped[str | None] = mapped_column(ForeignKey("inv_stock_transaction.id"), nullable=True, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    direction: Mapped[str] = mapped_column(String(16), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    location_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    event_time: Mapped[date | None] = mapped_column(Date, nullable=True)

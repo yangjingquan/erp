@@ -18,7 +18,7 @@ from app.services.sales_service import (
 )
 from app.services.finance_service import create_receivable_from_sales_delivery
 from app.services.inventory_service import complete_sales_delivery
-from app.services.business_extension_service import create_quote, list_quotes, list_sales_returns, serialize_quote, transition_quote
+from app.services.business_extension_service import complete_sales_return, create_quote, list_quotes, list_sales_returns, serialize_quote, submit_sales_return, transition_quote
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
@@ -80,6 +80,16 @@ def quote_action(quote_id: str, action: str, context: UserContext = Depends(requ
 @router.get("/returns")
 def sales_returns(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_sales_returns(db, context))
+
+
+@router.post("/returns/{return_id}/submit")
+def submit_return(return_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    row = submit_sales_return(db, return_id, context); db.commit(); return ok({"id": row.id, "status": row.status})
+
+
+@router.post("/returns/{return_id}/complete")
+def complete_return(return_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    row = complete_sales_return(db, return_id, context); db.commit(); return ok({"id": row.id, "status": row.status})
 
 
 @router.post("/deliveries/{delivery_id}/complete")

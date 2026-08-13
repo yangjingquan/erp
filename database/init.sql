@@ -2016,6 +2016,8 @@ CREATE TABLE IF NOT EXISTS qa_inspection (
   result VARCHAR(32) NULL,
   results_json JSON NOT NULL,
   disposition VARCHAR(32) NULL,
+  plan_id CHAR(36) NULL,
+  sample_size INT NULL,
   is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
@@ -2437,6 +2439,11 @@ SELECT '10000000-0000-0000-0000-000000000018', NULL, 'page:documents:workspace:v
 FROM sys_menu WHERE code = 'dashboard:view'
 ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
 
+INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
+SELECT '10000000-0000-0000-0000-000000000019', id, 'page:inventory:control-center:view', '库存控制中心', '/inventory/control-center', 'ControlCenter', 'menu', 8
+FROM sys_menu WHERE code = 'inventory:view'
+ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
+
 INSERT INTO sys_permission (id, menu_id, code, name, permission_type)
 SELECT '20000000-0000-0000-0000-000000000001', id, 'system:user:manage', '用户管理', 'button'
 FROM sys_menu WHERE code = 'system:view'
@@ -2508,4 +2515,27 @@ VALUES
 ('40000000-0000-0000-0000-000000000009', 'low_code', '低代码表单引擎', 'phase3', 0)
 ON DUPLICATE KEY UPDATE module_name = VALUES(module_name), phase = VALUES(phase);
 
+CREATE TABLE IF NOT EXISTS inv_reservation (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, source_type VARCHAR(64) NOT NULL, source_id CHAR(36) NOT NULL,
+  material_id CHAR(36) NOT NULL, warehouse_id CHAR(36) NOT NULL, quantity DECIMAL(18,6) NOT NULL,
+  released_quantity DECIMAL(18,6) NOT NULL DEFAULT 0, status VARCHAR(32) NOT NULL DEFAULT 'reserved', note VARCHAR(255) NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, version INT NOT NULL DEFAULT 1,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uk_inv_reservation_source_line (org_id, source_type, source_id, material_id, warehouse_id), KEY idx_inv_reservation_material (org_id, material_id, warehouse_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS inv_trace_event (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, material_id CHAR(36) NOT NULL, batch_id CHAR(36) NULL, transaction_id CHAR(36) NULL,
+  source_type VARCHAR(64) NOT NULL, source_id CHAR(36) NOT NULL, direction VARCHAR(16) NOT NULL, quantity DECIMAL(18,6) NOT NULL,
+  warehouse_id CHAR(36) NOT NULL, location_id CHAR(36) NULL, event_time DATE NULL, is_deleted TINYINT(1) NOT NULL DEFAULT 0, version INT NOT NULL DEFAULT 1,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  KEY idx_inv_trace_material (org_id, material_id, batch_id), KEY idx_inv_trace_source (org_id, source_type, source_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS qa_defect_catalog (
+  id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, code VARCHAR(64) NOT NULL, name VARCHAR(128) NOT NULL, severity VARCHAR(32) NOT NULL DEFAULT 'major', status VARCHAR(32) NOT NULL DEFAULT 'active',
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0, version INT NOT NULL DEFAULT 1, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uk_qa_defect_code (org_id, code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+INSERT INTO sys_schema_migration (version, description)
+VALUES ('009_p1_control_loops', 'P1 库存预留追溯与质量计划基础能力')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
 SET FOREIGN_KEY_CHECKS = 1;

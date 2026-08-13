@@ -13,6 +13,21 @@ class QaPlanCreate(BaseModel):
     items: list[dict] = Field(min_length=1)
 
 
+class QaDefectCreate(BaseModel):
+    code: str = Field(min_length=1, max_length=64)
+    name: str = Field(min_length=1, max_length=128)
+    severity: Literal["minor", "major", "critical"] = "major"
+    status: Literal["active", "inactive"] = "active"
+
+
+class InspectionFromPlanCreate(BaseModel):
+    inspection_type: str = Field(min_length=1, max_length=32)
+    source_type: str = Field(min_length=1, max_length=64)
+    source_id: str = Field(min_length=1, max_length=36)
+    plan_id: str = Field(min_length=1, max_length=36)
+    sample_size: int = Field(gt=0, le=100000)
+
+
 class InspectionResult(BaseModel):
     item: str = Field(min_length=1, max_length=128)
     value: str = Field(min_length=1, max_length=500)

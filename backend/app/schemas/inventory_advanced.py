@@ -65,6 +65,15 @@ class FifoOutboundCreate(BaseModel):
     quantity: Decimal = Field(gt=0)
 
 
+class ReservationCreate(BaseModel):
+    source_type: str = Field(min_length=1, max_length=64)
+    source_id: str = Field(min_length=1, max_length=36)
+    material_id: str = Field(min_length=1, max_length=36)
+    warehouse_id: str = Field(min_length=1, max_length=36)
+    quantity: Decimal = Field(gt=0)
+    note: str | None = Field(default=None, max_length=255)
+
+
 class ScanItem(BaseModel):
     material_id: str = Field(min_length=1, max_length=36)
     quantity: Decimal = Field(gt=0)

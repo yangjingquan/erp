@@ -119,7 +119,7 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/purchase/orders')" index="/purchase/orders">采购订单</el-menu-item>
           <el-menu-item v-if="canPage('/purchase/returns')" index="/purchase/returns">采购退货</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/inventory/stock', '/inventory/transactions', '/inventory/transfers', '/inventory/counts', '/inventory/scan', '/inventory/locations', '/inventory/batches'])" index="inventory">
+        <el-sub-menu v-if="canAny(['/inventory/stock', '/inventory/transactions', '/inventory/transfers', '/inventory/counts', '/inventory/scan', '/inventory/locations', '/inventory/batches', '/inventory/control-center'])" index="inventory">
           <template #title><el-icon><Box /></el-icon><span>库存管理</span></template>
           <el-menu-item v-if="canPage('/inventory/stock')" index="/inventory/stock">库存台账</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/transactions')" index="/inventory/transactions">库存流水</el-menu-item>
@@ -128,6 +128,7 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/inventory/scan')" index="/inventory/scan">移动扫码</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/locations')" index="/inventory/locations">仓位管理</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/batches')" index="/inventory/batches">批次管理</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/control-center')" index="/inventory/control-center">库存控制中心</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation'])" index="finance">
           <template #title><el-icon><Wallet /></el-icon><span>财务管理</span></template>

@@ -142,12 +142,10 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
 
 
 def create_sales_return(db: Session, payload, context: UserContext) -> SalesReturn:
-    if payload.source_delivery_id:
-        delivery = db.get(SalesDelivery, payload.source_delivery_id)
-        if delivery is None or delivery.org_id != context.org_id:
-            raise AppError("来源出库单不存在", code=404)
-        if delivery.status == "completed":
-            raise AppError("已完成出库单的退货必须走库存退货流程", code=400)
+    from app.services.business_extension_service import _validate_sales_return_source
+    _validate_sales_return_source(db, payload, context)
+    if not payload.items:
+        raise AppError("退货明细不能为空", code=422)
     result = SalesReturn(
         org_id=context.org_id,
         doc_no=next_doc_no(db, "sales_return", context.org_id, payload.return_date or local_today()),

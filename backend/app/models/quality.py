@@ -15,6 +15,17 @@ class QaPlan(AuditMixin, UUIDModel):
     items_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
 
 
+class QaDefectCatalog(AuditMixin, UUIDModel):
+    __tablename__ = "qa_defect_catalog"
+    __table_args__ = (UniqueConstraint("org_id", "code", name="uk_qa_defect_code"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    severity: Mapped[str] = mapped_column(String(32), default="major", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+
+
 class QaInspection(AuditMixin, UUIDModel):
     __tablename__ = "qa_inspection"
 
@@ -26,6 +37,8 @@ class QaInspection(AuditMixin, UUIDModel):
     result: Mapped[str | None] = mapped_column(String(32))
     results_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
     disposition: Mapped[str | None] = mapped_column(String(32))
+    plan_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    sample_size: Mapped[int | None] = mapped_column(nullable=True)
 
 
 class QaNonconformity(AuditMixin, UUIDModel):

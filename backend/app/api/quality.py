@@ -15,6 +15,8 @@ from app.schemas.quality import (
     NonconformanceClose,
     NonconformanceInvestigationUpdate,
     QaPlanCreate,
+    QaDefectCreate,
+    InspectionFromPlanCreate,
 )
 from app.services.auth_service import UserContext
 from app.services.quality_service import (
@@ -25,6 +27,9 @@ from app.services.quality_service import (
     create_capa_action,
     create_inspection,
     create_quality_plan,
+    list_quality_plans,
+    list_defects,
+    create_defect,
     list_nonconformances,
     submit_inspection,
     update_nonconformance_investigation,
@@ -52,6 +57,8 @@ def inspections(
                 "status": row.status,
                 "result": row.result,
                 "disposition": row.disposition,
+                "plan_id": row.plan_id,
+                "sample_size": row.sample_size,
             }
             for row in rows
         ]
@@ -69,6 +76,23 @@ def plan(
     return ok({"id": row.id})
 
 
+@router.get("/plans")
+def plans(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_quality_plans(db, context))
+
+
+@router.get("/defects")
+def defects(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_defects(db, context))
+
+
+@router.post("/defects")
+def add_defect(payload: QaDefectCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = create_defect(db, payload.model_dump(), context)
+    db.commit()
+    return ok({"id": row.id, "code": row.code, "name": row.name, "severity": row.severity, "status": row.status})
+
+
 @router.post("/inspections")
 def inspection(
     payload: InspectionCreate,
@@ -80,6 +104,13 @@ def inspection(
     )
     db.commit()
     return ok({"id": row.id, "status": row.status})
+
+
+@router.post("/inspections/from-plan")
+def inspection_from_plan(payload: InspectionFromPlanCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = create_inspection(db, payload.inspection_type, payload.source_type, payload.source_id, context, plan_id=payload.plan_id, sample_size=payload.sample_size)
+    db.commit()
+    return ok({"id": row.id, "status": row.status, "plan_id": row.plan_id, "sample_size": row.sample_size, "results": row.results_json})
 
 
 @router.post("/inspections/{inspection_id}/submit")

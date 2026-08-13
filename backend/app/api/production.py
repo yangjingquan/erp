@@ -73,6 +73,7 @@ from app.services.production_resource_service import (
     submit_routing,
     update_work_center,
     upsert_capacity_calendar,
+    capacity_load,
     work_order_readiness,
 )
 from app.services.production_cost_service import get_work_order_cost
@@ -115,6 +116,11 @@ def upsert_capacity_calendar_api(payload: CapacityCalendarUpsert, context: UserC
     row = upsert_capacity_calendar(db, payload, context)
     db.commit()
     return ok(serialize_capacity(row))
+
+
+@router.get("/capacity-load")
+def capacity_load_api(date_from: date | None = Query(default=None), date_to: date | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(capacity_load(db, context, date_from, date_to))
 
 
 @router.get("/routings")

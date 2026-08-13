@@ -57,3 +57,5 @@ export function createSalesQuote(payload: SalesQuotePayload) {
 export function quoteAction(id: string, action: "submit" | "approve" | "reject") { return http.post(`/sales/quotes/${id}/${action}`); }
 export function listSalesReturns() { return http.get("/sales/returns"); }
 export function createSalesReturn(payload: Record<string, unknown>) { return http.post("/sales/returns", payload); }
+export function submitSalesReturn(id: string) { return http.post(`/sales/returns/${id}/submit`); }
+export function completeSalesReturn(id: string) { return http.post(`/sales/returns/${id}/complete`); }

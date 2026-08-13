@@ -4,7 +4,7 @@ import { useRouter } from "vue-router";
 import * as echarts from "echarts";
 import { Bell, CircleCheck, TopRight, Wallet } from "@element-plus/icons-vue";
 
-import { getDashboardOverview } from "../api/dashboard";
+import { getDashboardOverview, getReportCenter } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
 import { localMonthString } from "../utils/time";
 
@@ -28,6 +28,7 @@ type DashboardOverview = {
 };
 function emptyOverview(): DashboardOverview { return { period: period.value, sales_total: 0, purchase_total: 0, receivable_total: 0, inventory_warning_count: 0, sales_change: 0, purchase_change: 0, trend: [], tasks: [], materials: [], sales_orders: [] }; }
 const overview = ref<DashboardOverview>(emptyOverview());
+const report = ref<Record<string, any>>({ metrics: {} });
 const chart = ref<HTMLDivElement>();
 let chartInstance: echarts.ECharts | null = null;
 
@@ -61,9 +62,10 @@ async function loadOverview() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const response = await getDashboardOverview(period.value);
+    const [response, reportResponse] = await Promise.all([getDashboardOverview(period.value), getReportCenter(period.value)]);
     if (response.data.code !== 0) throw new Error(response.data.msg);
     overview.value = { ...emptyOverview(), ...(response.data.data as DashboardOverview) };
+    if (reportResponse.data.code === 0) report.value = reportResponse.data.data || { metrics: {} };
   } catch (error) {
     overview.value = emptyOverview();
     errorMessage.value = error instanceof Error ? error.message : "经营看板加载失败，请稍后重试";
@@ -133,6 +135,8 @@ function handleResize() { chartInstance?.resize(); }
         <el-empty v-if="!overview.tasks.length" description="暂无待处理事项" :image-size="56" />
       </el-card>
 
+      <el-card class="module-card report-card" shadow="never"><div class="module-header"><div><span class="module-title">报表中心</span><small>经营指标定义统一、可直接导出</small></div><el-button size="small" @click="loadOverview">刷新指标</el-button></div><div class="report-grid"><div><small>履约率</small><strong>{{ report.metrics?.fulfillment_rate || 0 }}%</strong></div><div><small>库存价值</small><strong>{{ formatCurrency(report.metrics?.inventory_value || 0) }}</strong></div><div><small>逾期应收</small><strong>{{ formatCurrency(report.metrics?.overdue_receivable || 0) }}</strong></div><div><small>生产完成率</small><strong>{{ report.metrics?.production_completion_rate || 0 }}%</strong></div><div><small>不合格检验</small><strong>{{ report.metrics?.failed_inspections || 0 }}</strong></div></div></el-card>
+
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/master-data/materials')">物料档案</button><small>管理物料、价格与安全库存</small></div><el-button type="primary" size="small" @click="go('/master-data/materials')">新增物料</el-button></div>
         <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.material_type }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
@@ -189,6 +193,11 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .todo-body small { color: var(--erp-subtle-text); font-size: 11px; }
 .todo-item b { color: #493d35; font-size: 15px; }
 .module-card { grid-column: span 6; min-height: 286px; overflow: hidden; }
+.report-card { grid-column: span 12; min-height: 150px; }
+.report-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 16px 17px; }
+.report-grid > div { padding: 12px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
+.report-grid small { display: block; color: var(--erp-muted-text); font-size: 11px; }
+.report-grid strong { display: block; margin-top: 8px; color: var(--erp-text); font-size: 18px; }
 .module-card :deep(.el-card__body) { padding: 0; }
 .module-header { align-items: center; padding: 16px 17px; border-bottom: 1px solid var(--erp-border-soft); }
 .module-header > div { display: flex; flex-direction: column; gap: 4px; }
@@ -210,5 +219,5 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .dashboard-foot .el-icon { color: var(--erp-green); }
 .dashboard-foot span { color: var(--erp-border); }
 @media (max-width: 1100px) { .metric-card { grid-column: span 6; } .chart-card, .todo-card { grid-column: span 12; } .module-card { grid-column: span 12; } }
-@media (max-width: 620px) { .dashboard-heading { align-items: flex-start; flex-direction: column; gap: 14px; } .metric-card { grid-column: span 12; } .mini-toolbar { flex-wrap: wrap; } .mini-toolbar :deep(.el-input) { flex-basis: 100%; } }
+@media (max-width: 620px) { .dashboard-heading { align-items: flex-start; flex-direction: column; gap: 14px; } .metric-card { grid-column: span 12; } .mini-toolbar { flex-wrap: wrap; } .mini-toolbar :deep(.el-input) { flex-basis: 100%; } .report-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>

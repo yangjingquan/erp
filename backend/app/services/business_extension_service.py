@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.core.time import local_now, local_today
 from app.models.business_extensions import PurchaseRequest, PurchaseRequestItem, PurchaseReturnItem, SalesQuote, SalesQuoteItem, SalesReturnItem
-from app.models.purchase import PurchaseReturn
-from app.models.sales import SalesReturn
+from app.models.purchase import PurchaseReceipt, PurchaseReturn
+from app.models.sales import SalesDelivery, SalesReturn
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
@@ -142,6 +142,14 @@ def create_return_items(row, items, item_model):
 
 
 def create_purchase_return(db: Session, payload, context: UserContext):
+    if payload.source_receipt_id:
+        receipt = db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.id == payload.source_receipt_id, PurchaseReceipt.org_id == context.org_id, PurchaseReceipt.status == "completed"))
+        if receipt is None:
+            raise AppError("来源采购入库单不存在或未完成", code=400)
+        received = {item.material_id: item.quantity for item in receipt.items}
+        for item in payload.items:
+            if item.quantity > received.get(item.material_id, 0):
+                raise AppError(f"退货数量超过已入库数量：{item.material_id}", code=400)
     row = PurchaseReturn(org_id=context.org_id, doc_no=next_doc_no(db, "purchase_return", context.org_id, payload.return_date or local_today()), source_receipt_id=payload.source_receipt_id, supplier_id=payload.supplier_id, warehouse_id=payload.warehouse_id, return_date=payload.return_date or local_today(), created_by=context.id)
     create_return_items(row, payload.items, PurchaseReturnItem)
     db.add(row)
@@ -156,6 +164,14 @@ def update_purchase_return(db: Session, return_id: str, payload, context: UserCo
         raise AppError("采购退货单不存在", code=404)
     if row.status != "draft":
         raise AppError("只有草稿状态的采购退货单可以修改", code=400)
+    if payload.source_receipt_id:
+        receipt = db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.id == payload.source_receipt_id, PurchaseReceipt.org_id == context.org_id, PurchaseReceipt.status == "completed"))
+        if receipt is None:
+            raise AppError("来源采购入库单不存在或未完成", code=400)
+        received = {item.material_id: item.quantity for item in receipt.items}
+        for item in payload.items:
+            if item.quantity > received.get(item.material_id, 0):
+                raise AppError(f"退货数量超过已入库数量：{item.material_id}", code=400)
     row.source_receipt_id = payload.source_receipt_id
     row.supplier_id = payload.supplier_id
     row.warehouse_id = payload.warehouse_id
@@ -165,6 +181,51 @@ def update_purchase_return(db: Session, return_id: str, payload, context: UserCo
     db.commit()
     db.refresh(row)
     return row
+
+
+def _validate_sales_return_source(db: Session, payload, context: UserContext) -> None:
+    if not payload.source_delivery_id:
+        return
+    delivery = db.scalar(select(SalesDelivery).where(SalesDelivery.id == payload.source_delivery_id, SalesDelivery.org_id == context.org_id, SalesDelivery.status == "completed"))
+    if delivery is None:
+        any_delivery = db.scalar(select(SalesDelivery).where(SalesDelivery.id == payload.source_delivery_id, SalesDelivery.org_id == context.org_id))
+        if any_delivery is not None and not payload.items:
+            raise AppError("已完成出库单的退货必须提供有效退货明细", code=400)
+        raise AppError("来源销售出库单不存在或未完成", code=400)
+    if not payload.items:
+        raise AppError("已完成出库单的退货必须提供有效退货明细", code=400)
+    delivered = {item.material_id: item.quantity for item in delivery.items}
+    for item in payload.items:
+        if item.quantity > delivered.get(item.material_id, 0):
+            raise AppError(f"退货数量超过已出库数量：{item.material_id}", code=400)
+
+
+def submit_sales_return(db: Session, return_id: str, context: UserContext):
+    row = db.scalar(select(SalesReturn).where(SalesReturn.id == return_id, SalesReturn.org_id == context.org_id, SalesReturn.is_deleted.is_(False)))
+    if row is None: raise AppError("销售退货单不存在", code=404)
+    if row.status != "draft": raise AppError("只有草稿退货单可以提交", code=400)
+    row.status = "submitted"; row.version += 1; db.flush(); return row
+
+
+def complete_sales_return(db: Session, return_id: str, context: UserContext):
+    row = db.scalar(select(SalesReturn).where(SalesReturn.id == return_id, SalesReturn.org_id == context.org_id, SalesReturn.is_deleted.is_(False)))
+    if row is None: raise AppError("销售退货单不存在", code=404)
+    if row.status != "submitted": raise AppError("只有已提交退货单可以完成", code=400)
+    row.status = "completed"; row.version += 1; db.flush(); return row
+
+
+def submit_purchase_return(db: Session, return_id: str, context: UserContext):
+    row = db.scalar(select(PurchaseReturn).where(PurchaseReturn.id == return_id, PurchaseReturn.org_id == context.org_id, PurchaseReturn.is_deleted.is_(False)))
+    if row is None: raise AppError("采购退货单不存在", code=404)
+    if row.status != "draft": raise AppError("只有草稿退货单可以提交", code=400)
+    row.status = "submitted"; row.version += 1; db.flush(); return row
+
+
+def complete_purchase_return(db: Session, return_id: str, context: UserContext):
+    row = db.scalar(select(PurchaseReturn).where(PurchaseReturn.id == return_id, PurchaseReturn.org_id == context.org_id, PurchaseReturn.is_deleted.is_(False)))
+    if row is None: raise AppError("采购退货单不存在", code=404)
+    if row.status != "submitted": raise AppError("只有已提交退货单可以完成", code=400)
+    row.status = "completed"; row.version += 1; db.flush(); return row
 
 
 def delete_purchase_return(db: Session, return_id: str, context: UserContext) -> None:
