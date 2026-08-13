@@ -1,6 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -36,6 +36,11 @@ from app.services.planning_service import (
     _require_warehouse,
     _validate_source_reference,
 )
+from app.services.production_resource_service import (
+    approved_routing_for_work_order,
+    routing_snapshot,
+    work_order_readiness,
+)
 
 
 QUANTITY_SCALE = Decimal("0.000001")
@@ -66,6 +71,7 @@ def serialize_work_order(row: MfgWorkOrder) -> dict:
         "material_id": row.material_id,
         "warehouse_id": row.warehouse_id,
         "bom_id": row.bom_id,
+        "routing_id": row.routing_id,
         "plan_date": row.plan_date.isoformat(),
         "quantity": f"{_quantity(row.quantity):.6f}",
         "status": row.status,
@@ -73,6 +79,7 @@ def serialize_work_order(row: MfgWorkOrder) -> dict:
         "reported_scrap_quantity": f"{_quantity(row.reported_scrap_quantity):.6f}",
         "completed_quantity": f"{_quantity(row.completed_quantity):.6f}",
         "bom_snapshot": row.bom_snapshot,
+        "routing_snapshot": row.routing_snapshot,
         "source_type": row.source_type,
         "source_id": row.source_id,
         "materials": [_serialize_material(item) for item in row.materials if not item.is_deleted],
@@ -117,6 +124,8 @@ def serialize_report(row: MfgReport) -> dict:
     return {
         "id": row.id,
         "work_order_id": row.work_order_id,
+        "operation_id": row.operation_id,
+        "operation_name": row.operation_name,
         "good_quantity": f"{_quantity(row.good_quantity):.6f}",
         "scrap_quantity": f"{_quantity(row.scrap_quantity):.6f}",
         "hours": f"{_quantity(row.hours):.6f}",
@@ -252,6 +261,14 @@ def create_work_order(db: Session, payload, context: UserContext) -> MfgWorkOrde
     if bom is None:
         raise AppError("成品缺少有效的已审核 BOM 版本", code=400)
     quantity = _quantity(payload.quantity)
+    routing = approved_routing_for_work_order(
+        db,
+        context,
+        bom_id=bom.id,
+        material_id=payload.material_id,
+        plan_date=payload.plan_date,
+        routing_id=payload.routing_id,
+    )
     snapshot_items = [
         {"material_id": item.material_id, "quantity": _snapshot_quantity(item.quantity)}
         for item in bom.items
@@ -263,6 +280,7 @@ def create_work_order(db: Session, payload, context: UserContext) -> MfgWorkOrde
         material_id=payload.material_id,
         warehouse_id=payload.warehouse_id,
         bom_id=bom.id,
+        routing_id=routing.id if routing else None,
         plan_date=payload.plan_date,
         quantity=quantity,
         status="draft",
@@ -272,6 +290,7 @@ def create_work_order(db: Session, payload, context: UserContext) -> MfgWorkOrde
             "plan_quantity": _snapshot_quantity(quantity),
             "items": snapshot_items,
         },
+        routing_snapshot=routing_snapshot(routing),
         source_type=payload.source_type,
         source_id=payload.source_id,
         created_by=context.id,
@@ -483,6 +502,21 @@ def receive_subcontract_order(db: Session, order_id: str, payload, context: User
 def release_work_order(db: Session, work_order_id: str, context: UserContext) -> MfgWorkOrder:
     row = _get_work_order(db, work_order_id, context, lock=True)
     _require_allowed_status(row, "下达", {"draft"})
+    if row.routing_id:
+        readiness = work_order_readiness(db, row, context)
+        if not readiness["ready"]:
+            material_shortages = [
+                f"{item['material_id']} 缺 {item['shortage_quantity']}"
+                for item in readiness["materials"]
+                if not item["ready"]
+            ]
+            capacity_shortages = [
+                f"{item['work_center_code'] or item['work_center_id']} 缺 {item['shortage_hours']} 小时"
+                for item in readiness["capacity"]
+                if not item["ready"]
+            ]
+            details = "；".join(material_shortages + capacity_shortages)
+            raise AppError(f"工单齐套/产能检查未通过：{details}", code=409)
     row.status = "released"
     row.updated_by = context.id
     write_operation_log(db, user=context.user, action="release", resource="mfg_work_order", target_id=row.id)
@@ -617,19 +651,46 @@ def report_work(db: Session, work_order_id: str, payload, context: UserContext) 
         raise AppError("合格数量和报废数量不能为负数", code=400)
     if good_quantity + scrap_quantity <= 0:
         raise AppError("合格数量和报废数量之和必须大于零", code=400)
-    reported_total = _quantity(row.reported_good_quantity + row.reported_scrap_quantity + good_quantity + scrap_quantity)
-    if reported_total > _quantity(row.quantity):
-        raise AppError("报工数量超过工单计划数量", code=400)
+    operation_id = getattr(payload, "operation_id", None)
+    operation_name = None
+    is_final_operation = True
+    if row.routing_id:
+        operations = sorted((row.routing_snapshot or {}).get("operations", []), key=lambda item: item.get("line_no", 0))
+        operation = next((item for item in operations if item.get("id") == operation_id), None)
+        if operation is None:
+            raise AppError("绑定工艺路线的工单必须选择有效工序报工", code=400)
+        operation_name = operation.get("operation_name")
+        is_final_operation = operation_id == operations[-1].get("id")
+        previous_good, previous_scrap = db.execute(
+            select(
+                func.coalesce(func.sum(MfgReport.good_quantity), 0),
+                func.coalesce(func.sum(MfgReport.scrap_quantity), 0),
+            ).where(
+                MfgReport.work_order_id == row.id,
+                MfgReport.operation_id == operation_id,
+                MfgReport.is_deleted.is_(False),
+            )
+        ).one()
+        operation_total = _quantity(previous_good + previous_scrap + good_quantity + scrap_quantity)
+        if operation_total > _quantity(row.quantity):
+            raise AppError("该工序累计报工数量超过工单计划数量", code=400)
+    if is_final_operation:
+        reported_total = _quantity(row.reported_good_quantity + row.reported_scrap_quantity + good_quantity + scrap_quantity)
+        if reported_total > _quantity(row.quantity):
+            raise AppError("报工数量超过工单计划数量", code=400)
     report = MfgReport(
         work_order_id=row.id,
+        operation_id=operation_id,
+        operation_name=operation_name,
         good_quantity=good_quantity,
         scrap_quantity=scrap_quantity,
         hours=_quantity(payload.hours),
         created_by=context.id,
     )
     db.add(report)
-    row.reported_good_quantity = _quantity(row.reported_good_quantity + good_quantity)
-    row.reported_scrap_quantity = _quantity(row.reported_scrap_quantity + scrap_quantity)
+    if is_final_operation:
+        row.reported_good_quantity = _quantity(row.reported_good_quantity + good_quantity)
+        row.reported_scrap_quantity = _quantity(row.reported_scrap_quantity + scrap_quantity)
     row.status = "in_progress"
     row.updated_by = context.id
     db.flush()

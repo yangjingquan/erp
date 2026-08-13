@@ -47,6 +47,7 @@ export const router = createRouter({
         { path: "production/boms", name: "production-boms", component: () => import("../views/production/BomList.vue"), meta: { requiresAuth: true, permission: "production:view" } },
         { path: "production/mrp", name: "production-mrp", component: () => import("../views/production/MrpRunList.vue"), meta: { requiresAuth: true, permission: "production:view" } },
         { path: "production/work-orders", name: "production-work-orders", component: () => import("../views/production/WorkOrderList.vue"), meta: { requiresAuth: true, permission: "production:view" } },
+        { path: "production/resources", name: "production-resources", component: () => import("../views/production/ProductionResources.vue"), meta: { requiresAuth: true, permission: "production:view" } },
         { path: "inventory/locations", name: "inventory-locations", component: () => import("../views/inventory-advanced/LocationList.vue"), meta: { requiresAuth: true, permission: "inventory:view" } },
         { path: "inventory/batches", name: "inventory-batches", component: () => import("../views/inventory-advanced/BatchList.vue"), meta: { requiresAuth: true, permission: "inventory:view" } },
         { path: "cost/allocations", name: "cost-allocations", component: () => import("../views/cost/AllocationList.vue"), meta: { requiresAuth: true, permission: "cost:view" } },

@@ -14,3 +14,14 @@ export const issueMaterial = (id: string, items: unknown) => http.post(`/product
 export const reportWork = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/reports`, payload);
 export const completeWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/complete`);
 export const cancelWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/cancel`);
+export const getWorkOrderReadiness = (id: string) => http.get(`/production/work-orders/${id}/readiness`);
+export const listWorkCenters = () => http.get("/production/work-centers");
+export const createWorkCenter = (payload: unknown) => http.post("/production/work-centers", payload);
+export const updateWorkCenter = (id: string, payload: unknown) => http.put(`/production/work-centers/${id}`, payload);
+export const listCapacityCalendar = (params?: { date_from?: string; date_to?: string }) => http.get("/production/capacity-calendar", { params });
+export const upsertCapacityCalendar = (payload: unknown) => http.post("/production/capacity-calendar", payload);
+export const listRoutings = () => http.get("/production/routings");
+export const createRouting = (payload: unknown) => http.post("/production/routings", payload);
+export const submitRouting = (id: string) => http.post(`/production/routings/${id}/submit`);
+export const approveRouting = (id: string) => http.post(`/production/routings/${id}/approve`);
+export const disableRouting = (id: string) => http.post(`/production/routings/${id}/disable`);

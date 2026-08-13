@@ -138,11 +138,12 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/crm/leads')" index="/crm/leads">线索管理</el-menu-item>
           <el-menu-item v-if="canPage('/crm/opportunities')" index="/crm/opportunities">商机管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders'])" index="production">
+        <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders', '/production/resources'])" index="production">
           <template #title><el-icon><Document /></el-icon><span>生产管理</span></template>
           <el-menu-item v-if="canPage('/production/boms')" index="/production/boms">BOM 管理</el-menu-item>
           <el-menu-item v-if="canPage('/production/mrp')" index="/production/mrp">MRP 运算</el-menu-item>
           <el-menu-item v-if="canPage('/production/work-orders')" index="/production/work-orders">生产工单</el-menu-item>
+          <el-menu-item v-if="canPage('/production/resources')" index="/production/resources">工艺与产能</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/cost/allocations', '/cost/period-close'])" index="cost">
           <template #title><el-icon><Wallet /></el-icon><span>成本管理</span></template>

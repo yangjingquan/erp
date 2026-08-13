@@ -59,6 +59,7 @@ PAGE_CATALOG = [
     ("production:view", "BOM", "/production/boms", 1),
     ("production:view", "MRP", "/production/mrp", 2),
     ("production:view", "生产工单", "/production/work-orders", 3),
+    ("production:view", "工艺与产能", "/production/resources", 4),
     ("cost:view", "成本分摊", "/cost/allocations", 1),
     ("cost:view", "期间结账", "/cost/period-close", 2),
     ("quality:view", "质量检验", "/quality/inspections", 1),

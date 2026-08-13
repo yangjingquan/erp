@@ -49,6 +49,8 @@ REQUIRED_TABLES = {
     "mfg_mrp_result",
     "mfg_routing",
     "mfg_routing_operation",
+    "mfg_work_center",
+    "mfg_capacity_calendar",
     "mfg_work_order",
     "mfg_work_order_material",
     "mfg_work_report",

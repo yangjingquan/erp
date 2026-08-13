@@ -34,6 +34,7 @@ from app.models.inventory_advanced import (  # noqa: F401,E402
 from app.models.production import (  # noqa: F401,E402
     MfgBom,
     MfgBomItem,
+    MfgCapacityCalendar,
     MfgMaterialIssue,
     MfgMaterialIssueItem,
     MfgMaterialReturn,
@@ -42,8 +43,11 @@ from app.models.production import (  # noqa: F401,E402
     MfgMrpResult,
     MfgMrpRun,
     MfgReport,
+    MfgRouting,
+    MfgRoutingOperation,
     MfgSubcontractOrder,
     MfgSubcontractReceipt,
     MfgWorkOrder,
     MfgWorkOrderMaterial,
+    MfgWorkCenter,
 )

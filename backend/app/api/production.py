@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -7,12 +9,16 @@ from app.core.database import get_db
 from app.core.response import ok
 from app.schemas.production import (
     BomCreate,
+    CapacityCalendarUpsert,
     MaterialIssueCreate,
     MaterialReturnCreate,
     MpsCreate,
+    RoutingCreate,
     SubcontractOrderCreate,
     SubcontractReceiptCreate,
     WorkOrderCreate,
+    WorkCenterCreate,
+    WorkCenterUpdate,
     WorkReportCreate,
 )
 from app.services.auth_service import UserContext
@@ -33,6 +39,7 @@ from app.services.planning_service import (
     submit_bom,
 )
 from app.services.production_service import (
+    _get_work_order,
     cancel_work_order,
     cancel_subcontract_order,
     complete_work_order,
@@ -52,9 +59,94 @@ from app.services.production_service import (
     serialize_return,
     serialize_work_order,
 )
+from app.services.production_resource_service import (
+    approve_routing,
+    create_routing,
+    create_work_center,
+    disable_routing,
+    list_capacity_calendar,
+    list_routings,
+    list_work_centers,
+    serialize_capacity,
+    serialize_routing,
+    serialize_work_center,
+    submit_routing,
+    update_work_center,
+    upsert_capacity_calendar,
+    work_order_readiness,
+)
 from app.models.production import MfgWorkOrder
 
 router = APIRouter(prefix="/api/production", tags=["production"])
+
+
+@router.get("/work-centers")
+def list_work_centers_api(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_work_centers(db, context))
+
+
+@router.post("/work-centers")
+def create_work_center_api(payload: WorkCenterCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = create_work_center(db, payload, context)
+    db.commit()
+    return ok(serialize_work_center(row))
+
+
+@router.put("/work-centers/{work_center_id}")
+def update_work_center_api(work_center_id: str, payload: WorkCenterUpdate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = update_work_center(db, work_center_id, payload, context)
+    db.commit()
+    return ok(serialize_work_center(row))
+
+
+@router.get("/capacity-calendar")
+def list_capacity_calendar_api(
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ok(list_capacity_calendar(db, context, date_from, date_to))
+
+
+@router.post("/capacity-calendar")
+def upsert_capacity_calendar_api(payload: CapacityCalendarUpsert, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = upsert_capacity_calendar(db, payload, context)
+    db.commit()
+    return ok(serialize_capacity(row))
+
+
+@router.get("/routings")
+def list_routings_api(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_routings(db, context))
+
+
+@router.post("/routings")
+def create_routing_api(payload: RoutingCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = create_routing(db, payload, context)
+    db.commit()
+    return ok(serialize_routing(row))
+
+
+@router.post("/routings/{routing_id}/submit")
+def submit_routing_api(routing_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = submit_routing(db, routing_id, context)
+    db.commit()
+    return ok(serialize_routing(row))
+
+
+@router.post("/routings/{routing_id}/approve")
+def approve_routing_api(routing_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = approve_routing(db, routing_id, context)
+    db.commit()
+    return ok(serialize_routing(row))
+
+
+@router.post("/routings/{routing_id}/disable")
+def disable_routing_api(routing_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = disable_routing(db, routing_id, context)
+    db.commit()
+    return ok(serialize_routing(row))
 
 @router.get("/work-orders")
 def list_work_orders_api(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -188,6 +280,11 @@ def release_work_order_api(work_order_id: str, context: UserContext = Depends(re
     row = release_work_order(db, work_order_id, context)
     db.commit()
     return ok(serialize_work_order(row))
+
+
+@router.get("/work-orders/{work_order_id}/readiness")
+def work_order_readiness_api(work_order_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(work_order_readiness(db, _get_work_order(db, work_order_id, context), context))
 
 
 @router.post("/work-orders/{work_order_id}/issue")

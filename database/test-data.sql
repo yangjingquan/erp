@@ -75,8 +75,8 @@ ON DUPLICATE KEY UPDATE status='approved';
 INSERT INTO mfg_mrp_run (id, org_id, doc_no, mps_id, bom_id, status, source_snapshot, created_by) VALUES
 ('11111111-1111-1111-1111-111111111304', @org, 'TEST-MRP-001', '11111111-1111-1111-1111-111111111303', '11111111-1111-1111-1111-111111111301', 'completed', JSON_OBJECT('test', true, 'source', 'TEST-MPS-001'), @admin)
 ON DUPLICATE KEY UPDATE status='completed';
-INSERT INTO mfg_work_order (id, org_id, doc_no, material_id, warehouse_id, bom_id, plan_date, quantity, status, bom_snapshot, source_type, source_id, created_by, updated_by) VALUES
-('11111111-1111-1111-1111-111111111305', @org, 'TEST-WO-001', '11111111-1111-1111-1111-111111111106', '11111111-1111-1111-1111-111111111109', '11111111-1111-1111-1111-111111111301', DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY), 30, 'released', JSON_ARRAY(JSON_OBJECT('material_id', '11111111-1111-1111-1111-111111111107', 'quantity', 60)), 'mrp_result', '11111111-1111-1111-1111-111111111304', @admin, @admin)
+INSERT INTO mfg_work_order (id, org_id, doc_no, material_id, warehouse_id, bom_id, plan_date, quantity, status, bom_snapshot, routing_snapshot, source_type, source_id, created_by, updated_by) VALUES
+('11111111-1111-1111-1111-111111111305', @org, 'TEST-WO-001', '11111111-1111-1111-1111-111111111106', '11111111-1111-1111-1111-111111111109', '11111111-1111-1111-1111-111111111301', DATE_ADD(CURRENT_DATE, INTERVAL 7 DAY), 30, 'released', JSON_ARRAY(JSON_OBJECT('material_id', '11111111-1111-1111-1111-111111111107', 'quantity', 60)), JSON_OBJECT(), 'mrp_result', '11111111-1111-1111-1111-111111111304', @admin, @admin)
 ON DUPLICATE KEY UPDATE status='released';
 INSERT INTO mfg_work_order_material (id, work_order_id, material_id, required_quantity, line_no) VALUES
 ('11111111-1111-1111-1111-111111111306', '11111111-1111-1111-1111-111111111305', '11111111-1111-1111-1111-111111111107', 60, 1)

@@ -87,6 +87,68 @@ class MfgMrpResult(AuditMixin, UUIDModel):
     run: Mapped[MfgMrpRun] = relationship(back_populates="results")
 
 
+class MfgWorkCenter(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_work_center"
+    __table_args__ = (UniqueConstraint("org_id", "code", name="uk_mfg_work_center_code"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    daily_capacity_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=8, nullable=False)
+    efficiency_rate: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=1, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgCapacityCalendar(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_capacity_calendar"
+    __table_args__ = (
+        UniqueConstraint("org_id", "work_center_id", "capacity_date", name="uk_mfg_capacity_calendar_day"),
+    )
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_center_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_center.id"), nullable=False, index=True)
+    capacity_date: Mapped[date] = mapped_column(Date, nullable=False)
+    available_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgRouting(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_routing"
+    __table_args__ = (
+        UniqueConstraint("org_id", "bom_id", "routing_version", name="uk_mfg_routing_bom_version"),
+    )
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    bom_id: Mapped[str | None] = mapped_column(ForeignKey("mfg_bom.id"), nullable=True, index=True)
+    routing_version: Mapped[str] = mapped_column(String(32), default="1.0", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    effective_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    operations: Mapped[list["MfgRoutingOperation"]] = relationship(
+        back_populates="routing", cascade="all, delete-orphan", order_by="MfgRoutingOperation.line_no"
+    )
+
+
+class MfgRoutingOperation(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_routing_operation"
+    __table_args__ = (UniqueConstraint("routing_id", "line_no", name="uk_mfg_routing_operation_line"),)
+
+    routing_id: Mapped[str] = mapped_column(ForeignKey("mfg_routing.id"), nullable=False, index=True)
+    work_center_id: Mapped[str | None] = mapped_column(ForeignKey("mfg_work_center.id"), nullable=True, index=True)
+    operation_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    line_no: Mapped[int] = mapped_column(nullable=False, default=1)
+    setup_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    run_hours_per_unit: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    routing: Mapped[MfgRouting] = relationship(back_populates="operations")
+
+
 class MfgWorkOrder(AuditMixin, UUIDModel):
     __tablename__ = "mfg_work_order"
 
@@ -95,6 +157,7 @@ class MfgWorkOrder(AuditMixin, UUIDModel):
     material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False)
     bom_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    routing_id: Mapped[str | None] = mapped_column(ForeignKey("mfg_routing.id"), nullable=True)
     plan_date: Mapped[date] = mapped_column(Date, nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     reported_good_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
@@ -102,6 +165,7 @@ class MfgWorkOrder(AuditMixin, UUIDModel):
     completed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     bom_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    routing_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
     source_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
@@ -228,6 +292,8 @@ class MfgReport(AuditMixin, UUIDModel):
     __tablename__ = "mfg_work_report"
 
     work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False)
+    operation_id: Mapped[str | None] = mapped_column(ForeignKey("mfg_routing_operation.id"), nullable=True)
+    operation_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     good_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     scrap_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
