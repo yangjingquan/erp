@@ -149,9 +149,10 @@ async function fetchSearchSuggestions(_query: string, callback: (results: Array<
           <el-menu-item v-if="canPage('/cost/allocations')" index="/cost/allocations">成本分摊</el-menu-item>
           <el-menu-item v-if="canPage('/cost/period-close')" index="/cost/period-close">期间结账</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/quality/inspections'])" index="quality">
+        <el-sub-menu v-if="canAny(['/quality/inspections', '/quality/nonconformances'])" index="quality">
           <template #title><el-icon><Collection /></el-icon><span>质量管理</span></template>
           <el-menu-item v-if="canPage('/quality/inspections')" index="/quality/inspections">质量检验</el-menu-item>
+          <el-menu-item v-if="canPage('/quality/nonconformances')" index="/quality/nonconformances">不合格与 CAPA</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/hr/employees', '/hr/payroll'])" index="hr">
           <template #title><el-icon><UserFilled /></el-icon><span>人事管理</span></template>

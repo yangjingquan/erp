@@ -42,9 +42,10 @@ docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-c
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/001_platform_workbench.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/002_document_department_scope.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/003_event_outbox_compatibility.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/005_quality_capa.sql
 ~~~
 
-前三份迁移可直接重复执行。系统业务时区默认为 `Asia/Shanghai`，MySQL 会话固定为 `+08:00`。仅当已确认旧库所有 `DATETIME` 都是 UTC 并完成备份后，才执行 `database/migrations/004_local_timezone.sql`；它会且只会一次性将历史时间平移 8 小时，不能用于混合存储了 UTC 和本地时间的数据库。业务附件存储在 `backend/var/attachments`，数据库保存受组织权限保护的元数据与文件键。
+上述列出的迁移可直接重复执行。系统业务时区默认为 `Asia/Shanghai`，MySQL 会话固定为 `+08:00`。仅当已确认旧库所有 `DATETIME` 都是 UTC 并完成备份后，才执行 `database/migrations/004_local_timezone.sql`；它会且只会一次性将历史时间平移 8 小时，不能用于混合存储了 UTC 和本地时间的数据库。业务附件存储在 `backend/var/attachments`，数据库保存受组织权限保护的元数据与文件键。
 
 默认超级管理员：
 
@@ -105,6 +106,7 @@ npm run dev
 - 销售订单可在同一工作台追踪出库、库存事务、应收、收款核销和会计凭证；顶部通知中心支持未读与业务跳转。
 - 前端写请求自动携带 `Idempotency-Key`，后端保存 24 小时幂等响应；错误响应提供 `message`、`field_errors` 和 `trace_id`。
 - Dashboard、全局关键词检索、操作日志、登录日志、备份恢复。
+- 质量不合格 NCR/CAPA 闭环：责任人和期限、根因与处置、纠正/预防措施、完成证据、逾期提示和关闭校验。
 - 浅色/暗黑主题、侧栏收起、Element Plus 自适应界面和 ECharts 看板。
 
 销售报价、采购申请、销售/采购退货已提供独立列表、创建和审批操作；权限设置页支持部门、角色、用户、菜单的列表、新增和启停用，并支持部门和角色修改。

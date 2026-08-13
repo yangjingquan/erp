@@ -62,6 +62,7 @@ PAGE_CATALOG = [
     ("cost:view", "成本分摊", "/cost/allocations", 1),
     ("cost:view", "期间结账", "/cost/period-close", 2),
     ("quality:view", "质量检验", "/quality/inspections", 1),
+    ("quality:view", "不合格与 CAPA", "/quality/nonconformances", 2),
     ("hr:view", "人事员工档案", "/hr/employees", 1),
     ("hr:view", "薪资核算", "/hr/payroll", 2),
     ("config:view", "API 客户端", "/settings/api-clients", 4),

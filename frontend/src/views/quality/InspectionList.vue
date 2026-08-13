@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { useRouter } from "vue-router";
 import { listPurchaseReceipts } from "../../api/purchase";
 import { listWorkOrders } from "../../api/production";
 import { closeInspection, createInspection, listInspections, submitInspection } from "../../api/quality";
 
 type Row = Record<string, any>;
+const router = useRouter();
 const rows = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -87,6 +89,7 @@ async function submitResult() {
   finally { saving.value = false; }
 }
 function openClose(row: Row) { selected.value = row; closeForm.disposition = row.result === "failed" ? "rework" : "accept"; closeVisible.value = true; }
+function openNonconformance() { void router.push("/quality/nonconformances"); }
 async function close() {
   if (!selected.value?.id) return;
   try { await ElMessageBox.confirm("关闭后检验结果不可再修改，确认继续吗？", "关闭检验", { type: "warning" }); saving.value = true; const response = await closeInspection(selected.value.id, closeForm.disposition); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("检验已关闭"); closeVisible.value = false; await load(); }
@@ -103,7 +106,7 @@ onMounted(async () => { await Promise.all([load(), loadSourceNames()]); });
     <el-alert title="检验单必须先录入结构化结果，再选择处置结论关闭；不合格结果会自动生成不合格记录。" type="info" show-icon />
     <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column label="检验类型" width="130"><template #default="scope">{{ inspectionTypeLabel(scope.row.inspection_type) }}</template></el-table-column><el-table-column label="来源类型" width="180" class-name="nowrap-column"><template #default="scope">{{ sourceTypeLabel(scope.row.source_type) }}</template></el-table-column><el-table-column label="来源单据" min-width="180"><template #default="scope">{{ sourceDocumentLabel(scope.row) }}</template></el-table-column><el-table-column label="结果" width="100"><template #default="scope"><el-tag class="status-tag" :type="resultTagType(scope.row.result)" effect="light">{{ resultLabel(scope.row.result) }}</el-tag></template></el-table-column><el-table-column label="处置" width="100"><template #default="scope">{{ dispositionLabel(scope.row.disposition) }}</template></el-table-column><el-table-column label="状态" width="100"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
-      <el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openResult(scope.row)">录入结果</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="openClose(scope.row)">关闭检验</el-button></template></el-table-column>
+      <el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openResult(scope.row)">录入结果</el-button><el-button v-if="scope.row.status === 'submitted' && scope.row.result !== 'failed'" link type="success" @click="openClose(scope.row)">关闭检验</el-button><el-button v-if="scope.row.status === 'submitted' && scope.row.result === 'failed'" link type="warning" @click="openNonconformance">处理 NCR/CAPA</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无检验单" /></template>
     </el-table>
     <el-dialog v-model="createVisible" title="新建检验单" width="520px"><el-form label-width="100px"><el-form-item label="检验类型" required><el-select v-model="createForm.inspection_type" style="width: 100%" @change="changeInspectionType"><el-option label="来料检验" value="incoming" /><el-option label="过程检验" value="process" /><el-option label="成品检验" value="finished" /></el-select></el-form-item><el-form-item label="来源类型"><el-input :model-value="sourceTypeLabel(createForm.source_type)" readonly /></el-form-item><el-form-item label="来源单据" required><el-select v-model="createForm.source_id" filterable clearable :loading="sourceLoading" :placeholder="`请选择${sourceTypeLabel(createForm.source_type)}`" style="width: 100%"><el-option v-for="option in sourceDocuments" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item></el-form><template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="create">保存</el-button></template></el-dialog>

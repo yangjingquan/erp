@@ -43,6 +43,8 @@ describe("route guard", () => {
       "/finance/payables",
       "/finance/expenses",
       "/finance/vouchers",
+      "/quality/inspections",
+      "/quality/nonconformances",
       "/settings/workflow",
       "/system/operation-logs",
       "/system/users",

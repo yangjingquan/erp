@@ -38,6 +38,8 @@ describe("一期业务页面加载契约", () => {
     expect(inspection).toContain("sourceDocumentLabel");
     expect(inspection).toContain("不合格");
     expect(inspection).toContain("已关闭");
+    expect(inspection).toContain("处理 NCR/CAPA");
+    expect(inspection).toContain("/quality/nonconformances");
   });
 
   it("reloads locations after creating one from the warehouse selector", () => {

@@ -1925,15 +1925,107 @@ CREATE TABLE IF NOT EXISTS qa_inspection_item (
 CREATE TABLE IF NOT EXISTS qa_nonconformance (
   id CHAR(36) PRIMARY KEY,
   org_id CHAR(36) NOT NULL,
-  inspection_id CHAR(36) NULL,
+  inspection_id CHAR(36) NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'open',
-  description VARCHAR(500) NULL,
+  description VARCHAR(500) NOT NULL,
+  severity VARCHAR(32) NOT NULL DEFAULT 'major',
+  disposition VARCHAR(32) NULL,
+  owner_id CHAR(36) NULL,
+  due_date DATE NULL,
+  root_cause VARCHAR(1000) NULL,
+  closure_evidence VARCHAR(1000) NULL,
+  closed_at DATETIME(6) NULL,
+  closed_by CHAR(36) NULL,
   is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   version INT NOT NULL DEFAULT 1,
-  KEY idx_qa_nonconformance_inspection (inspection_id)
+  UNIQUE KEY uk_qa_nonconformance_inspection (org_id, inspection_id),
+  KEY idx_qa_nonconformance_owner_due (org_id, owner_id, due_date, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS qa_capa_action (
+  id CHAR(36) PRIMARY KEY,
+  org_id CHAR(36) NOT NULL,
+  nonconformance_id CHAR(36) NOT NULL,
+  action_type VARCHAR(32) NOT NULL,
+  description VARCHAR(500) NOT NULL,
+  owner_id CHAR(36) NOT NULL,
+  due_date DATE NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'open',
+  completion_evidence VARCHAR(1000) NULL,
+  completed_at DATETIME(6) NULL,
+  completed_by CHAR(36) NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  version INT NOT NULL DEFAULT 1,
+  KEY idx_qa_capa_nonconformance (org_id, nonconformance_id, status),
+  KEY idx_qa_capa_owner_due (org_id, owner_id, due_date, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Upgrade the original Phase 2 quality stub when this script is replayed.
+DROP PROCEDURE IF EXISTS phase2_add_quality_column;
+DELIMITER //
+CREATE PROCEDURE phase2_add_quality_column(
+  IN column_name_input VARCHAR(64),
+  IN column_definition TEXT
+)
+BEGIN
+  DECLARE column_exists INT DEFAULT 0;
+  SELECT COUNT(*) INTO column_exists
+  FROM information_schema.columns
+  WHERE table_schema = DATABASE()
+    AND table_name = 'qa_nonconformance'
+    AND column_name = column_name_input;
+  IF column_exists = 0 THEN
+    SET @phase2_quality_sql = CONCAT(
+      'ALTER TABLE `qa_nonconformance` ADD COLUMN `', column_name_input, '` ', column_definition
+    );
+    PREPARE phase2_quality_statement FROM @phase2_quality_sql;
+    EXECUTE phase2_quality_statement;
+    DEALLOCATE PREPARE phase2_quality_statement;
+  END IF;
+END//
+DELIMITER ;
+
+CALL phase2_add_quality_column('severity', 'VARCHAR(32) NOT NULL DEFAULT ''major''');
+CALL phase2_add_quality_column('disposition', 'VARCHAR(32) NULL');
+CALL phase2_add_quality_column('owner_id', 'CHAR(36) NULL');
+CALL phase2_add_quality_column('due_date', 'DATE NULL');
+CALL phase2_add_quality_column('root_cause', 'VARCHAR(1000) NULL');
+CALL phase2_add_quality_column('closure_evidence', 'VARCHAR(1000) NULL');
+CALL phase2_add_quality_column('closed_at', 'DATETIME(6) NULL');
+CALL phase2_add_quality_column('closed_by', 'CHAR(36) NULL');
+DROP PROCEDURE IF EXISTS phase2_add_quality_column;
+
+DROP PROCEDURE IF EXISTS phase2_add_quality_index;
+DELIMITER //
+CREATE PROCEDURE phase2_add_quality_index(
+  IN index_name_input VARCHAR(64),
+  IN index_definition TEXT
+)
+BEGIN
+  DECLARE index_exists INT DEFAULT 0;
+  SELECT COUNT(*) INTO index_exists
+  FROM information_schema.statistics
+  WHERE table_schema = DATABASE()
+    AND table_name = 'qa_nonconformance'
+    AND index_name = index_name_input;
+  IF index_exists = 0 THEN
+    SET @phase2_quality_index_sql = CONCAT(
+      'ALTER TABLE `qa_nonconformance` ADD ', index_definition
+    );
+    PREPARE phase2_quality_index_statement FROM @phase2_quality_index_sql;
+    EXECUTE phase2_quality_index_statement;
+    DEALLOCATE PREPARE phase2_quality_index_statement;
+  END IF;
+END//
+DELIMITER ;
+
+CALL phase2_add_quality_index('uk_qa_nonconformance_inspection', 'UNIQUE KEY uk_qa_nonconformance_inspection (org_id, inspection_id)');
+CALL phase2_add_quality_index('idx_qa_nonconformance_owner_due', 'KEY idx_qa_nonconformance_owner_due (org_id, owner_id, due_date, status)');
+DROP PROCEDURE IF EXISTS phase2_add_quality_index;
 
 CREATE TABLE IF NOT EXISTS hr_employee (
   id CHAR(36) PRIMARY KEY,
@@ -2141,6 +2233,10 @@ INSERT INTO sys_schema_migration (version, description)
 VALUES ('004_local_timezone', 'Asia/Shanghai 本地时间规范')
 ON DUPLICATE KEY UPDATE description = VALUES(description);
 
+INSERT INTO sys_schema_migration (version, description)
+VALUES ('005_quality_capa', '质量不合格、纠正预防措施、证据与关闭校验闭环')
+ON DUPLICATE KEY UPDATE description = VALUES(description);
+
 INSERT INTO sys_org (id, code, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'DEFAULT', '默认组织')
 ON DUPLICATE KEY UPDATE name = VALUES(name);
@@ -2186,6 +2282,11 @@ INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sor
 SELECT '10000000-0000-0000-0000-000000000013', id, 'page:hr:employees:view', '员工管理', '/hr/employees', 'EmployeeList', 'menu', 1
 FROM sys_menu WHERE code = 'hr:view'
 ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component);
+
+INSERT INTO sys_menu (id, parent_id, code, name, path, component, menu_type, sort_order)
+SELECT '10000000-0000-0000-0000-000000000015', id, 'page:quality:nonconformances:view', '不合格与 CAPA', '/quality/nonconformances', 'NonconformanceList', 'menu', 2
+FROM sys_menu WHERE code = 'quality:view'
+ON DUPLICATE KEY UPDATE name = VALUES(name), path = VALUES(path), component = VALUES(component), sort_order = VALUES(sort_order);
 
 INSERT INTO sys_permission (id, menu_id, code, name, permission_type)
 SELECT '20000000-0000-0000-0000-000000000001', id, 'system:user:manage', '用户管理', 'button'

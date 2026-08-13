@@ -71,6 +71,7 @@ REQUIRED_TABLES = {
     "qa_inspection",
     "qa_inspection_item",
     "qa_nonconformance",
+    "qa_capa_action",
     "hr_employee",
     "hr_attendance",
     "hr_leave_request",

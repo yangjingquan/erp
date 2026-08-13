@@ -52,6 +52,7 @@ export const router = createRouter({
         { path: "cost/allocations", name: "cost-allocations", component: () => import("../views/cost/AllocationList.vue"), meta: { requiresAuth: true, permission: "cost:view" } },
         { path: "cost/period-close", name: "cost-period-close", component: () => import("../views/cost/PeriodClose.vue"), meta: { requiresAuth: true, permission: "cost:close" } },
         { path: "quality/inspections", name: "quality-inspections", component: () => import("../views/quality/InspectionList.vue"), meta: { requiresAuth: true, permission: "quality:view" } },
+        { path: "quality/nonconformances", name: "quality-nonconformances", component: () => import("../views/quality/NonconformanceList.vue"), meta: { requiresAuth: true, permission: "quality:view" } },
         { path: "hr/employees", name: "hr-employees", component: () => import("../views/hr/EmployeeList.vue"), meta: { requiresAuth: true, permission: "hr:view" } },
         { path: "hr/payroll", name: "hr-payroll", component: () => import("../views/hr/PayrollList.vue"), meta: { requiresAuth: true, permission: "hr:salary:view" } },
         { path: "settings/api-clients", name: "api-clients", component: () => import("../views/settings/ApiClientList.vue"), meta: { requiresAuth: true, permission: "config:manage" } },
