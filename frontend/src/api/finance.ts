@@ -53,6 +53,12 @@ export const listCashForecasts = (params?: Record<string, unknown>) => http.get(
 export const createCashForecast = (payload: unknown) => http.post("/finance/cash-forecasts", payload);
 export const listReconciliationStatements = (statementType?: string) => http.get("/finance/reconciliation-statements", { params: statementType ? { statement_type: statementType } : undefined });
 export const createReconciliationStatement = (payload: unknown) => http.post("/finance/reconciliation-statements", payload);
+export const listBankStatements = () => http.get("/finance/bank-statements");
+export const createBankStatement = (payload: unknown) => http.post("/finance/bank-statements", payload);
+export const autoMatchBankStatement = (id: string) => http.post(`/finance/bank-statements/${id}/auto-match`);
+export const matchBankStatementLine = (id: string, payload: unknown) => http.post(`/finance/bank-statement-lines/${id}/match`, payload);
+export const getCloseChecklist = (period: string) => http.get(`/finance/periods/${period}/close-checklist`);
+export const updateCloseChecklist = (id: string, payload: unknown) => http.post(`/finance/close-checklist/${id}`, payload);
 
 export function createReceipt(payload: { customer_id: string; amount: number }) {
   return http.post("/finance/receipts", payload);

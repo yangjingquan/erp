@@ -97,7 +97,23 @@ def list_alternate_materials(db: Session, work_order_id: str, context: UserConte
 
 def create_work_order_exception(db: Session, work_order_id: str, payload, context: UserContext) -> MfgWorkOrderException:
     order = _get_work_order(db, work_order_id, context)
-    row = MfgWorkOrderException(org_id=context.org_id, work_order_id=order.id, exception_type=payload.exception_type, description=payload.description, reported_by=context.id)
+    due_at = None
+    if getattr(payload, "due_at", None):
+        from datetime import datetime
+        try:
+            due_at = datetime.fromisoformat(payload.due_at.replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError as exc:
+            raise AppError("异常截止时间格式无效", code=422) from exc
+    row = MfgWorkOrderException(
+        org_id=context.org_id,
+        work_order_id=order.id,
+        exception_type=payload.exception_type,
+        description=payload.description,
+        severity=getattr(payload, "severity", "medium"),
+        owner_id=getattr(payload, "owner_id", None),
+        due_at=due_at,
+        reported_by=context.id,
+    )
     db.add(row)
     if order.status == "in_progress":
         order.status = "exception"
@@ -108,7 +124,7 @@ def create_work_order_exception(db: Session, work_order_id: str, payload, contex
 def list_work_order_exceptions(db: Session, work_order_id: str, context: UserContext) -> list[dict]:
     _get_work_order(db, work_order_id, context)
     rows = db.scalars(select(MfgWorkOrderException).where(MfgWorkOrderException.org_id == context.org_id, MfgWorkOrderException.work_order_id == work_order_id, MfgWorkOrderException.is_deleted.is_(False)).order_by(MfgWorkOrderException.occurred_at.desc())).all()
-    return [{"id": row.id, "exception_type": row.exception_type, "description": row.description, "status": row.status, "occurred_at": row.occurred_at.isoformat(), "resolution": row.resolution, "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None} for row in rows]
+    return [{"id": row.id, "exception_type": row.exception_type, "description": row.description, "severity": row.severity, "owner_id": row.owner_id, "due_at": row.due_at.isoformat() if row.due_at else None, "status": row.status, "occurred_at": row.occurred_at.isoformat(), "resolution": row.resolution, "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None} for row in rows]
 
 
 def resolve_work_order_exception(db: Session, exception_id: str, payload, context: UserContext) -> MfgWorkOrderException:

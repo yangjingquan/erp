@@ -20,6 +20,9 @@ from app.schemas.finance import (
     BudgetCreate,
     CashForecastCreate,
     ReconciliationStatementCreate,
+    BankStatementCreate,
+    BankStatementMatchCreate,
+    CloseChecklistUpdate,
 )
 from app.services.auth_service import UserContext
 from app.services.finance_service import (
@@ -66,6 +69,15 @@ from app.services.finance_control_service import (
     list_budgets,
     list_cash_forecasts,
     list_reconciliation_statements,
+)
+from app.services.finance_control_extended_service import (
+    auto_match_bank_statement,
+    create_bank_statement,
+    ensure_close_ready,
+    list_bank_statements,
+    list_checklist,
+    match_bank_statement_line,
+    update_checklist_item,
 )
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
@@ -146,6 +158,10 @@ def period(payload: FiscalPeriodCreate, context: UserContext = Depends(require_p
 
 @router.post("/periods/{period}/close")
 def close_period_api(period: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    pending = ensure_close_ready(db, period, context)
+    if pending:
+        from app.core.exceptions import AppError
+        raise AppError(f"关账前仍有 {len(pending)} 个阻断检查项未完成", code=409)
     row = close_fiscal_period(db, period, context)
     db.commit()
     return ok({"id": row.id, "period": row.period, "status": row.status})
@@ -251,6 +267,45 @@ def reconciliation_statement(payload: ReconciliationStatementCreate, context: Us
     row = create_reconciliation_statement(db, payload, context)
     db.commit()
     return ok({"id": row.id, "statement_no": row.statement_no, "status": row.status, "reconciled_amount": str(row.reconciled_amount)})
+
+
+@router.get("/bank-statements")
+def bank_statements(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_bank_statements(db, context)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"unmatched": sum(item["unmatched_count"] for item in rows)}})
+
+
+@router.post("/bank-statements")
+def import_bank_statement(payload: BankStatementCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_bank_statement(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "statement_no": row.statement_no, "status": row.status})
+
+
+@router.post("/bank-statements/{statement_id}/auto-match")
+def auto_match_statement(statement_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    return ok(auto_match_bank_statement(db, statement_id, context))
+
+
+@router.post("/bank-statement-lines/{line_id}/match")
+def match_statement_line(line_id: str, payload: BankStatementMatchCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    result = match_bank_statement_line(db, line_id, payload, context)
+    db.commit()
+    return ok(result)
+
+
+@router.get("/periods/{period}/close-checklist")
+def close_checklist(period: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_checklist(db, period, context)
+    db.commit()
+    return ok({"period": period, "items": rows, "blocking_pending": sum(item["blocking"] and item["status"] not in {"completed", "waived"} for item in rows)})
+
+
+@router.post("/close-checklist/{item_id}")
+def update_close_checklist(item_id: str, payload: CloseChecklistUpdate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = update_checklist_item(db, item_id, payload, context)
+    db.commit()
+    return ok(row)
 
 
 @router.get("/receipts")

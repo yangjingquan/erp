@@ -67,6 +67,8 @@ def serialize_routing(row: MfgRouting) -> dict:
                 "line_no": item.line_no,
                 "setup_hours": _decimal_text(item.setup_hours),
                 "run_hours_per_unit": _decimal_text(item.run_hours_per_unit),
+                "quality_plan_id": item.quality_plan_id,
+                "equipment_requirement": item.equipment_requirement,
             }
             for item in row.operations
             if not item.is_deleted
@@ -294,6 +296,8 @@ def create_routing(db: Session, payload, context: UserContext) -> MfgRouting:
             line_no=index,
             setup_hours=item.setup_hours,
             run_hours_per_unit=item.run_hours_per_unit,
+            quality_plan_id=item.quality_plan_id,
+            equipment_requirement=item.equipment_requirement,
         )
         for index, item in enumerate(payload.operations, start=1)
     ]
@@ -392,6 +396,8 @@ def routing_snapshot(row: MfgRouting | None) -> dict:
                 "line_no": item.line_no,
                 "setup_hours": _decimal_text(item.setup_hours),
                 "run_hours_per_unit": _decimal_text(item.run_hours_per_unit),
+                "quality_plan_id": item.quality_plan_id,
+                "equipment_requirement": item.equipment_requirement,
             }
             for item in row.operations
             if not item.is_deleted

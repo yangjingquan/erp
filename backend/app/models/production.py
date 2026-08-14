@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import local_now
@@ -33,6 +33,9 @@ class MfgBomItem(AuditMixin, UUIDModel):
     material_id: Mapped[str] = mapped_column(String(36), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     line_no: Mapped[int] = mapped_column(nullable=False, default=1)
+    scrap_rate: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=0, nullable=False)
+    issue_operation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    is_phantom: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     bom: Mapped[MfgBom] = relationship(back_populates="items")
 
 
@@ -148,6 +151,8 @@ class MfgRoutingOperation(AuditMixin, UUIDModel):
     line_no: Mapped[int] = mapped_column(nullable=False, default=1)
     setup_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
     run_hours_per_unit: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    quality_plan_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    equipment_requirement: Mapped[str | None] = mapped_column(String(255), nullable=True)
     routing: Mapped[MfgRouting] = relationship(back_populates="operations")
 
 
@@ -222,6 +227,94 @@ class MfgWorkOrderException(AuditMixin, UUIDModel):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     resolved_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     resolution: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    severity: Mapped[str] = mapped_column(String(16), default="medium", nullable=False)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    source_event: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgDemandLine(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_demand_line"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    warehouse_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    demand_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    source_line_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgPlanRun(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_plan_run"
+    __table_args__ = (UniqueConstraint("org_id", "run_no", name="uk_mfg_plan_run_no"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    run_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    plan_from: Mapped[date] = mapped_column(Date, nullable=False)
+    plan_to: Mapped[date] = mapped_column(Date, nullable=False)
+    warehouse_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="completed", nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(32), default="rules-v1", nullable=False)
+    input_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    output_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    planned_orders: Mapped[list["MfgPlannedOrder"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+    exceptions: Mapped[list["MfgPlanException"]] = relationship(back_populates="run", cascade="all, delete-orphan")
+
+
+class MfgPlannedOrder(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_planned_order"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("mfg_plan_run.id"), nullable=False, index=True)
+    order_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    warehouse_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    source_snapshot: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    formal_document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    formal_document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    confirmed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    run: Mapped[MfgPlanRun] = relationship(back_populates="planned_orders")
+
+
+class MfgPlanException(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_plan_exception"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("mfg_plan_run.id"), nullable=False, index=True)
+    material_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    exception_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), default="warning", nullable=False)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    impact_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    details: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolution: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    run: Mapped[MfgPlanRun] = relationship(back_populates="exceptions")
+
+
+class MfgExecutionEvent(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_execution_event"
+    __table_args__ = (UniqueConstraint("org_id", "execution_key", name="uk_mfg_execution_event_key"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False, index=True)
+    operation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    execution_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    good_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    scrap_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    report_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class MfgWorkOrderCost(AuditMixin, UUIDModel):

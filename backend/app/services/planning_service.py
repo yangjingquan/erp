@@ -8,7 +8,7 @@ from app.core.exceptions import AppError
 from app.core.time import local_now
 from app.models.inventory import InvStock
 from app.models.master_data import MdMaterial, MdWarehouse
-from app.models.production import MfgBom, MfgBomItem, MfgMps, MfgMrpResult, MfgMrpRun
+from app.models.production import MfgBom, MfgBomItem, MfgMps, MfgMrpResult, MfgMrpRun, MfgPlannedOrder
 from app.models.purchase import PurchaseOrder, PurchaseOrderItem
 from app.models.business_extensions import PurchaseRequest, PurchaseRequestItem
 from app.models.sales import SalesOrder, SalesOrderItem
@@ -44,6 +44,9 @@ def serialize_bom(bom: MfgBom) -> dict:
                 "material_id": item.material_id,
                 "quantity": f"{_quantity(item.quantity):.6f}",
                 "line_no": item.line_no,
+                "scrap_rate": f"{Decimal(item.scrap_rate or 0):.4f}",
+                "issue_operation_id": item.issue_operation_id,
+                "is_phantom": bool(item.is_phantom),
             }
             for item in bom.items
             if not item.is_deleted
@@ -152,6 +155,7 @@ def _validate_source_reference(
         "purchase_request": PurchaseRequest,
         "mfg_bom": MfgBom,
         "mfg_mps": MfgMps,
+        "mfg_planned_order": MfgPlannedOrder,
     }
     source_model = source_models.get(source_type)
     if source_model is None:
@@ -233,7 +237,14 @@ def create_bom(db: Session, payload, context: UserContext) -> MfgBom:
         updated_by=context.id,
     )
     bom.items = [
-        MfgBomItem(material_id=item.material_id, quantity=_quantity(item.quantity), line_no=index)
+        MfgBomItem(
+            material_id=item.material_id,
+            quantity=_quantity(item.quantity),
+            line_no=index,
+            scrap_rate=item.scrap_rate,
+            issue_operation_id=item.issue_operation_id,
+            is_phantom=item.is_phantom,
+        )
         for index, item in enumerate(payload.items, start=1)
     ]
     _validate_bom(bom)

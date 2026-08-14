@@ -71,6 +71,15 @@ PAGE_CATALOG = [
     ("hr:view", "人事员工档案", "/hr/employees", 1),
     ("hr:view", "薪资核算", "/hr/payroll", 2),
     ("config:view", "API 客户端", "/settings/api-clients", 4),
+    ("production:view", "PLM 工程变更", "/plm/changes", 6),
+    ("purchase:view", "供应商协同", "/srm/collaboration", 4),
+    ("cost:view", "项目与成本", "/projects/cost", 3),
+    ("production:view", "资产与维修", "/eam/service", 7),
+    ("crm:view", "客户 360", "/crm/customer-360", 3),
+    ("config:view", "集团与内部交易", "/platform/group", 6),
+    ("config:view", "税务与电子发票", "/platform/compliance", 7),
+    ("config:view", "低代码对象", "/platform/low-code", 8),
+    ("dashboard:view", "指标与异常助手", "/platform/metrics", 9),
 ]
 
 LEGACY_FUNCTIONS = {

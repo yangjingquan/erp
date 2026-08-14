@@ -33,6 +33,7 @@ from app.services.inventory_advanced_service import (
     create_pick_wave,
     list_pick_waves,
     release_pick_wave,
+    generate_warehouse_tasks,
 )
 
 
@@ -266,6 +267,18 @@ def create_warehouse_task_api(
     row = create_warehouse_task(db, payload, context)
     db.commit()
     return ok({"id": row.id, "task_no": row.task_no, "status": row.status})
+
+
+@router.post("/tasks/from-document")
+def generate_tasks_from_document(
+    source_type: str = Query(min_length=1, max_length=64),
+    source_id: str = Query(min_length=1, max_length=36),
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    rows = generate_warehouse_tasks(db, source_type, source_id, context)
+    db.commit()
+    return ok({"items": rows, "total": len(rows), "idempotent": True})
 
 
 @router.post("/tasks/{task_id}/transition")

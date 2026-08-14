@@ -128,3 +128,37 @@ class ReconciliationStatementCreate(FinanceSchema):
     period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
     statement_amount: Decimal = Field(ge=0)
     note: str | None = Field(default=None, max_length=255)
+
+
+class BankStatementLineCreate(FinanceSchema):
+    line_no: int = Field(ge=1)
+    transaction_date: date
+    amount: Decimal = Field(gt=0)
+    direction: str = Field(pattern="^(in|out)$")
+    counterparty: str | None = Field(default=None, max_length=128)
+    reference_no: str | None = Field(default=None, max_length=128)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class BankStatementCreate(FinanceSchema):
+    bank_account_id: str = Field(min_length=1, max_length=36)
+    statement_date: date
+    opening_balance: Decimal = Field(ge=0)
+    closing_balance: Decimal = Field(ge=0)
+    statement_no: str | None = Field(default=None, max_length=64)
+    source_file: str | None = Field(default=None, max_length=255)
+    lines: list[BankStatementLineCreate] = Field(default_factory=list, max_length=500)
+
+
+class BankStatementMatchCreate(FinanceSchema):
+    source_type: str = Field(min_length=1, max_length=64)
+    source_id: str = Field(min_length=1, max_length=36)
+    matched_amount: Decimal = Field(gt=0)
+    match_type: str = Field(default="manual", pattern="^(rule|manual)$")
+    override_reason: str | None = Field(default=None, max_length=255)
+
+
+class CloseChecklistUpdate(FinanceSchema):
+    status: str = Field(pattern="^(pending|completed|waived)$")
+    owner_id: str | None = Field(default=None, max_length=36)
+    evidence: str | None = Field(default=None, max_length=500)

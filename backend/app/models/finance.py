@@ -129,6 +129,66 @@ class FinReconciliationStatement(AuditMixin, UUIDModel):
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class FinBankStatement(AuditMixin, UUIDModel):
+    __tablename__ = "fin_bank_statement"
+    __table_args__ = (UniqueConstraint("org_id", "statement_no", name="uk_fin_bank_statement_no"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    statement_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    bank_account_id: Mapped[str] = mapped_column(ForeignKey("fin_bank_account.id"), nullable=False, index=True)
+    statement_date: Mapped[date] = mapped_column(Date, nullable=False)
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    closing_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    lines: Mapped[list["FinBankStatementLine"]] = relationship(back_populates="statement", cascade="all, delete-orphan")
+
+
+class FinBankStatementLine(AuditMixin, UUIDModel):
+    __tablename__ = "fin_bank_statement_line"
+    __table_args__ = (UniqueConstraint("statement_id", "line_no", name="uk_fin_bank_statement_line_no"),)
+
+    statement_id: Mapped[str] = mapped_column(ForeignKey("fin_bank_statement.id"), nullable=False, index=True)
+    line_no: Mapped[int] = mapped_column(nullable=False)
+    transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    direction: Mapped[str] = mapped_column(String(8), nullable=False)
+    counterparty: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reference_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    matched_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="unmatched", nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    statement: Mapped[FinBankStatement] = relationship(back_populates="lines")
+
+
+class FinReconciliationMatch(AuditMixin, UUIDModel):
+    __tablename__ = "fin_reconciliation_match"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    statement_line_id: Mapped[str] = mapped_column(ForeignKey("fin_bank_statement_line.id"), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    matched_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    match_type: Mapped[str] = mapped_column(String(32), default="rule", nullable=False)
+    override_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class FinPeriodCloseChecklist(AuditMixin, UUIDModel):
+    __tablename__ = "fin_period_close_checklist"
+    __table_args__ = (UniqueConstraint("org_id", "period", "item_code", name="uk_fin_period_checklist_item"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    period: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    item_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    blocking: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False)
+    evidence: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
 class SalesReceivable(UUIDModel):
     __tablename__ = "sales_receivable"
 

@@ -24,6 +24,9 @@ from app.schemas.production import (
     WorkOrderExceptionCreate,
     WorkOrderExceptionResolve,
     WorkOrderScheduleCreate,
+    PlanRunCreate,
+    DemandLineCreate,
+    PlannedOrderCommand,
 )
 from app.services.auth_service import UserContext
 from app.services.planning_service import (
@@ -91,6 +94,18 @@ from app.services.production_execution_service import (
     resolve_work_order_exception,
     schedule_work_order,
 )
+from app.services.p0_planning_service import (
+    add_demand_line,
+    confirm_planned_order,
+    confirm_planned_orders,
+    get_plan_run,
+    ignore_planned_order,
+    list_plan_runs,
+    run_plan,
+    serialize_demand_line,
+    serialize_plan_run,
+)
+from app.models.production import MfgDemandLine
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 
@@ -189,6 +204,72 @@ def create_bom_api(payload: BomCreate, context: UserContext = Depends(require_pe
 @router.get("/boms/{bom_id}")
 def bom_detail(bom_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(serialize_bom(_get_bom(db, bom_id, context)))
+
+
+@router.get("/boms/{bom_id}/tree")
+def bom_tree(bom_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    root = _get_bom(db, bom_id, context)
+    def expand(material_id: str, path: set[str], level: int = 0):
+        if material_id in path:
+            return {"material_id": material_id, "level": level, "circular": True, "items": []}
+        bom = next((item for item in list_boms(db, context) if item["material_id"] == material_id and item["status"] == "approved"), None)
+        items = []
+        for item in (bom or {}).get("items", []):
+            items.append({**item, "level": level + 1, "children": expand(item["material_id"], path | {material_id}, level + 1)})
+        return {"material_id": material_id, "level": level, "items": items}
+    return ok({"bom": serialize_bom(root), "tree": expand(root.material_id, set())})
+
+
+@router.get("/demand-lines")
+def demand_lines(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = db.scalars(select(MfgDemandLine).where(MfgDemandLine.org_id == context.org_id, MfgDemandLine.is_deleted.is_(False)).order_by(MfgDemandLine.demand_date, MfgDemandLine.created_at.desc())).all()
+    return ok({"items": [serialize_demand_line(row) for row in rows], "total": len(rows), "page": 1, "page_size": len(rows), "summary": {}})
+
+
+@router.post("/demand-lines")
+def create_demand_line(payload: DemandLineCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = add_demand_line(db, payload, context)
+    db.commit()
+    return ok(row)
+
+
+@router.get("/plan-runs")
+def plan_runs(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_plan_runs(db, context)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"runs": len(rows)}})
+
+
+@router.post("/plan-runs")
+def create_plan_run(payload: PlanRunCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = run_plan(db, payload, context)
+    db.commit()
+    return ok(serialize_plan_run(row))
+
+
+@router.get("/plan-runs/{run_id}")
+def plan_run_detail(run_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(serialize_plan_run(get_plan_run(db, run_id, context)))
+
+
+@router.post("/planned-orders/{planned_order_id}/confirm")
+def confirm_planned_order_api(planned_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    result = confirm_planned_order(db, planned_order_id, context)
+    db.commit()
+    return ok({"command_id": f"confirm-{planned_order_id}", "document": result, "emitted_events": ["plan.order.confirmed"]})
+
+
+@router.post("/planned-orders/bulk-confirm")
+def bulk_confirm_planned_orders(payload: PlannedOrderCommand, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    result = confirm_planned_orders(db, payload.planned_order_ids, context)
+    db.commit()
+    return ok({"command_id": f"bulk-confirm-{len(result)}", "documents": result, "emitted_events": ["plan.order.confirmed"]})
+
+
+@router.post("/planned-orders/{planned_order_id}/ignore")
+def ignore_planned_order_api(planned_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    result = ignore_planned_order(db, planned_order_id, context)
+    db.commit()
+    return ok(result)
 
 
 @router.post("/boms/{bom_id}/submit")

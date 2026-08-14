@@ -1,4 +1,5 @@
 from decimal import Decimal, ROUND_HALF_UP
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -19,6 +20,7 @@ from app.models.production import (
     MfgMaterialReturn,
     MfgMaterialReturnItem,
     MfgAlternateMaterial,
+    MfgExecutionEvent,
     MfgReport,
     MfgSubcontractOrder,
     MfgSubcontractReceipt,
@@ -133,6 +135,7 @@ def serialize_report(row: MfgReport) -> dict:
         "scrap_quantity": f"{_quantity(row.scrap_quantity):.6f}",
         "hours": f"{_quantity(row.hours):.6f}",
         "report_time": row.report_time.isoformat(),
+        "execution_key": getattr(row, "execution_key", None),
     }
 
 
@@ -666,6 +669,7 @@ def return_material(db: Session, issue_id: str, items, context: UserContext) -> 
 
 def report_work(db: Session, work_order_id: str, payload, context: UserContext) -> MfgReport:
     row = _get_work_order(db, work_order_id, context, lock=True)
+    execution_key = getattr(payload, "execution_key", None) or f"report-{uuid4()}"
     _require_allowed_status(row, "报工", {"released", "in_progress"})
     good_quantity = _quantity(payload.good_quantity)
     scrap_quantity = _quantity(payload.scrap_quantity)
@@ -673,6 +677,13 @@ def report_work(db: Session, work_order_id: str, payload, context: UserContext) 
         raise AppError("合格数量和报废数量不能为负数", code=400)
     if good_quantity + scrap_quantity <= 0:
         raise AppError("合格数量和报废数量之和必须大于零", code=400)
+    existing_event = db.scalar(select(MfgExecutionEvent).where(MfgExecutionEvent.org_id == context.org_id, MfgExecutionEvent.execution_key == execution_key))
+    if existing_event and existing_event.report_id:
+        existing_report = db.get(MfgReport, existing_event.report_id)
+        if existing_report is not None:
+            return existing_report
+    if existing_event:
+        raise AppError("相同报工请求正在处理中，请稍后重试", code=409)
     operation_id = getattr(payload, "operation_id", None)
     operation_name = None
     is_final_operation = True
@@ -710,6 +721,19 @@ def report_work(db: Session, work_order_id: str, payload, context: UserContext) 
         created_by=context.id,
     )
     db.add(report)
+    db.flush()
+    execution_event = MfgExecutionEvent(
+        org_id=context.org_id,
+        work_order_id=row.id,
+        operation_id=operation_id,
+        execution_key=execution_key,
+        good_quantity=good_quantity,
+        scrap_quantity=scrap_quantity,
+        hours=_quantity(payload.hours),
+        report_id=report.id,
+        created_by=context.id,
+    )
+    db.add(execution_event)
     if is_final_operation:
         row.reported_good_quantity = _quantity(row.reported_good_quantity + good_quantity)
         row.reported_scrap_quantity = _quantity(row.reported_scrap_quantity + scrap_quantity)

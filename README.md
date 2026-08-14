@@ -47,6 +47,8 @@ docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-c
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/009_p1_control_loops.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/012_p0_execution_controls.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/013_p0_page_catalog.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/014_p0_completion.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/015_p1_p2_extensions.sql
 ~~~
 
 上述列出的迁移可直接重复执行。系统业务时区默认为 `Asia/Shanghai`，MySQL 会话固定为 `+08:00`。仅当已确认旧库所有 `DATETIME` 都是 UTC 并完成备份后，才执行 `database/migrations/004_local_timezone.sql`；它会且只会一次性将历史时间平移 8 小时，不能用于混合存储了 UTC 和本地时间的数据库。业务附件存储在 `backend/var/attachments`，数据库保存受组织权限保护的元数据与文件键。

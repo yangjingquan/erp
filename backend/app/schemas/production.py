@@ -2,11 +2,15 @@ from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
+from uuid import uuid4
 
 
 class BomItemCreate(BaseModel):
     material_id: str = Field(min_length=1)
     quantity: Decimal = Field(gt=0)
+    scrap_rate: Decimal = Field(default=Decimal("0"), ge=0, lt=1)
+    issue_operation_id: str | None = Field(default=None, max_length=36)
+    is_phantom: bool = False
 
 
 class BomCreate(BaseModel):
@@ -67,6 +71,7 @@ class WorkReportCreate(BaseModel):
     good_quantity: Decimal = Field(default=Decimal("0"), ge=0)
     scrap_quantity: Decimal = Field(default=Decimal("0"), ge=0)
     hours: Decimal = Field(default=Decimal("0"), ge=0)
+    execution_key: str = Field(default_factory=lambda: f"report-{uuid4()}", min_length=1, max_length=128)
 
 
 class WorkCenterCreate(BaseModel):
@@ -99,6 +104,8 @@ class RoutingOperationCreate(BaseModel):
     operation_name: str = Field(min_length=1, max_length=128)
     setup_hours: Decimal = Field(default=Decimal("0"), ge=0)
     run_hours_per_unit: Decimal = Field(default=Decimal("0"), ge=0)
+    quality_plan_id: str | None = Field(default=None, max_length=36)
+    equipment_requirement: str | None = Field(default=None, max_length=255)
 
 
 class RoutingCreate(BaseModel):
@@ -134,7 +141,30 @@ class AlternateMaterialCreate(BaseModel):
 class WorkOrderExceptionCreate(BaseModel):
     exception_type: str = Field(min_length=1, max_length=64)
     description: str = Field(min_length=1, max_length=500)
+    severity: str = Field(default="medium", pattern="^(low|medium|high|blocking)$")
+    owner_id: str | None = Field(default=None, max_length=36)
+    due_at: str | None = Field(default=None, max_length=32)
 
 
 class WorkOrderExceptionResolve(BaseModel):
     resolution: str = Field(min_length=1, max_length=500)
+
+
+class PlanRunCreate(BaseModel):
+    plan_from: date
+    plan_to: date
+    warehouse_id: str | None = Field(default=None, max_length=36)
+    demand_sources: list[str] = Field(default_factory=lambda: ["sales_order", "mps", "manual"])
+
+
+class DemandLineCreate(BaseModel):
+    material_id: str = Field(min_length=1, max_length=36)
+    warehouse_id: str | None = Field(default=None, max_length=36)
+    demand_date: date
+    quantity: Decimal = Field(gt=0)
+    source_type: str = Field(default="manual", min_length=1, max_length=64)
+    source_id: str = Field(min_length=1, max_length=36)
+
+
+class PlannedOrderCommand(BaseModel):
+    planned_order_ids: list[str] = Field(min_length=1, max_length=200)

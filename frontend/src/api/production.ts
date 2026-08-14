@@ -34,3 +34,12 @@ export const createRouting = (payload: unknown) => http.post("/production/routin
 export const submitRouting = (id: string) => http.post(`/production/routings/${id}/submit`);
 export const approveRouting = (id: string) => http.post(`/production/routings/${id}/approve`);
 export const disableRouting = (id: string) => http.post(`/production/routings/${id}/disable`);
+export const listDemandLines = () => http.get("/production/demand-lines");
+export const createDemandLine = (payload: unknown) => http.post("/production/demand-lines", payload);
+export const listPlanRuns = () => http.get("/production/plan-runs");
+export const createPlanRun = (payload: unknown) => http.post("/production/plan-runs", payload);
+export const getPlanRun = (id: string) => http.get(`/production/plan-runs/${id}`);
+export const confirmPlannedOrder = (id: string) => http.post(`/production/planned-orders/${id}/confirm`);
+export const bulkConfirmPlannedOrders = (ids: string[]) => http.post("/production/planned-orders/bulk-confirm", { planned_order_ids: ids });
+export const ignorePlannedOrder = (id: string) => http.post(`/production/planned-orders/${id}/ignore`);
+export const getBomTree = (id: string) => http.get(`/production/boms/${id}/tree`);

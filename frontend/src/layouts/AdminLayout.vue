@@ -5,6 +5,7 @@ import { ElMessage } from "element-plus";
 import {
   Box,
   Collection,
+  Connection,
   DataAnalysis,
   Document,
   Menu,
@@ -35,8 +36,8 @@ const switchingOrganization = ref(false);
 const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
   const currentGroup = route.path.split("/")[1];
-  const group = ["settings", "analytics"].includes(currentGroup) ? "config" : currentGroup;
-  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "system", "config"].includes(group) ? [group] : [];
+  const group = ["settings", "analytics", "platform"].includes(currentGroup) ? "config" : ["plm", "srm", "projects", "eam"].includes(currentGroup) ? "extensions" : currentGroup;
+  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "system", "config", "extensions"].includes(group) ? [group] : [];
 });
 function canPage(path: string) { return !auth.user || auth.user.is_superuser || permissions.hasPagePermission(path); }
 function canAny(paths: string[]) { return paths.some((path) => canPage(path)); }
@@ -169,10 +170,18 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/finance/currencies')" index="/finance/currencies">多币种与汇率</el-menu-item>
           <el-menu-item v-if="canPage('/finance/controls')" index="/finance/controls">财务控制中心</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities'])" index="crm">
+        <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities', '/crm/customer-360'])" index="crm">
           <template #title><el-icon><UserFilled /></el-icon><span>CRM 管理</span></template>
           <el-menu-item v-if="canPage('/crm/leads')" index="/crm/leads">线索管理</el-menu-item>
           <el-menu-item v-if="canPage('/crm/opportunities')" index="/crm/opportunities">商机管理</el-menu-item>
+          <el-menu-item v-if="canPage('/crm/customer-360')" index="/crm/customer-360">客户 360</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="canAny(['/plm/changes', '/srm/collaboration', '/projects/cost', '/eam/service'])" index="extensions">
+          <template #title><el-icon><Connection /></el-icon><span>业务扩展</span></template>
+          <el-menu-item v-if="canPage('/plm/changes')" index="/plm/changes">PLM 工程变更</el-menu-item>
+          <el-menu-item v-if="canPage('/srm/collaboration')" index="/srm/collaboration">供应商协同</el-menu-item>
+          <el-menu-item v-if="canPage('/projects/cost')" index="/projects/cost">项目与成本</el-menu-item>
+          <el-menu-item v-if="canPage('/eam/service')" index="/eam/service">资产与售后服务</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders', '/production/resources', '/production/execution'])" index="production">
           <template #title><el-icon><Document /></el-icon><span>生产管理</span></template>
@@ -204,7 +213,7 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/system/admin')" index="/system/admin">权限设置</el-menu-item>
           <el-menu-item v-if="canPage('/system/backup')" index="/system/backup">备份恢复</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients', '/settings/platform-events', '/analytics/reports'])" index="config">
+        <el-sub-menu v-if="canAny(['/settings/parameters', '/settings/workflow', '/settings/print-templates', '/settings/api-clients', '/settings/platform-events', '/analytics/reports', '/platform/group', '/platform/compliance', '/platform/low-code', '/platform/metrics'])" index="config">
           <template #title><el-icon><Setting /></el-icon><span>系统配置</span></template>
           <el-menu-item v-if="canPage('/settings/parameters')" index="/settings/parameters">全局参数</el-menu-item>
           <el-menu-item v-if="canPage('/settings/workflow')" index="/settings/workflow">审批流程</el-menu-item>
@@ -212,6 +221,10 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/settings/api-clients')" index="/settings/api-clients">API 客户端</el-menu-item>
           <el-menu-item v-if="canPage('/settings/platform-events')" index="/settings/platform-events">事件订阅</el-menu-item>
           <el-menu-item v-if="canPage('/analytics/reports')" index="/analytics/reports">BI 报表中心</el-menu-item>
+          <el-menu-item v-if="canPage('/platform/group')" index="/platform/group">集团与内部交易</el-menu-item>
+          <el-menu-item v-if="canPage('/platform/compliance')" index="/platform/compliance">税务与发票</el-menu-item>
+          <el-menu-item v-if="canPage('/platform/low-code')" index="/platform/low-code">低代码对象</el-menu-item>
+          <el-menu-item v-if="canPage('/platform/metrics')" index="/platform/metrics">指标与异常助手</el-menu-item>
         </el-sub-menu>
       </el-menu>
       <div class="sidebar-spacer" />
