@@ -20,6 +20,10 @@ from app.schemas.production import (
     WorkCenterCreate,
     WorkCenterUpdate,
     WorkReportCreate,
+    AlternateMaterialCreate,
+    WorkOrderExceptionCreate,
+    WorkOrderExceptionResolve,
+    WorkOrderScheduleCreate,
 )
 from app.services.auth_service import UserContext
 from app.services.planning_service import (
@@ -78,6 +82,15 @@ from app.services.production_resource_service import (
 )
 from app.services.production_cost_service import get_work_order_cost
 from app.models.production import MfgWorkOrder
+from app.services.production_execution_service import (
+    add_alternate_material,
+    create_work_order_exception,
+    list_alternate_materials,
+    list_work_order_exceptions,
+    list_work_order_schedule,
+    resolve_work_order_exception,
+    schedule_work_order,
+)
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 
@@ -333,3 +346,47 @@ def cancel_work_order_api(work_order_id: str, context: UserContext = Depends(req
     row = cancel_work_order(db, work_order_id, context)
     db.commit()
     return ok(serialize_work_order(row))
+
+
+@router.get("/schedules")
+def schedules(work_order_id: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_work_order_schedule(db, context, work_order_id)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"planned_hours": str(sum(float(item["scheduled_hours"]) for item in rows))}})
+
+
+@router.post("/work-orders/{work_order_id}/schedules")
+def schedule(work_order_id: str, payload: WorkOrderScheduleCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = schedule_work_order(db, work_order_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "work_order_id": row.work_order_id, "schedule_date": row.schedule_date.isoformat(), "scheduled_hours": str(row.scheduled_hours), "status": row.status})
+
+
+@router.get("/work-orders/{work_order_id}/alternates")
+def alternates(work_order_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_alternate_materials(db, work_order_id, context))
+
+
+@router.post("/work-orders/{work_order_id}/alternates")
+def alternate(work_order_id: str, payload: AlternateMaterialCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = add_alternate_material(db, work_order_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "material_id": row.material_id, "alternate_material_id": row.alternate_material_id, "conversion_rate": str(row.conversion_rate), "status": row.status})
+
+
+@router.get("/work-orders/{work_order_id}/exceptions")
+def work_order_exceptions(work_order_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_work_order_exceptions(db, work_order_id, context))
+
+
+@router.post("/work-orders/{work_order_id}/exceptions")
+def create_exception(work_order_id: str, payload: WorkOrderExceptionCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = create_work_order_exception(db, work_order_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "status": row.status, "exception_type": row.exception_type})
+
+
+@router.post("/exceptions/{exception_id}/resolve")
+def resolve_exception(exception_id: str, payload: WorkOrderExceptionResolve, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    row = resolve_work_order_exception(db, exception_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "status": row.status, "resolution": row.resolution})

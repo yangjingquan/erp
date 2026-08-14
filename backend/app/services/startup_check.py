@@ -103,6 +103,14 @@ REQUIRED_TABLES = {
     "sys_idempotency_record",
     "biz_report_definition",
     "biz_report_run",
+    "inv_pick_wave",
+    "inv_warehouse_task",
+    "mfg_work_order_schedule",
+    "mfg_alternate_material",
+    "mfg_work_order_exception",
+    "fin_budget",
+    "fin_cash_forecast",
+    "fin_reconciliation_statement",
 }
 
 

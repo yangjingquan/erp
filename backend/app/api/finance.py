@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
@@ -16,6 +17,9 @@ from app.schemas.finance import (
     ManualVoucherCreate,
     CurrencyCreate,
     ExchangeRateCreate,
+    BudgetCreate,
+    CashForecastCreate,
+    ReconciliationStatementCreate,
 )
 from app.services.auth_service import UserContext
 from app.services.finance_service import (
@@ -53,6 +57,16 @@ from app.services.ledger_service import (
     run_asset_depreciation,
 )
 from app.services.currency_service import convert_amount, create_currency, list_currencies, list_exchange_rates, upsert_exchange_rate
+from app.services.finance_control_service import (
+    aging_report,
+    approve_budget,
+    create_budget,
+    create_cash_forecast,
+    create_reconciliation_statement,
+    list_budgets,
+    list_cash_forecasts,
+    list_reconciliation_statements,
+)
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
 
@@ -183,6 +197,60 @@ def receivables(context: UserContext = Depends(get_current_user), db: Session = 
 @router.get("/payables")
 def payables(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_payables(db, context))
+
+
+@router.get("/aging/{statement_type}")
+def aging(statement_type: str, as_of: date | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    if statement_type not in {"ar", "ap"}:
+        from app.core.exceptions import AppError
+        raise AppError("账龄类型必须为 ar 或 ap", code=422)
+    return ok(aging_report(db, context, statement_type, as_of or date.today()))
+
+
+@router.get("/budgets")
+def budgets(period: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_budgets(db, context, period)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"budget_amount": str(sum(Decimal(row["budget_amount"]) for row in rows)), "actual_amount": str(sum(Decimal(row["actual_amount"]) for row in rows))}})
+
+
+@router.post("/budgets")
+def budget(payload: BudgetCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_budget(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "budget_period": row.budget_period, "account_code": row.account_code, "budget_amount": str(row.budget_amount), "status": row.status})
+
+
+@router.post("/budgets/{budget_id}/approve")
+def approve_budget_api(budget_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = approve_budget(db, budget_id, context)
+    db.commit()
+    return ok({"id": row.id, "status": row.status})
+
+
+@router.get("/cash-forecasts")
+def cash_forecasts(date_from: date | None = Query(default=None), date_to: date | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_cash_forecasts(db, context, date_from, date_to)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"inflow_amount": str(sum(Decimal(row["inflow_amount"]) for row in rows)), "outflow_amount": str(sum(Decimal(row["outflow_amount"]) for row in rows)), "net_amount": str(sum(Decimal(row["net_amount"]) for row in rows))}})
+
+
+@router.post("/cash-forecasts")
+def cash_forecast(payload: CashForecastCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_cash_forecast(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "forecast_date": row.forecast_date.isoformat(), "net_amount": str(row.net_amount), "status": row.status})
+
+
+@router.get("/reconciliation-statements")
+def reconciliation_statements(statement_type: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_reconciliation_statements(db, context, statement_type)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"matched": sum(row["status"] == "matched" for row in rows), "difference": sum(row["status"] == "difference" for row in rows)}})
+
+
+@router.post("/reconciliation-statements")
+def reconciliation_statement(payload: ReconciliationStatementCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = create_reconciliation_statement(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "statement_no": row.statement_no, "status": row.status, "reconciled_amount": str(row.reconciled_amount)})
 
 
 @router.get("/receipts")

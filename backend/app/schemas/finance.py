@@ -104,3 +104,27 @@ class AssetCreate(FinanceSchema):
 
 class DepreciationRun(FinanceSchema):
     period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+
+
+class BudgetCreate(FinanceSchema):
+    budget_period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    account_code: str = Field(min_length=1, max_length=64)
+    department_id: str | None = Field(default=None, max_length=36)
+    budget_amount: Decimal = Field(ge=0)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class CashForecastCreate(FinanceSchema):
+    forecast_date: date
+    inflow_amount: Decimal = Field(ge=0)
+    outflow_amount: Decimal = Field(ge=0)
+    source: str = Field(default="manual", min_length=1, max_length=64)
+    note: str | None = Field(default=None, max_length=255)
+
+
+class ReconciliationStatementCreate(FinanceSchema):
+    statement_type: str = Field(pattern="^(ar|ap)$")
+    party_id: str = Field(min_length=1, max_length=36)
+    period: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    statement_amount: Decimal = Field(ge=0)
+    note: str | None = Field(default=None, max_length=255)

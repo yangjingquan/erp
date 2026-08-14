@@ -114,3 +114,27 @@ class SubcontractReceiptCreate(BaseModel):
     good_quantity: Decimal = Field(gt=0)
     unit_cost: Decimal = Field(gt=0)
     operation_key: str = Field(min_length=1, max_length=64)
+
+
+class WorkOrderScheduleCreate(BaseModel):
+    operation_id: str | None = Field(default=None, max_length=36)
+    work_center_id: str = Field(min_length=1, max_length=36)
+    schedule_date: date
+    scheduled_hours: Decimal = Field(gt=0)
+    override_capacity: bool = False
+
+
+class AlternateMaterialCreate(BaseModel):
+    material_id: str = Field(min_length=1, max_length=36)
+    alternate_material_id: str = Field(min_length=1, max_length=36)
+    conversion_rate: Decimal = Field(gt=0)
+    reason: str | None = Field(default=None, max_length=255)
+
+
+class WorkOrderExceptionCreate(BaseModel):
+    exception_type: str = Field(min_length=1, max_length=64)
+    description: str = Field(min_length=1, max_length=500)
+
+
+class WorkOrderExceptionResolve(BaseModel):
+    resolution: str = Field(min_length=1, max_length=500)

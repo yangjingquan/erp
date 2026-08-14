@@ -1,0 +1,35 @@
+<script setup lang="ts">
+import { onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
+import { createPickWave, createWarehouseTask, listPickWaves, listWarehouseTasks, releasePickWave, transitionWarehouseTask } from "../../api/inventory-advanced";
+import { listMasterData } from "../../api/master-data";
+
+type Row = Record<string, any>;
+const tasks = ref<Row[]>([]);
+const waves = ref<Row[]>([]);
+const warehouses = ref<Row[]>([]);
+const materials = ref<Row[]>([]);
+const selectedTaskIds = ref<string[]>([]);
+const waveWarehouseId = ref("");
+const loading = ref(false);
+const form = ref({ task_type: "pick", warehouse_id: "", material_id: "", planned_quantity: 0, priority: 50 });
+function unwrap(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "WMS 接口失败"); return response.data.data; }
+async function load() { loading.value = true; try { const [taskResponse, waveResponse, warehouseResponse, materialResponse] = await Promise.all([listWarehouseTasks(), listPickWaves(), listMasterData("warehouses"), listMasterData("materials")]); tasks.value = unwrap(taskResponse)?.items || []; waves.value = unwrap(waveResponse)?.items || []; warehouses.value = unwrap(warehouseResponse)?.items || []; materials.value = unwrap(materialResponse)?.items || []; if (!form.value.warehouse_id && warehouses.value.length === 1) form.value.warehouse_id = String(warehouses.value[0].id); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "WMS 数据加载失败"); } finally { loading.value = false; } }
+async function save() { if (!form.value.warehouse_id) { ElMessage.warning("请先选择仓库"); return; } const payload = { ...form.value, material_id: form.value.material_id || undefined }; try { unwrap(await createWarehouseTask(payload)); ElMessage.success("作业任务已创建"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "任务创建失败"); } }
+async function move(row: Row, status: string) { try { unwrap(await transitionWarehouseTask(String(row.id), { status, completed_quantity: status === "completed" ? row.planned_quantity : undefined })); ElMessage.success("任务状态已更新"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "任务状态更新失败"); } }
+async function createWave() { if (!waveWarehouseId.value || !selectedTaskIds.value.length) { ElMessage.warning("请选择仓库和至少一个拣货任务"); return; } try { unwrap(await createPickWave({ warehouse_id: waveWarehouseId.value, task_ids: selectedTaskIds.value })); selectedTaskIds.value = []; ElMessage.success("拣货波次已创建"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "拣货波次创建失败"); } }
+async function releaseWave(row: Row) { try { unwrap(await releasePickWave(String(row.id))); ElMessage.success("拣货波次已发布"); await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "拣货波次发布失败"); } }
+function toggleTask(row: Row, checked: boolean) { const id = String(row.id); selectedTaskIds.value = checked ? [...new Set([...selectedTaskIds.value, id])] : selectedTaskIds.value.filter((item) => item !== id); }
+onMounted(load);
+</script>
+
+<template>
+  <section class="page-stack">
+    <header class="page-heading"><div><small>WMS EXECUTION</small><h1>仓库作业中心</h1><p>统一管理收货、上架、拣货、复核和异常任务，并支持拣货波次。</p></div><el-button :loading="loading" @click="load">刷新</el-button></header>
+    <el-card shadow="never"><div class="toolbar"><el-select v-model="form.task_type" style="width: 130px"><el-option v-for="item in ['receiving','putaway','pick','pack','check','count','move']" :key="item" :label="item" :value="item" /></el-select><el-select v-model="form.warehouse_id" placeholder="请选择仓库" clearable filterable style="width: 220px"><el-option v-for="item in warehouses" :key="String(item.id)" :label="`${item.code} · ${item.name}`" :value="String(item.id)" /></el-select><el-select v-model="form.material_id" placeholder="物料（可选）" clearable filterable style="width: 220px"><el-option v-for="item in materials" :key="String(item.id)" :label="`${item.code} · ${item.name}`" :value="String(item.id)" /></el-select><el-input-number v-model="form.planned_quantity" :min="0" /><el-button type="primary" :disabled="!form.warehouse_id" @click="save">创建任务</el-button></div></el-card>
+    <el-card shadow="never"><template #header>作业任务</template><el-table v-loading="loading" :data="tasks" stripe><el-table-column label="波次选择" width="90"><template #default="scope"><el-checkbox v-if="scope.row.task_type === 'pick' && ['ready','assigned'].includes(scope.row.status)" :model-value="selectedTaskIds.includes(String(scope.row.id))" @change="(value: boolean) => toggleTask(scope.row, value)" /></template></el-table-column><el-table-column prop="task_no" label="任务号" min-width="190" /><el-table-column prop="task_type" label="类型" width="110" /><el-table-column prop="warehouse_id" label="仓库" min-width="150" /><el-table-column prop="planned_quantity" label="计划数量" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="180"><template #default="scope"><el-button v-if="scope.row.status === 'ready'" link type="primary" @click="move(scope.row, 'in_progress')">开始</el-button><el-button v-if="scope.row.status === 'in_progress'" link type="success" @click="move(scope.row, 'completed')">完成</el-button><el-button v-if="scope.row.status === 'ready'" link type="danger" @click="move(scope.row, 'cancelled')">取消</el-button></template></el-table-column></el-table></el-card>
+    <el-card shadow="never"><template #header>拣货波次</template><div class="toolbar"><el-select v-model="waveWarehouseId" placeholder="波次仓库" clearable filterable style="width: 220px"><el-option v-for="item in warehouses" :key="String(item.id)" :label="`${item.code} · ${item.name}`" :value="String(item.id)" /></el-select><el-button type="primary" :disabled="!waveWarehouseId || !selectedTaskIds.length" @click="createWave">创建波次</el-button></div><el-table :data="waves" stripe><el-table-column prop="wave_no" label="波次号" /><el-table-column prop="warehouse_id" label="仓库" /><el-table-column prop="task_count" label="任务数" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="releaseWave(scope.row)">发布</el-button></template></el-table-column></el-table></el-card>
+  </section>
+</template>
+
+<style scoped>.page-stack{display:flex;flex-direction:column;gap:16px}.page-heading{display:flex;justify-content:space-between;align-items:flex-end}.page-heading small{color:var(--erp-muted-text);letter-spacing:.08em}.page-heading h1{margin:4px 0}.page-heading p{margin:0;color:var(--erp-muted-text)}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}</style>

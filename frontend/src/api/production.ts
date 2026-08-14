@@ -16,6 +16,13 @@ export const completeWorkOrder = (id: string) => http.post(`/production/work-ord
 export const cancelWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/cancel`);
 export const getWorkOrderReadiness = (id: string) => http.get(`/production/work-orders/${id}/readiness`);
 export const getWorkOrderCost = (id: string) => http.get(`/production/work-orders/${id}/cost`);
+export const listWorkOrderSchedules = (workOrderId?: string) => http.get("/production/schedules", { params: workOrderId ? { work_order_id: workOrderId } : undefined });
+export const createWorkOrderSchedule = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/schedules`, payload);
+export const listAlternateMaterials = (id: string) => http.get(`/production/work-orders/${id}/alternates`);
+export const createAlternateMaterial = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/alternates`, payload);
+export const listWorkOrderExceptions = (id: string) => http.get(`/production/work-orders/${id}/exceptions`);
+export const createWorkOrderException = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/exceptions`, payload);
+export const resolveWorkOrderException = (id: string, payload: unknown) => http.post(`/production/exceptions/${id}/resolve`, payload);
 export const listWorkCenters = () => http.get("/production/work-centers");
 export const createWorkCenter = (payload: unknown) => http.post("/production/work-centers", payload);
 export const updateWorkCenter = (id: string, payload: unknown) => http.put(`/production/work-centers/${id}`, payload);

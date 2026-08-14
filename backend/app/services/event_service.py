@@ -13,6 +13,8 @@ from app.models.platform import ExtEventDelivery, ExtEventOutbox, ExtEventSubscr
 from app.core.time import local_now
 from app.core.exceptions import AppError
 
+MAX_EVENT_RETRIES = 5
+
 
 def emit_event(
     db: Session,
@@ -57,20 +59,25 @@ def emit_event(
     return event
 
 
-def claim_pending_events(db: Session, limit: int = 50) -> list[ExtEventOutbox]:
+def claim_pending_events(db: Session, limit: int = 50, org_id: str | None = None) -> list[ExtEventOutbox]:
     if limit <= 0:
         return []
 
     now = local_now()
+    conditions = [
+        ExtEventOutbox.status == "pending",
+        ExtEventOutbox.is_deleted.is_(False),
+        or_(
+            ExtEventOutbox.next_retry_at.is_(None),
+            ExtEventOutbox.next_retry_at <= now,
+        ),
+    ]
+    if org_id:
+        conditions.append(ExtEventOutbox.org_id == org_id)
     candidate_ids = db.scalars(
         select(ExtEventOutbox.id)
         .where(
-            ExtEventOutbox.status == "pending",
-            ExtEventOutbox.is_deleted.is_(False),
-            or_(
-                ExtEventOutbox.next_retry_at.is_(None),
-                ExtEventOutbox.next_retry_at <= now,
-            ),
+            *conditions,
         )
         .order_by(ExtEventOutbox.created_at, ExtEventOutbox.id)
         .limit(limit)
@@ -81,15 +88,7 @@ def claim_pending_events(db: Session, limit: int = 50) -> list[ExtEventOutbox]:
     claim_token = str(uuid4())
     db.execute(
         update(ExtEventOutbox)
-        .where(
-            ExtEventOutbox.id.in_(candidate_ids),
-            ExtEventOutbox.status == "pending",
-            ExtEventOutbox.is_deleted.is_(False),
-            or_(
-                ExtEventOutbox.next_retry_at.is_(None),
-                ExtEventOutbox.next_retry_at <= now,
-            ),
-        )
+        .where(ExtEventOutbox.id.in_(candidate_ids), *conditions)
         .values(status="processing", claim_token=claim_token)
     )
     db.flush()
@@ -166,8 +165,23 @@ def dispatch_event(db: Session, event_id: str, org_id: str) -> dict:
         except httpx.HTTPError as exc:
             delivery.status = "failed"; delivery.response_body = str(exc)[:1000]; subscription.failure_count += 1
         delivered.append({"subscription_id": subscription.id, "status": delivery.status, "attempt_count": delivery.attempt_count, "response_status": delivery.response_status})
-    event.status = "delivered" if delivered and all(item["status"] == "delivered" for item in delivered) else ("failed" if delivered else event.status)
+    # An event with no matching active subscription is complete from the
+    # outbox's perspective; leaving a claimed event in ``processing`` would
+    # make it invisible to the retry worker forever.
+    event.status = "delivered" if not delivered or all(item["status"] == "delivered" for item in delivered) else "failed"
     event.retry_count += 1 if delivered and event.status == "failed" else 0
-    event.next_retry_at = local_now() + timedelta(minutes=min(60, 2 ** min(event.retry_count, 5))) if event.status == "failed" else None
+    if event.status == "failed" and event.retry_count >= MAX_EVENT_RETRIES:
+        event.status = "dead_letter"
+        event.next_retry_at = None
+    else:
+        event.next_retry_at = local_now() + timedelta(minutes=min(60, 2 ** min(event.retry_count, 5))) if event.status == "failed" else None
     db.flush()
     return {"event_id": event.id, "status": event.status, "deliveries": delivered}
+
+
+def process_due_events(db: Session, org_id: str | None = None, limit: int = 50) -> dict:
+    events = claim_pending_events(db, limit, org_id)
+    results = []
+    for event in events:
+        results.append(dispatch_event(db, event.id, event.org_id or org_id or ""))
+    return {"processed": len(results), "dead_lettered": sum(item["status"] == "dead_letter" for item in results), "results": results}

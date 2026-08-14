@@ -47,4 +47,27 @@ describe("P0 财务、生产成本与统一单据页面", () => {
     expect(api).toContain("/documents/exports");
     expect(list).toContain("released: \"已下达\"");
   });
+
+  it("requires a real warehouse selection before creating a WMS task", () => {
+    const page = source("../src/views/inventory-advanced/WmsTaskCenter.vue");
+    expect(page).toContain('listMasterData("warehouses")');
+    expect(page).toContain('placeholder="请选择仓库"');
+    expect(page).toContain('ElMessage.warning("请先选择仓库")');
+    expect(page).toContain(':disabled="!form.warehouse_id"');
+  });
+
+  it("exposes executable controls for the four P0 workstreams", () => {
+    const wms = source("../src/views/inventory-advanced/WmsTaskCenter.vue");
+    const production = source("../src/views/production/ExecutionControl.vue");
+    const finance = source("../src/views/finance/FinanceControls.vue");
+    const platform = source("../src/views/settings/PlatformEvents.vue");
+    expect(wms).toContain("createPickWave");
+    expect(production).toContain("createWorkOrderSchedule");
+    expect(production).toContain("createAlternateMaterial");
+    expect(production).toContain("createWorkOrderException");
+    expect(finance).toContain("createBudget");
+    expect(finance).toContain("createCashForecast");
+    expect(finance).toContain("createReconciliationStatement");
+    expect(platform).toContain("processDueEvents");
+  });
 });

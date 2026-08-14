@@ -8,7 +8,7 @@ from app.schemas.platform import ApiClientCreate, EventSubscriptionCreate
 from app.services.auth_service import UserContext
 from app.services.openapi_service import create_api_client
 from app.models.platform import ExtEventOutbox, SysApiClient
-from app.services.event_service import create_subscription, dispatch_event, list_subscriptions, set_subscription_status
+from app.services.event_service import create_subscription, dispatch_event, list_subscriptions, process_due_events, set_subscription_status
 from sqlalchemy import select
 router=APIRouter(prefix="/api/platform",tags=["platform"])
 @router.post("/api-clients")
@@ -51,5 +51,14 @@ def subscription_status(subscription_id: str, payload: dict, context: UserContex
 @router.post("/events/{event_id}/dispatch")
 def dispatch(event_id: str, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
     result = dispatch_event(db, event_id, context.org_id)
+    db.commit()
+    return ok(result)
+
+
+@router.post("/events/process-due")
+def process_due(limit: int = 50, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    if limit < 1 or limit > 200:
+        raise AppError("处理数量必须在 1 到 200 之间", code=422)
+    result = process_due_events(db, context.org_id, limit)
     db.commit()
     return ok(result)

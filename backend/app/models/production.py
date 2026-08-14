@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, JSON, Numeric, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import local_now
@@ -178,6 +178,50 @@ class MfgWorkOrder(AuditMixin, UUIDModel):
     issues: Mapped[list["MfgMaterialIssue"]] = relationship(back_populates="work_order")
     reports: Mapped[list["MfgReport"]] = relationship(back_populates="work_order")
     cost: Mapped["MfgWorkOrderCost | None"] = relationship(back_populates="work_order", uselist=False)
+
+
+class MfgWorkOrderSchedule(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_work_order_schedule"
+    __table_args__ = (UniqueConstraint("org_id", "work_order_id", "operation_id", name="uk_mfg_work_order_schedule_operation"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False, index=True)
+    operation_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    work_center_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_center.id"), nullable=False, index=True)
+    schedule_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    scheduled_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="planned", nullable=False)
+    actual_hours: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgAlternateMaterial(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_alternate_material"
+    __table_args__ = (UniqueConstraint("org_id", "work_order_id", "material_id", "alternate_material_id", name="uk_mfg_alternate_material"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    alternate_material_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    conversion_rate: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=1, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="approved", nullable=False)
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class MfgWorkOrderException(AuditMixin, UUIDModel):
+    __tablename__ = "mfg_work_order_exception"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    work_order_id: Mapped[str] = mapped_column(ForeignKey("mfg_work_order.id"), nullable=False, index=True)
+    exception_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, default=local_now, nullable=False)
+    reported_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    resolution: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class MfgWorkOrderCost(AuditMixin, UUIDModel):

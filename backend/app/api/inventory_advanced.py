@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
-from app.schemas.inventory_advanced import BatchCreate, BatchUpdate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, LocationUpdate, ReservationCreate, ScanProcessCreate
+from app.schemas.inventory_advanced import BatchCreate, BatchUpdate, FifoInboundCreate, FifoOutboundCreate, LocationCreate, LocationUpdate, PickWaveCreate, ReservationCreate, ScanProcessCreate, WarehouseTaskCreate, WarehouseTaskTransition
 from app.services.auth_service import UserContext
 from app.services.inventory_advanced_service import (
     create_batch,
@@ -27,6 +27,12 @@ from app.services.inventory_advanced_service import (
     release_reservation,
     list_reservations,
     list_trace_events,
+    create_warehouse_task,
+    list_warehouse_tasks,
+    transition_warehouse_task,
+    create_pick_wave,
+    list_pick_waves,
+    release_pick_wave,
 )
 
 
@@ -237,3 +243,66 @@ def scan_process(payload: ScanProcessCreate, db: Session = Depends(get_db)):
     )
     db.commit()
     return ok(result)
+
+
+@router.get("/tasks")
+def warehouse_tasks(
+    status: str | None = Query(default=None),
+    task_type: str | None = Query(default=None),
+    warehouse_id: str | None = Query(default=None),
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = list_warehouse_tasks(db, context, status=status, task_type=task_type, warehouse_id=warehouse_id)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"open": sum(row["status"] not in {"completed", "cancelled"} for row in rows)}})
+
+
+@router.post("/tasks")
+def create_warehouse_task_api(
+    payload: WarehouseTaskCreate,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = create_warehouse_task(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "task_no": row.task_no, "status": row.status})
+
+
+@router.post("/tasks/{task_id}/transition")
+def transition_warehouse_task_api(
+    task_id: str,
+    payload: WarehouseTaskTransition,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = transition_warehouse_task(db, task_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "task_no": row.task_no, "status": row.status, "completed_quantity": str(row.completed_quantity), "wave_id": row.wave_id})
+
+
+@router.get("/waves")
+def pick_waves(status: str | None = Query(default=None), context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    rows = list_pick_waves(db, context, status)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"released": sum(row["status"] == "released" for row in rows)}})
+
+
+@router.post("/waves")
+def create_pick_wave_api(
+    payload: PickWaveCreate,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = create_pick_wave(db, payload, context)
+    db.commit()
+    return ok({"id": row.id, "wave_no": row.wave_no, "status": row.status})
+
+
+@router.post("/waves/{wave_id}/release")
+def release_pick_wave_api(
+    wave_id: str,
+    context: UserContext = Depends(require_permission("inventory:manage")),
+    db: Session = Depends(get_db),
+):
+    row = release_pick_wave(db, wave_id, context)
+    db.commit()
+    return ok({"id": row.id, "wave_no": row.wave_no, "status": row.status, "released_at": row.released_at.isoformat() if row.released_at else None})

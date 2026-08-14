@@ -46,3 +46,10 @@ export function listReservations(status?: string) { return http.get("/inventory/
 export function createReservation(payload: unknown) { return http.post("/inventory/advanced/reservations", payload); }
 export function releaseReservation(id: string) { return http.post(`/inventory/advanced/reservations/${id}/release`); }
 export function listTraceEvents(params?: { material_id?: string; batch_id?: string }) { return http.get("/inventory/advanced/trace", { params }); }
+
+export function listWarehouseTasks(params?: { status?: string; task_type?: string; warehouse_id?: string }) { return http.get("/inventory/advanced/tasks", { params }); }
+export function createWarehouseTask(payload: unknown) { return http.post("/inventory/advanced/tasks", payload); }
+export function transitionWarehouseTask(id: string, payload: unknown) { return http.post(`/inventory/advanced/tasks/${id}/transition`, payload); }
+export function listPickWaves(status?: string) { return http.get("/inventory/advanced/waves", { params: status ? { status } : undefined }); }
+export function createPickWave(payload: unknown) { return http.post("/inventory/advanced/waves", payload); }
+export function releasePickWave(id: string) { return http.post(`/inventory/advanced/waves/${id}/release`); }

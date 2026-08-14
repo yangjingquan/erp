@@ -86,6 +86,49 @@ class FinExchangeRate(AuditMixin, UUIDModel):
     source: Mapped[str] = mapped_column(String(64), default="manual", nullable=False)
 
 
+class FinBudget(AuditMixin, UUIDModel):
+    __tablename__ = "fin_budget"
+    __table_args__ = (UniqueConstraint("org_id", "budget_period", "account_code", "department_id", name="uk_fin_budget_scope"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    budget_period: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    account_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    department_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    budget_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    actual_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class FinCashForecast(AuditMixin, UUIDModel):
+    __tablename__ = "fin_cash_forecast"
+    __table_args__ = (UniqueConstraint("org_id", "forecast_date", name="uk_fin_cash_forecast_day"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    forecast_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    inflow_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    outflow_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    net_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), default="manual", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class FinReconciliationStatement(AuditMixin, UUIDModel):
+    __tablename__ = "fin_reconciliation_statement"
+    __table_args__ = (UniqueConstraint("org_id", "statement_no", name="uk_fin_reconciliation_statement_no"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    statement_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    statement_type: Mapped[str] = mapped_column(String(8), nullable=False)
+    party_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    period: Mapped[str] = mapped_column(String(7), nullable=False)
+    statement_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    reconciled_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
 class SalesReceivable(UUIDModel):
     __tablename__ = "sales_receivable"
 

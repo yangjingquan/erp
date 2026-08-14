@@ -18,6 +18,7 @@ from app.models.production import (
     MfgMaterialIssueItem,
     MfgMaterialReturn,
     MfgMaterialReturnItem,
+    MfgAlternateMaterial,
     MfgReport,
     MfgSubcontractOrder,
     MfgSubcontractReceipt,
@@ -531,13 +532,32 @@ def issue_material(db: Session, work_order_id: str, items, context: UserContext)
     _require_allowed_status(row, "领料", {"released", "in_progress"})
     _ensure_distinct_items(items)
     material_lines = {line.material_id: line for line in row.materials if not line.is_deleted}
+    alternates = {
+        alternate.alternate_material_id: alternate
+        for alternate in db.scalars(
+            select(MfgAlternateMaterial).where(
+                MfgAlternateMaterial.org_id == context.org_id,
+                MfgAlternateMaterial.work_order_id == row.id,
+                MfgAlternateMaterial.status == "approved",
+                MfgAlternateMaterial.is_deleted.is_(False),
+            )
+        ).all()
+    }
     quantities = {item.material_id: _quantity(item.quantity) for item in items}
+    issue_lines: dict[str, tuple[MfgWorkOrderMaterial, Decimal]] = {}
     for material_id, quantity in quantities.items():
         line = material_lines.get(material_id)
+        conversion = Decimal("1")
+        if line is None and material_id in alternates:
+            alternate = alternates[material_id]
+            line = material_lines.get(alternate.material_id)
+            conversion = Decimal(alternate.conversion_rate)
         if line is None:
             raise AppError("领料物料不在工单 BOM 快照中", code=400)
-        if _quantity(line.issued_quantity + quantity) > _quantity(line.required_quantity):
+        primary_quantity = _quantity(quantity * conversion)
+        if _quantity(line.issued_quantity + primary_quantity) > _quantity(line.required_quantity):
             raise AppError("领料数量超过 BOM 计划数量", code=400)
+        issue_lines[material_id] = (line, primary_quantity)
 
     issue = MfgMaterialIssue(
         org_id=context.org_id,
@@ -569,8 +589,8 @@ def issue_material(db: Session, work_order_id: str, items, context: UserContext)
             direction="out",
             unit_cost=unit_cost,
         )
-        material_lines[item.material_id].issued_quantity = _quantity(
-            material_lines[item.material_id].issued_quantity + quantity
+        issue_lines[item.material_id][0].issued_quantity = _quantity(
+            issue_lines[item.material_id][0].issued_quantity + issue_lines[item.material_id][1]
         )
     row.status = "in_progress"
     row.updated_by = context.id

@@ -102,3 +102,28 @@ class ScanProcessCreate(BaseModel):
         if self.action == "count" and (not self.material_id or self.actual_quantity is None):
             raise ValueError("count requires material_id and actual_quantity")
         return self
+
+
+class WarehouseTaskCreate(BaseModel):
+    task_type: Literal["receiving", "putaway", "pick", "pack", "check", "count", "move"]
+    warehouse_id: str = Field(min_length=1, max_length=36)
+    location_id: str | None = Field(default=None, max_length=36)
+    material_id: str | None = Field(default=None, max_length=36)
+    batch_id: str | None = Field(default=None, max_length=36)
+    planned_quantity: Decimal = Field(default=Decimal("0"), ge=0)
+    source_type: str | None = Field(default=None, max_length=64)
+    source_id: str | None = Field(default=None, max_length=36)
+    priority: int = Field(default=50, ge=1, le=100)
+
+
+class WarehouseTaskTransition(BaseModel):
+    status: Literal["assigned", "in_progress", "completed", "exception", "cancelled"]
+    completed_quantity: Decimal | None = Field(default=None, ge=0)
+    assigned_to: str | None = Field(default=None, max_length=36)
+    exception_reason: str | None = Field(default=None, max_length=500)
+
+
+class PickWaveCreate(BaseModel):
+    warehouse_id: str = Field(min_length=1, max_length=36)
+    task_ids: list[str] = Field(min_length=1, max_length=200)
+    priority: int = Field(default=50, ge=1, le=100)

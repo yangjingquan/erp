@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 
 import jwt
 from sqlalchemy import func, select
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.core.config import get_settings
-from app.core.time import local_today
+from app.core.time import local_now, local_today
 from app.models.configuration import CfgGlobalParameter
 from app.models.inventory import InvStock, InvStockTransaction
 from app.models.inventory_advanced import (
@@ -18,9 +19,11 @@ from app.models.inventory_advanced import (
     InvReservation,
     InvTraceEvent,
     InvLocation,
+    InvPickWave,
     InvSlowMovingRule,
     InvScanRecord,
     InvWarehouseAccess,
+    InvWarehouseTask,
     InvZone,
 )
 from app.models.master_data import MdMaterial, MdWarehouse
@@ -269,6 +272,204 @@ def list_scan_tasks(db: Session, context: UserContext) -> list[dict]:
         "warehouse_id": warehouse_id, "status": "open",
     } for warehouse_id in warehouse_ids)
     return tasks
+
+
+def _serialize_warehouse_task(row: InvWarehouseTask) -> dict:
+    return {
+        "id": row.id,
+        "task_no": row.task_no,
+        "task_type": row.task_type,
+        "source_type": row.source_type,
+        "source_id": row.source_id,
+        "warehouse_id": row.warehouse_id,
+        "location_id": row.location_id,
+        "material_id": row.material_id,
+        "batch_id": row.batch_id,
+        "planned_quantity": _number(row.planned_quantity),
+        "completed_quantity": _number(row.completed_quantity),
+        "assigned_to": row.assigned_to,
+        "wave_id": row.wave_id,
+        "status": row.status,
+        "priority": row.priority,
+        "exception_reason": row.exception_reason,
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+    }
+
+
+def _serialize_pick_wave(row: InvPickWave, task_count: int = 0) -> dict:
+    return {
+        "id": row.id,
+        "wave_no": row.wave_no,
+        "warehouse_id": row.warehouse_id,
+        "status": row.status,
+        "priority": row.priority,
+        "assigned_to": row.assigned_to,
+        "task_count": task_count,
+        "released_at": row.released_at.isoformat() if row.released_at else None,
+        "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+    }
+
+
+def create_warehouse_task(db: Session, payload, context: UserContext) -> InvWarehouseTask:
+    _require_warehouse(db, payload.warehouse_id, context)
+    if payload.location_id:
+        _require_location(db, payload.location_id, payload.warehouse_id, context)
+    if payload.material_id:
+        _require_material(db, payload.material_id, context)
+        _require_batch(db, payload.batch_id, payload.material_id, context)
+    row = InvWarehouseTask(
+        org_id=context.org_id,
+        task_no=f"WT-{local_now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8].upper()}",
+        task_type=payload.task_type,
+        source_type=payload.source_type,
+        source_id=payload.source_id,
+        warehouse_id=payload.warehouse_id,
+        location_id=payload.location_id,
+        material_id=payload.material_id,
+        batch_id=payload.batch_id,
+        planned_quantity=payload.planned_quantity,
+        priority=payload.priority,
+        status="ready",
+    )
+    db.add(row)
+    db.flush()
+    write_operation_log(db, user=context.user, action="create", resource="inv_warehouse_task", target_id=row.id)
+    return row
+
+
+def list_warehouse_tasks(
+    db: Session,
+    context: UserContext,
+    *,
+    status: str | None = None,
+    task_type: str | None = None,
+    warehouse_id: str | None = None,
+) -> list[dict]:
+    conditions = [InvWarehouseTask.org_id == context.org_id, InvWarehouseTask.is_deleted.is_(False)]
+    allowed = allowed_warehouse_ids(context)
+    if allowed is not None:
+        conditions.append(InvWarehouseTask.warehouse_id.in_(allowed))
+    if warehouse_id:
+        _require_warehouse(db, warehouse_id, context)
+        conditions.append(InvWarehouseTask.warehouse_id == warehouse_id)
+    if status:
+        conditions.append(InvWarehouseTask.status == status)
+    if task_type:
+        conditions.append(InvWarehouseTask.task_type == task_type)
+    rows = db.scalars(
+        select(InvWarehouseTask).where(*conditions).order_by(InvWarehouseTask.priority, InvWarehouseTask.created_at)
+    ).all()
+    return [_serialize_warehouse_task(row) for row in rows]
+
+
+def transition_warehouse_task(db: Session, task_id: str, payload, context: UserContext) -> InvWarehouseTask:
+    row = db.scalar(
+        select(InvWarehouseTask).where(
+            InvWarehouseTask.id == task_id,
+            InvWarehouseTask.org_id == context.org_id,
+            InvWarehouseTask.is_deleted.is_(False),
+        )
+    )
+    if row is None:
+        raise AppError("仓库作业任务不存在", code=404)
+    assert_warehouse_access(context, row.warehouse_id)
+    allowed_transitions = {
+        "ready": {"assigned", "in_progress", "cancelled"},
+        "assigned": {"in_progress", "exception", "cancelled"},
+        "in_progress": {"completed", "exception", "cancelled"},
+        "exception": {"in_progress", "cancelled"},
+    }
+    if payload.status not in allowed_transitions.get(row.status, set()):
+        raise AppError(f"任务不能从 {row.status} 变更为 {payload.status}", code=409)
+    if payload.status == "assigned" and not (payload.assigned_to or row.assigned_to):
+        raise AppError("分配任务必须指定执行人", code=422)
+    if payload.status == "exception" and not payload.exception_reason:
+        raise AppError("异常任务必须填写异常原因", code=422)
+    if payload.completed_quantity is not None:
+        if payload.completed_quantity > row.planned_quantity and row.planned_quantity > 0:
+            raise AppError("完成数量不能超过计划数量", code=422)
+        row.completed_quantity = payload.completed_quantity
+    if payload.assigned_to:
+        row.assigned_to = payload.assigned_to
+    row.status = payload.status
+    row.exception_reason = payload.exception_reason if payload.status == "exception" else None
+    if payload.status == "completed":
+        row.completed_at = local_now()
+        row.completed_by = context.id
+        if row.planned_quantity > 0 and row.completed_quantity == 0:
+            row.completed_quantity = row.planned_quantity
+    row.version += 1
+    db.flush()
+    if row.wave_id and row.status == "completed":
+        _refresh_pick_wave_status(db, row.wave_id, context.org_id)
+    write_operation_log(db, user=context.user, action="transition", resource="inv_warehouse_task", target_id=row.id)
+    return row
+
+
+def create_pick_wave(db: Session, payload, context: UserContext) -> InvPickWave:
+    _require_warehouse(db, payload.warehouse_id, context)
+    tasks = db.scalars(
+        select(InvWarehouseTask).where(
+            InvWarehouseTask.org_id == context.org_id,
+            InvWarehouseTask.id.in_(payload.task_ids),
+            InvWarehouseTask.warehouse_id == payload.warehouse_id,
+            InvWarehouseTask.task_type == "pick",
+            InvWarehouseTask.status.in_({"ready", "assigned"}),
+            InvWarehouseTask.is_deleted.is_(False),
+        )
+    ).all()
+    if len(tasks) != len(set(payload.task_ids)):
+        raise AppError("波次只能包含当前仓库中可拣货的任务", code=409)
+    row = InvPickWave(
+        org_id=context.org_id,
+        wave_no=f"PW-{local_now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8].upper()}",
+        warehouse_id=payload.warehouse_id,
+        priority=payload.priority,
+        status="draft",
+    )
+    db.add(row)
+    db.flush()
+    for task in tasks:
+        task.wave_id = row.id
+        task.status = "assigned"
+    db.flush()
+    return row
+
+
+def list_pick_waves(db: Session, context: UserContext, status: str | None = None) -> list[dict]:
+    conditions = [InvPickWave.org_id == context.org_id, InvPickWave.is_deleted.is_(False)]
+    allowed = allowed_warehouse_ids(context)
+    if allowed is not None:
+        conditions.append(InvPickWave.warehouse_id.in_(allowed))
+    if status:
+        conditions.append(InvPickWave.status == status)
+    rows = db.scalars(select(InvPickWave).where(*conditions).order_by(InvPickWave.created_at.desc())).all()
+    return [_serialize_pick_wave(row, db.scalar(select(func.count(InvWarehouseTask.id)).where(InvWarehouseTask.wave_id == row.id, InvWarehouseTask.is_deleted.is_(False))) or 0) for row in rows]
+
+
+def release_pick_wave(db: Session, wave_id: str, context: UserContext) -> InvPickWave:
+    row = db.scalar(select(InvPickWave).where(InvPickWave.id == wave_id, InvPickWave.org_id == context.org_id, InvPickWave.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("拣货波次不存在", code=404)
+    assert_warehouse_access(context, row.warehouse_id)
+    if row.status != "draft":
+        raise AppError("只有草稿波次可以发布", code=409)
+    row.status = "released"
+    row.released_at = local_now()
+    db.flush()
+    return row
+
+
+def _refresh_pick_wave_status(db: Session, wave_id: str, org_id: str) -> None:
+    wave = db.scalar(select(InvPickWave).where(InvPickWave.id == wave_id, InvPickWave.org_id == org_id))
+    if wave is None:
+        return
+    statuses = db.scalars(select(InvWarehouseTask.status).where(InvWarehouseTask.wave_id == wave.id, InvWarehouseTask.is_deleted.is_(False))).all()
+    if statuses and all(status == "completed" for status in statuses):
+        wave.status = "completed"
+        wave.completed_at = local_now()
+    elif any(status == "in_progress" for status in statuses):
+        wave.status = "in_progress"
 
 
 def assert_warehouse_access(context: UserContext, warehouse_id: str) -> None:

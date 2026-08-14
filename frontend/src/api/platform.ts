@@ -7,3 +7,4 @@ export const listSubscriptions = () => http.get("/platform/subscriptions");
 export const createSubscription = (payload: unknown) => http.post("/platform/subscriptions", payload);
 export const setSubscriptionStatus = (id: string, status: "active" | "inactive") => http.post(`/platform/subscriptions/${id}/status`, { status });
 export const dispatchEvent = (eventId: string) => http.post(`/platform/events/${eventId}/dispatch`);
+export const processDueEvents = (limit = 50) => http.post("/platform/events/process-due", null, { params: { limit } });

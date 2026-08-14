@@ -45,6 +45,14 @@ export const createCurrency = (payload: unknown) => http.post("/finance/currenci
 export const listExchangeRates = (currency?: string) => http.get("/finance/exchange-rates", { params: currency ? { currency } : undefined });
 export const upsertExchangeRate = (payload: unknown) => http.post("/finance/exchange-rates", payload);
 export const convertCurrency = (params: Record<string, unknown>) => http.get("/finance/currency-convert", { params });
+export const getAgingReport = (type: "ar" | "ap", asOf?: string) => http.get(`/finance/aging/${type}`, { params: asOf ? { as_of: asOf } : undefined });
+export const listBudgets = (period?: string) => http.get("/finance/budgets", { params: period ? { period } : undefined });
+export const createBudget = (payload: unknown) => http.post("/finance/budgets", payload);
+export const approveBudget = (id: string) => http.post(`/finance/budgets/${id}/approve`);
+export const listCashForecasts = (params?: Record<string, unknown>) => http.get("/finance/cash-forecasts", { params });
+export const createCashForecast = (payload: unknown) => http.post("/finance/cash-forecasts", payload);
+export const listReconciliationStatements = (statementType?: string) => http.get("/finance/reconciliation-statements", { params: statementType ? { statement_type: statementType } : undefined });
+export const createReconciliationStatement = (payload: unknown) => http.post("/finance/reconciliation-statements", payload);
 
 export function createReceipt(payload: { customer_id: string; amount: number }) {
   return http.post("/finance/receipts", payload);

@@ -1,7 +1,7 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditMixin, UUIDModel
@@ -16,6 +16,44 @@ class InvZone(AuditMixin, UUIDModel):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
 
     __table_args__ = (UniqueConstraint("warehouse_id", "code", name="uk_inv_zone_code"),)
+
+
+class InvPickWave(AuditMixin, UUIDModel):
+    __tablename__ = "inv_pick_wave"
+    __table_args__ = (UniqueConstraint("org_id", "wave_no", name="uk_inv_pick_wave_no"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    wave_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class InvWarehouseTask(AuditMixin, UUIDModel):
+    __tablename__ = "inv_warehouse_task"
+    __table_args__ = (UniqueConstraint("org_id", "task_no", name="uk_inv_warehouse_task_no"),)
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    task_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    location_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    material_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    planned_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    completed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 6), default=0, nullable=False)
+    assigned_to: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    wave_id: Mapped[str | None] = mapped_column(ForeignKey("inv_pick_wave.id"), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="ready", nullable=False, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    exception_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class InvLocation(AuditMixin, UUIDModel):

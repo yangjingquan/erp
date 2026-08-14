@@ -147,7 +147,7 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/purchase/orders')" index="/purchase/orders">采购订单</el-menu-item>
           <el-menu-item v-if="canPage('/purchase/returns')" index="/purchase/returns">采购退货</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/inventory/stock', '/inventory/transactions', '/inventory/transfers', '/inventory/counts', '/inventory/scan', '/inventory/locations', '/inventory/batches', '/inventory/control-center'])" index="inventory">
+        <el-sub-menu v-if="canAny(['/inventory/stock', '/inventory/transactions', '/inventory/transfers', '/inventory/counts', '/inventory/scan', '/inventory/locations', '/inventory/batches', '/inventory/control-center', '/inventory/wms-tasks'])" index="inventory">
           <template #title><el-icon><Box /></el-icon><span>库存管理</span></template>
           <el-menu-item v-if="canPage('/inventory/stock')" index="/inventory/stock">库存台账</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/transactions')" index="/inventory/transactions">库存流水</el-menu-item>
@@ -157,8 +157,9 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/inventory/locations')" index="/inventory/locations">仓位管理</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/batches')" index="/inventory/batches">批次管理</el-menu-item>
           <el-menu-item v-if="canPage('/inventory/control-center')" index="/inventory/control-center">库存控制中心</el-menu-item>
+          <el-menu-item v-if="canPage('/inventory/wms-tasks')" index="/inventory/wms-tasks">WMS 作业中心</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation', '/finance/currencies'])" index="finance">
+        <el-sub-menu v-if="canAny(['/finance/receivables', '/finance/payables', '/finance/expenses', '/finance/vouchers', '/finance/foundation', '/finance/currencies', '/finance/controls'])" index="finance">
           <template #title><el-icon><Wallet /></el-icon><span>财务管理</span></template>
           <el-menu-item v-if="canPage('/finance/receivables')" index="/finance/receivables">应收账款</el-menu-item>
           <el-menu-item v-if="canPage('/finance/payables')" index="/finance/payables">应付账款</el-menu-item>
@@ -166,18 +167,20 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/finance/vouchers')" index="/finance/vouchers">会计凭证</el-menu-item>
           <el-menu-item v-if="canPage('/finance/foundation')" index="/finance/foundation">总账基础</el-menu-item>
           <el-menu-item v-if="canPage('/finance/currencies')" index="/finance/currencies">多币种与汇率</el-menu-item>
+          <el-menu-item v-if="canPage('/finance/controls')" index="/finance/controls">财务控制中心</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/crm/leads', '/crm/opportunities'])" index="crm">
           <template #title><el-icon><UserFilled /></el-icon><span>CRM 管理</span></template>
           <el-menu-item v-if="canPage('/crm/leads')" index="/crm/leads">线索管理</el-menu-item>
           <el-menu-item v-if="canPage('/crm/opportunities')" index="/crm/opportunities">商机管理</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders', '/production/resources'])" index="production">
+        <el-sub-menu v-if="canAny(['/production/boms', '/production/mrp', '/production/work-orders', '/production/resources', '/production/execution'])" index="production">
           <template #title><el-icon><Document /></el-icon><span>生产管理</span></template>
           <el-menu-item v-if="canPage('/production/boms')" index="/production/boms">BOM 管理</el-menu-item>
           <el-menu-item v-if="canPage('/production/mrp')" index="/production/mrp">MRP 运算</el-menu-item>
           <el-menu-item v-if="canPage('/production/work-orders')" index="/production/work-orders">生产工单</el-menu-item>
           <el-menu-item v-if="canPage('/production/resources')" index="/production/resources">工艺与产能</el-menu-item>
+          <el-menu-item v-if="canPage('/production/execution')" index="/production/execution">生产执行控制台</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/cost/allocations', '/cost/period-close'])" index="cost">
           <template #title><el-icon><Wallet /></el-icon><span>成本管理</span></template>

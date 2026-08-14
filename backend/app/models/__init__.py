@@ -34,6 +34,9 @@ from app.models.finance import (  # noqa: F401,E402
     FinFiscalPeriod,
     FinCurrency,
     FinExchangeRate,
+    FinBudget,
+    FinCashForecast,
+    FinReconciliationStatement,
 )
 from app.models.inventory_advanced import (  # noqa: F401,E402
     InvBatch,
@@ -42,8 +45,10 @@ from app.models.inventory_advanced import (  # noqa: F401,E402
     InvReservation,
     InvTraceEvent,
     InvLocation,
+    InvPickWave,
     InvSlowMovingRule,
     InvScanRecord,
+    InvWarehouseTask,
     InvWarehouseAccess,
     InvZone,
 )
@@ -51,6 +56,7 @@ from app.models.production import (  # noqa: F401,E402
     MfgBom,
     MfgBomItem,
     MfgCapacityCalendar,
+    MfgAlternateMaterial,
     MfgMaterialIssue,
     MfgMaterialIssueItem,
     MfgMaterialReturn,
@@ -65,6 +71,8 @@ from app.models.production import (  # noqa: F401,E402
     MfgSubcontractReceipt,
     MfgWorkOrder,
     MfgWorkOrderCost,
+    MfgWorkOrderException,
     MfgWorkOrderMaterial,
+    MfgWorkOrderSchedule,
     MfgWorkCenter,
 )
