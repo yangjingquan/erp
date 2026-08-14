@@ -12,9 +12,27 @@ from app.services.auth_service import UserContext
 
 
 def create_quality_plan(db: Session, payload: dict, context: UserContext) -> QaPlan:
-    if any(not isinstance(item, dict) or not str(item.get("item", "")).strip() for item in payload["items"]):
-        raise AppError("检验计划项目必须包含 item 字段", code=422)
-    row = QaPlan(org_id=context.org_id, name=payload["name"], items_json=payload["items"])
+    name = str(payload.get("name", "")).strip()
+    if not name:
+        raise AppError("检验计划名称不能为空", code=422)
+    normalized_items: list[dict] = []
+    item_names: set[str] = set()
+    for item in payload["items"]:
+        item_name = str(item.get("item", "")).strip() if isinstance(item, dict) else ""
+        if not item_name:
+            raise AppError("检验计划项目必须包含 item 字段", code=422)
+        if item_name in item_names:
+            raise AppError(f"检验计划项目重复：{item_name}", code=422)
+        item_names.add(item_name)
+        normalized_items.append({**item, "item": item_name, "value": str(item.get("value", "待检")).strip() or "待检", "passed": None})
+    duplicate = db.scalar(select(QaPlan).where(
+        QaPlan.org_id == context.org_id,
+        QaPlan.name == name,
+        QaPlan.is_deleted.is_(False),
+    ))
+    if duplicate is not None:
+        raise AppError("检验计划名称已存在", code=409)
+    row = QaPlan(org_id=context.org_id, name=name, items_json=normalized_items)
     db.add(row)
     db.flush()
     return row
@@ -22,7 +40,7 @@ def create_quality_plan(db: Session, payload: dict, context: UserContext) -> QaP
 
 def list_quality_plans(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(QaPlan).where(QaPlan.org_id == context.org_id, QaPlan.is_deleted.is_(False)).order_by(QaPlan.created_at.desc())).all()
-    return [{"id": row.id, "name": row.name, "items": row.items_json} for row in rows]
+    return [{"id": row.id, "name": row.name, "items": row.items_json, "item_count": len(row.items_json or [])} for row in rows]
 
 
 def list_defects(db: Session, context: UserContext) -> list[dict]:
@@ -31,10 +49,14 @@ def list_defects(db: Session, context: UserContext) -> list[dict]:
 
 
 def create_defect(db: Session, payload: dict, context: UserContext) -> QaDefectCatalog:
-    duplicate = db.scalar(select(QaDefectCatalog).where(QaDefectCatalog.org_id == context.org_id, QaDefectCatalog.code == payload["code"], QaDefectCatalog.is_deleted.is_(False)))
+    code = str(payload["code"]).strip().upper()
+    name = str(payload["name"]).strip()
+    if not code or not name:
+        raise AppError("缺陷编码和名称不能为空", code=422)
+    duplicate = db.scalar(select(QaDefectCatalog).where(QaDefectCatalog.org_id == context.org_id, QaDefectCatalog.code == code, QaDefectCatalog.is_deleted.is_(False)))
     if duplicate is not None:
         raise AppError("缺陷编码已存在", code=409)
-    row = QaDefectCatalog(org_id=context.org_id, code=payload["code"].strip().upper(), name=payload["name"].strip(), severity=payload["severity"], status=payload["status"])
+    row = QaDefectCatalog(org_id=context.org_id, code=code, name=name, severity=payload["severity"], status=payload["status"])
     db.add(row); db.flush(); return row
 
 
@@ -79,15 +101,45 @@ def _get_inspection(db: Session, inspection_id: str, context: UserContext) -> Qa
     return row
 
 
-def _failed_item_names(results: list[dict]) -> list[str]:
-    failed_items = []
+def _normalise_inspection_results(row: QaInspection, results: list[dict]) -> list[dict]:
+    if not results:
+        raise AppError("检验结果不能为空", code=422)
+    expected_names = [str(item.get("item", "")).strip() for item in (row.results_json or []) if isinstance(item, dict)]
+    expected_names = [name for name in expected_names if name]
+    seen: set[str] = set()
+    normalized: list[dict] = []
+    pass_values = {"pass", "passed", "ok", "合格", "通过", "是", "true"}
+    fail_values = {"fail", "failed", "ng", "不合格", "不通过", "否", "false"}
     for item in results:
+        name = str(item.get("item", "")).strip()
+        value = str(item.get("value", "")).strip()
+        if not name or not value:
+            raise AppError("每个检验项目都必须填写项目名称和结果值", code=422)
+        if name in seen:
+            raise AppError(f"检验项目重复：{name}", code=422)
+        seen.add(name)
         passed = item.get("passed")
         if passed is None:
-            passed = item.get("value") not in {"fail", "不合格"}
-        if not passed:
-            failed_items.append(str(item.get("item") or "未命名项目"))
-    return failed_items
+            lowered = value.lower()
+            if lowered in pass_values:
+                passed = True
+            elif lowered in fail_values:
+                passed = False
+            else:
+                raise AppError(f"检验项目“{name}”必须明确是否通过", code=422)
+        normalized.append({**item, "item": name, "value": value, "passed": bool(passed)})
+    if expected_names:
+        missing = [name for name in expected_names if name not in seen]
+        unexpected = [name for name in seen if name not in expected_names]
+        if missing:
+            raise AppError(f"请完成全部检验项目，缺少：{'、'.join(missing)}", code=422)
+        if unexpected:
+            raise AppError(f"存在不属于检验计划的项目：{'、'.join(unexpected)}", code=422)
+    return normalized
+
+
+def _failed_item_names(results: list[dict]) -> list[str]:
+    return [str(item.get("item") or "未命名项目") for item in results if not item.get("passed")]
 
 
 def submit_inspection(
@@ -99,11 +151,9 @@ def submit_inspection(
     row = _get_inspection(db, inspection_id, context)
     if row.status != "draft":
         raise AppError("检验单当前不可提交", code=400)
-    if not results:
-        raise AppError("检验结果不能为空", code=400)
-
-    failed_items = _failed_item_names(results)
-    row.results_json = results
+    normalized_results = _normalise_inspection_results(row, results)
+    failed_items = _failed_item_names(normalized_results)
+    row.results_json = normalized_results
     row.result = "failed" if failed_items else "passed"
     row.status = "submitted"
     if row.result == "failed":

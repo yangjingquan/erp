@@ -59,6 +59,7 @@ def inspections(
                 "disposition": row.disposition,
                 "plan_id": row.plan_id,
                 "sample_size": row.sample_size,
+                "results": row.results_json,
             }
             for row in rows
         ]

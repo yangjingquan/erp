@@ -117,12 +117,87 @@ def ensure_quality_inspection_columns(db: Session) -> None:
     if "disposition" not in columns:
         db.execute(text("ALTER TABLE qa_inspection ADD COLUMN disposition VARCHAR(32) NULL AFTER results_json"))
         changed = True
+    if "plan_id" not in columns:
+        db.execute(text("ALTER TABLE qa_inspection ADD COLUMN plan_id CHAR(36) NULL AFTER disposition"))
+        changed = True
+    if "sample_size" not in columns:
+        db.execute(text("ALTER TABLE qa_inspection ADD COLUMN sample_size INT NULL AFTER plan_id"))
+        changed = True
     # doc_no was part of the legacy table but is not mapped by the current ORM.
     # Making it nullable lets the current create_inspection flow insert safely.
     if columns.get("doc_no", {}).get("nullable") is False:
         db.execute(text("ALTER TABLE qa_inspection MODIFY COLUMN doc_no VARCHAR(64) NULL"))
         changed = True
     if changed:
+        db.commit()
+
+
+def ensure_p1_control_schema(db: Session) -> None:
+    """Create P1 inventory and quality tables for databases upgraded without migration 009."""
+    if db.bind.dialect.name != "mysql":
+        return
+    tables = set(inspect(db.bind).get_table_names())
+    statements: list[str] = []
+    if "inv_reservation" not in tables:
+        statements.append(
+            """
+            CREATE TABLE IF NOT EXISTS inv_reservation (
+              id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, source_type VARCHAR(64) NOT NULL,
+              source_id CHAR(36) NOT NULL, material_id CHAR(36) NOT NULL, warehouse_id CHAR(36) NOT NULL,
+              quantity DECIMAL(18,6) NOT NULL, released_quantity DECIMAL(18,6) NOT NULL DEFAULT 0,
+              status VARCHAR(32) NOT NULL DEFAULT 'reserved', note VARCHAR(255) NULL,
+              is_deleted TINYINT(1) NOT NULL DEFAULT 0, version INT NOT NULL DEFAULT 1,
+              created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+              updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+              UNIQUE KEY uk_inv_reservation_source_line (org_id, source_type, source_id, material_id, warehouse_id),
+              KEY idx_inv_reservation_material (org_id, material_id, warehouse_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+    if "inv_trace_event" not in tables:
+        statements.append(
+            """
+            CREATE TABLE IF NOT EXISTS inv_trace_event (
+              id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, material_id CHAR(36) NOT NULL,
+              batch_id CHAR(36) NULL, transaction_id CHAR(36) NULL, source_type VARCHAR(64) NOT NULL,
+              source_id CHAR(36) NOT NULL, direction VARCHAR(16) NOT NULL, quantity DECIMAL(18,6) NOT NULL,
+              warehouse_id CHAR(36) NOT NULL, location_id CHAR(36) NULL, event_time DATE NULL,
+              is_deleted TINYINT(1) NOT NULL DEFAULT 0, version INT NOT NULL DEFAULT 1,
+              created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+              updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+              KEY idx_inv_trace_material (org_id, material_id, batch_id),
+              KEY idx_inv_trace_source (org_id, source_type, source_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+    if "qa_plan" not in tables:
+        statements.append(
+            """
+            CREATE TABLE IF NOT EXISTS qa_plan (
+              id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, name VARCHAR(128) NOT NULL,
+              items_json JSON NOT NULL, is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+              created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+              updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+              version INT NOT NULL DEFAULT 1, KEY idx_qa_plan_org (org_id, name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+    if "qa_defect_catalog" not in tables:
+        statements.append(
+            """
+            CREATE TABLE IF NOT EXISTS qa_defect_catalog (
+              id CHAR(36) PRIMARY KEY, org_id CHAR(36) NOT NULL, code VARCHAR(64) NOT NULL,
+              name VARCHAR(128) NOT NULL, severity VARCHAR(32) NOT NULL DEFAULT 'major',
+              status VARCHAR(32) NOT NULL DEFAULT 'active', is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+              version INT NOT NULL DEFAULT 1, created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+              updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+              UNIQUE KEY uk_qa_defect_code (org_id, code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+    for statement in statements:
+        db.execute(text(statement))
+    if statements:
         db.commit()
 
 

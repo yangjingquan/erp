@@ -44,6 +44,7 @@ docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-c
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/003_event_outbox_compatibility.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/005_quality_capa.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/006_production_routing_capacity.sql
+docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/009_p1_control_loops.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/012_p0_execution_controls.sql
 docker exec -i shop-mysql mysql --user=root --password=changeme_root --default-character-set=utf8mb4 < database/migrations/013_p0_page_catalog.sql
 ~~~

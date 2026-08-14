@@ -80,6 +80,7 @@ REQUIRED_TABLES = {
     "crm_activity",
     "qa_inspection",
     "qa_inspection_item",
+    "qa_plan",
     "qa_nonconformance",
     "qa_capa_action",
     "qa_defect_catalog",

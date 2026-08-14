@@ -49,6 +49,7 @@ PAGE_CATALOG = [
     ("inventory:view", "移动扫码", "/inventory/scan", 5),
     ("inventory:view", "仓位管理", "/inventory/locations", 6),
     ("inventory:view", "批次管理", "/inventory/batches", 7),
+    ("inventory:view", "库存控制中心", "/inventory/control-center", 8),
     ("inventory:view", "WMS 作业中心", "/inventory/wms-tasks", 8),
     ("system:view", "操作日志", "/system/operation-logs", 1),
     ("system:view", "用户管理", "/system/users", 2),

@@ -39,6 +39,7 @@ from app.services.runtime_migrations import (
     ensure_employee_account_column,
     ensure_purchase_request_supplier_column,
     ensure_quality_inspection_columns,
+    ensure_p1_control_schema,
     ensure_p0_wms_schema,
 )
 from app.services.permission_service import ensure_permission_catalog
@@ -56,6 +57,7 @@ async def lifespan(application: FastAPI):
             ensure_purchase_request_supplier_column(db)
             ensure_api_client_schema(db)
             ensure_quality_inspection_columns(db)
+            ensure_p1_control_schema(db)
             ensure_p0_wms_schema(db)
             ensure_permission_catalog(db)
         except Exception:

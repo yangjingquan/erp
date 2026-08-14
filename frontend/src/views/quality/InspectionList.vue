@@ -21,7 +21,7 @@ const selected = ref<Row | null>(null);
 const sourceDocuments = ref<Array<{ label: string; value: string }>>([]);
 const sourceDocumentNames = ref<Record<string, string>>({});
 const createForm = reactive({ inspection_type: "incoming", source_type: "purchase_receipt", source_id: "" });
-const resultForm = reactive({ item: "appearance", value: "pass", passed: true });
+const resultItems = ref<Array<{ item: string; value: string; passed: boolean | null }>>([]);
 const closeForm = reactive({ disposition: "accept" });
 const plans = ref<Row[]>([]);
 const planForm = reactive({ name: "", items: "appearance\n尺寸" });
@@ -33,7 +33,7 @@ function listFrom(response: any, fallbackMessage = "质量检验接口返回失�
 const inspectionTypeLabels: Record<string, string> = { incoming: "来料检验", process: "过程检验", finished: "成品检验" };
 const sourceTypeLabels: Record<string, string> = { purchase_receipt: "采购入库单", mfg_work_order: "生产工单" };
 const resultLabels: Record<string, string> = { passed: "合格", failed: "不合格" };
-const dispositionLabels: Record<string, string> = { accept: "接受", rework: "返工", scrap: "报废" };
+const dispositionLabels: Record<string, string> = { accept: "接受", rework: "返工", scrap: "报废", return_to_supplier: "退回供应商" };
 const statusLabels: Record<string, string> = { draft: "草稿", submitted: "已提交", closed: "已关闭" };
 function labelOf(value: unknown, labels: Record<string, string>) { const key = String(value || ""); return labels[key] || key || "-"; }
 function sourceTypeForInspection(inspectionType: string) { return inspectionType === "incoming" ? "purchase_receipt" : "mfg_work_order"; }
@@ -54,8 +54,9 @@ async function loadSourceNames() {
     for (const row of listFrom(purchaseResponse, "采购入库单加载失败")) map[sourceDocumentKey("purchase_receipt", row.id)] = row.doc_no || String(row.id);
     for (const row of listFrom(workOrderResponse, "生产工单加载失败")) map[sourceDocumentKey("mfg_work_order", row.id)] = row.doc_no || String(row.id);
     sourceDocumentNames.value = map;
-  } catch {
+  } catch (error) {
     sourceDocumentNames.value = {};
+    ElMessage.warning(error instanceof Error ? error.message : "来源单据名称加载失败，将显示单据 ID");
   }
 }
 async function loadSourceDocuments() {
@@ -75,7 +76,7 @@ async function loadSourceDocuments() {
 async function load() {
   loading.value = true;
   try { rows.value = listFrom(await listInspections()); plans.value = listFrom(await listQualityPlans()); defects.value = listFrom(await listDefects()); }
-  catch { ElMessage.error("检验列表加载失败"); }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : "检验列表加载失败"); }
   finally { loading.value = false; }
 }
 async function savePlan() { const items = planForm.items.split(/\n|,/).map((item) => item.trim()).filter(Boolean).map((item) => ({ item, value: "待检" })); if (!planForm.name.trim() || !items.length) return ElMessage.warning("请填写计划名称和检验项目"); try { const response = await createQualityPlan({ name: planForm.name.trim(), items }); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("检验计划已创建"); planVisible.value = false; planForm.name = ""; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "检验计划创建失败"); } }
@@ -90,11 +91,21 @@ async function create() {
   catch (error) { ElMessage.error(error instanceof Error ? error.message : "检验单创建失败"); }
   finally { saving.value = false; }
 }
-function openResult(row: Row) { selected.value = row; resultForm.item = "appearance"; resultForm.value = "pass"; resultForm.passed = true; resultVisible.value = true; }
+function openResult(row: Row) {
+  selected.value = row;
+  const existing = Array.isArray(row.results) ? row.results : [];
+  resultItems.value = existing.length
+    ? existing.map((item: Row) => ({ item: String(item.item || ""), value: String(item.value || ""), passed: typeof item.passed === "boolean" ? item.passed : null }))
+    : [{ item: "appearance", value: "", passed: null }];
+  resultVisible.value = true;
+}
 async function submitResult() {
-  if (!selected.value?.id || !resultForm.item.trim() || !resultForm.value.trim()) { ElMessage.warning("请填写检验项目和结果"); return; }
+  if (!selected.value?.id || !resultItems.value.length || resultItems.value.some((item) => !item.item.trim() || !item.value.trim() || item.passed === null)) {
+    ElMessage.warning("请完成全部检验项目，并明确每项是否通过");
+    return;
+  }
   saving.value = true;
-  try { const response = await submitInspection(selected.value.id, [{ ...resultForm, item: resultForm.item.trim(), value: resultForm.value.trim() }]); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("检验结果已提交"); resultVisible.value = false; await load(); }
+  try { const response = await submitInspection(selected.value.id, resultItems.value.map((item) => ({ ...item, item: item.item.trim(), value: item.value.trim() }))); if (response.data.code !== 0) throw new Error(response.data.msg); ElMessage.success("检验结果已提交"); resultVisible.value = false; await load(); }
   catch (error) { ElMessage.error(error instanceof Error ? error.message : "检验结果提交失败"); }
   finally { saving.value = false; }
 }
@@ -122,8 +133,8 @@ onMounted(async () => { await Promise.all([load(), loadSourceNames()]); });
     <el-dialog v-model="createVisible" title="新建检验单" width="560px"><el-form label-width="100px"><el-form-item label="检验类型" required><el-select v-model="createForm.inspection_type" style="width: 100%" @change="changeInspectionType"><el-option label="来料检验" value="incoming" /><el-option label="过程检验" value="process" /><el-option label="成品检验" value="finished" /></el-select></el-form-item><el-form-item label="来源类型"><el-input :model-value="sourceTypeLabel(createForm.source_type)" readonly /></el-form-item><el-form-item label="来源单据" required><el-select v-model="createForm.source_id" filterable clearable :loading="sourceLoading" :placeholder="`请选择${sourceTypeLabel(createForm.source_type)}`" style="width: 100%"><el-option v-for="option in sourceDocuments" :key="option.value" :label="option.label" :value="option.value" /></el-select></el-form-item><el-form-item label="检验计划"><el-select v-model="fromPlanForm.plan_id" clearable style="width: 100%"><el-option v-for="plan in plans" :key="plan.id" :label="plan.name" :value="plan.id" /></el-select></el-form-item><el-form-item v-if="fromPlanForm.plan_id" label="抽样数量"><el-input-number v-model="fromPlanForm.sample_size" :min="1" /></el-form-item></el-form><template #footer><el-button @click="createVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="fromPlanForm.plan_id ? createFromPlan() : create()">保存</el-button></template></el-dialog>
     <el-dialog v-model="planVisible" title="维护检验计划" width="520px"><el-form label-width="100px"><el-form-item label="计划名称"><el-input v-model="planForm.name" /></el-form-item><el-form-item label="检验项目"><el-input v-model="planForm.items" type="textarea" :rows="5" placeholder="每行一个项目" /></el-form-item></el-form><template #footer><el-button @click="planVisible = false">取消</el-button><el-button type="primary" @click="savePlan">保存计划</el-button></template></el-dialog>
     <el-dialog v-model="defectVisible" title="维护缺陷字典" width="520px"><el-form label-width="100px"><el-form-item label="缺陷编码"><el-input v-model="defectForm.code" /></el-form-item><el-form-item label="缺陷名称"><el-input v-model="defectForm.name" /></el-form-item><el-form-item label="严重程度"><el-select v-model="defectForm.severity" style="width: 100%"><el-option label="轻微" value="minor" /><el-option label="主要" value="major" /><el-option label="严重" value="critical" /></el-select></el-form-item></el-form><el-divider /><el-table :data="defects" size="small"><el-table-column prop="code" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="severity" label="严重程度" /></el-table><template #footer><el-button @click="defectVisible = false">取消</el-button><el-button type="primary" @click="saveDefect">新增缺陷</el-button></template></el-dialog>
-    <el-dialog v-model="resultVisible" title="录入检验结果" width="520px"><el-form label-width="100px"><el-form-item label="检验项目" required><el-input v-model="resultForm.item" placeholder="如 appearance、尺寸" /></el-form-item><el-form-item label="结果值" required><el-input v-model="resultForm.value" placeholder="如 pass、fail 或实测值" /></el-form-item><el-form-item label="是否通过"><el-switch v-model="resultForm.passed" active-text="通过" inactive-text="不通过" /></el-form-item></el-form><template #footer><el-button @click="resultVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submitResult">提交结果</el-button></template></el-dialog>
-    <el-dialog v-model="closeVisible" title="关闭检验" width="420px"><el-form label-width="100px"><el-form-item label="处置结论" required><el-select v-model="closeForm.disposition" style="width: 100%"><el-option label="接受" value="accept" /><el-option label="返工" value="rework" /><el-option label="报废" value="scrap" /></el-select></el-form-item></el-form><template #footer><el-button @click="closeVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="close">确认关闭</el-button></template></el-dialog>
+    <el-dialog v-model="resultVisible" title="录入检验结果" width="620px"><el-alert title="按检验计划创建的检验单必须完成全部项目后才能提交。" type="info" show-icon /><div class="result-items"><div v-for="item in resultItems" :key="item.item" class="result-item"><div class="result-item-name">{{ item.item || "未命名项目" }}</div><el-input v-model="item.value" placeholder="填写实测值或 pass/fail" /><el-switch v-model="item.passed" :active-value="true" :inactive-value="false" active-text="通过" inactive-text="不通过" /></div></div><template #footer><el-button @click="resultVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="submitResult">提交结果</el-button></template></el-dialog>
+    <el-dialog v-model="closeVisible" title="关闭检验" width="420px"><el-form label-width="100px"><el-form-item label="处置结论" required><el-select v-model="closeForm.disposition" style="width: 100%"><el-option label="接受" value="accept" /><el-option label="返工" value="rework" /><el-option label="报废" value="scrap" /><el-option label="退回供应商" value="return_to_supplier" /></el-select></el-form-item></el-form><template #footer><el-button @click="closeVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="close">确认关闭</el-button></template></el-dialog>
   </section>
 </template>
 
@@ -135,4 +146,8 @@ onMounted(async () => { await Promise.all([load(), loadSourceNames()]); });
 .status-tag.el-tag--warning { background: var(--erp-amber-bg); border-color: var(--erp-amber); color: var(--erp-amber); }
 .status-tag.el-tag--info { background: var(--erp-panel-soft); border-color: var(--erp-border); color: var(--erp-muted-text); }
 .status-tag.el-tag--danger { background: var(--erp-danger-bg, #f8e4dc); border-color: var(--erp-danger); color: var(--erp-danger); }
+.result-items { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.result-item { display: grid; grid-template-columns: 120px minmax(0, 1fr) 130px; align-items: center; gap: 12px; }
+.result-item-name { font-weight: 600; }
+@media (max-width: 640px) { .result-item { grid-template-columns: 1fr; } }
 </style>
