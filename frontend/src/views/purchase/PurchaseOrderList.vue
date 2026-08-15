@@ -18,8 +18,13 @@ import { formatLocalDateTime, localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const filters = reactive({ order_no: "", supplier_id: "", status: "" });
-const filteredRows = computed(() => rows.value.filter((row) => (!filters.order_no || String(row.doc_no || "").includes(filters.order_no)) && (!filters.supplier_id || String(row.supplier_id || "") === filters.supplier_id) && (!filters.status || row.status === filters.status)));
+const filters = reactive({ keyword: "", status: "" });
+const filteredRows = computed(() => rows.value.filter((row) => {
+  const keyword = filters.keyword.trim().toLowerCase();
+  const supplierText = [row.supplier_name, row.supplier_code, row.supplier_id, supplierLabel(row.supplier_id)].join(" ").toLowerCase();
+  const keywordMatches = !keyword || [row.doc_no, row.order_no, supplierText].some((value) => String(value || "").toLowerCase().includes(keyword));
+  return keywordMatches && (!filters.status || row.status === filters.status);
+}));
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const saving = ref(false);
@@ -163,7 +168,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
 <template>
   <section>
     <el-page-header content="采购订单" />
-    <el-space class="toolbar" wrap><el-input v-model="filters.order_no" clearable placeholder="订单号" style="width:180px" /><el-select v-model="filters.supplier_id" clearable filterable placeholder="供应商" style="width:200px"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select><el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /></el-select><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space class="toolbar" wrap><el-input v-model="filters.keyword" clearable placeholder="搜索订单号、供应商" style="width:360px" /><el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /></el-select><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>

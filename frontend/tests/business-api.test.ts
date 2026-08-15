@@ -74,7 +74,7 @@ describe("一期业务 API 路由", () => {
   });
 
   it("uses the sales order list and lifecycle endpoints", async () => {
-    const payload = { customer_id: "customer-1", items: [{ material_id: "material-1", quantity: 2, unit_price: 10 }] };
+    const payload = { customer_id: "customer-1", items: [{ material_id: "material-1", quantity: 2, unit_price: 10, warehouse_id: "warehouse-1" }] };
 
     await listSalesOrders({ status: "draft" });
     await createSalesOrder(payload);

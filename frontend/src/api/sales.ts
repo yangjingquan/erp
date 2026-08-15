@@ -9,7 +9,7 @@ export type SalesOrderPayload = {
     material_id: string;
     quantity: number;
     unit_price: number;
-    warehouse_id?: string | null;
+    warehouse_id: string;
     tax_rate?: number;
   }>;
 };

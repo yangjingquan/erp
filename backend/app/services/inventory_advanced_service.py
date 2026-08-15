@@ -295,6 +295,7 @@ def _serialize_warehouse_task(row: InvWarehouseTask) -> dict:
         "exception_reason": row.exception_reason,
         "serial_numbers": row.serial_numbers_json or [],
         "serial_tracking": row.serial_tracking,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
     }
 
@@ -341,33 +342,50 @@ def create_warehouse_task(db: Session, payload, context: UserContext) -> InvWare
     return row
 
 
+def _find_source_document(db: Session, model, source_id: str, org_id: str, *, exclude_deleted: bool = False):
+    """Find a source document by internal ID first, then by business document number."""
+    lookup = source_id.strip()
+    filters = [model.org_id == org_id]
+    if exclude_deleted:
+        filters.append(model.is_deleted.is_(False))
+
+    document = db.scalar(select(model).where(model.id == lookup, *filters))
+    if document is None and hasattr(model, "doc_no"):
+        document = db.scalar(select(model).where(model.doc_no == lookup, *filters))
+    return document
+
+
 def generate_warehouse_tasks(db: Session, source_type: str, source_id: str, context: UserContext, serial_tracking: bool = False) -> list[dict]:
     """Generate idempotent warehouse tasks from a business document."""
     candidates: list[dict] = []
     if source_type == "purchase_receipt":
-        document = db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.id == source_id, PurchaseReceipt.org_id == context.org_id))
+        document = _find_source_document(db, PurchaseReceipt, source_id, context.org_id)
         if document is None:
             raise AppError("采购入库单不存在", code=404)
+        source_document_id = document.id
         for item in document.items:
-            candidates.append({"task_type": "putaway", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
+            candidates.append({"task_type": "putaway", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_document_id, "serial_tracking": serial_tracking})
     elif source_type == "sales_delivery":
-        document = db.scalar(select(SalesDelivery).where(SalesDelivery.id == source_id, SalesDelivery.org_id == context.org_id))
+        document = _find_source_document(db, SalesDelivery, source_id, context.org_id)
         if document is None:
             raise AppError("销售出库单不存在", code=404)
+        source_document_id = document.id
         for item in document.items:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_document_id, "serial_tracking": serial_tracking})
     elif source_type == "work_order":
-        document = db.scalar(select(MfgWorkOrder).where(MfgWorkOrder.id == source_id, MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.is_deleted.is_(False)))
+        document = _find_source_document(db, MfgWorkOrder, source_id, context.org_id, exclude_deleted=True)
         if document is None:
             raise AppError("生产工单不存在", code=404)
+        source_document_id = document.id
         for item in document.materials:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.required_quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.required_quantity, "source_type": source_type, "source_id": source_document_id, "serial_tracking": serial_tracking})
     elif source_type == "material_issue":
         document = db.scalar(select(MfgMaterialIssue).where(MfgMaterialIssue.id == source_id, MfgMaterialIssue.org_id == context.org_id, MfgMaterialIssue.is_deleted.is_(False)))
         if document is None:
             raise AppError("生产领料单不存在", code=404)
+        source_document_id = document.id
         for item in document.items:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_document_id, "serial_tracking": serial_tracking})
     else:
         raise AppError("不支持自动生成任务的来源单据", code=422)
     result = []
@@ -390,6 +408,7 @@ def list_warehouse_tasks(
     status: str | None = None,
     task_type: str | None = None,
     warehouse_id: str | None = None,
+    source_type: str | None = None,
 ) -> list[dict]:
     conditions = [InvWarehouseTask.org_id == context.org_id, InvWarehouseTask.is_deleted.is_(False)]
     allowed = allowed_warehouse_ids(context)
@@ -402,8 +421,10 @@ def list_warehouse_tasks(
         conditions.append(InvWarehouseTask.status == status)
     if task_type:
         conditions.append(InvWarehouseTask.task_type == task_type)
+    if source_type:
+        conditions.append(InvWarehouseTask.source_type == source_type)
     rows = db.scalars(
-        select(InvWarehouseTask).where(*conditions).order_by(InvWarehouseTask.priority, InvWarehouseTask.created_at)
+        select(InvWarehouseTask).where(*conditions).order_by(InvWarehouseTask.created_at.desc())
     ).all()
     return [_serialize_warehouse_task(row) for row in rows]
 

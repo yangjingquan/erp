@@ -251,10 +251,11 @@ def warehouse_tasks(
     status: str | None = Query(default=None),
     task_type: str | None = Query(default=None),
     warehouse_id: str | None = Query(default=None),
+    source_type: str | None = Query(default=None),
     context: UserContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    rows = list_warehouse_tasks(db, context, status=status, task_type=task_type, warehouse_id=warehouse_id)
+    rows = list_warehouse_tasks(db, context, status=status, task_type=task_type, warehouse_id=warehouse_id, source_type=source_type)
     return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"open": sum(row["status"] not in {"completed", "cancelled"} for row in rows)}})
 
 
@@ -272,7 +273,7 @@ def create_warehouse_task_api(
 @router.post("/tasks/from-document")
 def generate_tasks_from_document(
     source_type: str = Query(min_length=1, max_length=64),
-    source_id: str = Query(min_length=1, max_length=36),
+    source_id: str = Query(min_length=1, max_length=64),
     serial_tracking: bool = Query(default=False),
     context: UserContext = Depends(require_permission("inventory:manage")),
     db: Session = Depends(get_db),

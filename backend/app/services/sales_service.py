@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.core.time import local_today
+from app.models.master_data import MdWarehouse
 from app.models.sales import SalesDelivery, SalesDeliveryItem, SalesOrder, SalesOrderItem, SalesReturn
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
@@ -53,6 +54,17 @@ def list_sales_orders(db: Session, context: UserContext, status: str | None = No
 
 
 def create_sales_order(db: Session, payload, context: UserContext) -> SalesOrder:
+    item_warehouse_ids = [item.warehouse_id.strip() if item.warehouse_id else "" for item in payload.items]
+    if any(not warehouse_id for warehouse_id in item_warehouse_ids):
+        raise AppError("销售订单每条明细必须选择仓库", code=422)
+    valid_warehouse_ids = set(db.scalars(select(MdWarehouse.id).where(
+        MdWarehouse.org_id == context.org_id,
+        MdWarehouse.id.in_(item_warehouse_ids),
+        MdWarehouse.is_deleted.is_(False),
+    )).all())
+    if len(valid_warehouse_ids) != len(set(item_warehouse_ids)):
+        raise AppError("销售订单包含不存在或已停用的仓库", code=404)
+
     order = SalesOrder(
         org_id=context.org_id,
         doc_no=next_doc_no(db, "sales_order", context.org_id, payload.order_date),
@@ -68,14 +80,14 @@ def create_sales_order(db: Session, payload, context: UserContext) -> SalesOrder
     order.items = [
         SalesOrderItem(
             material_id=item.material_id,
-            warehouse_id=item.warehouse_id,
+            warehouse_id=warehouse_id,
             quantity=item.quantity,
             unit_price=item.unit_price,
             tax_rate=item.tax_rate,
             amount=(item.quantity * item.unit_price).quantize(Decimal("0.01")),
             line_no=index,
         )
-        for index, item in enumerate(payload.items, start=1)
+        for index, (item, warehouse_id) in enumerate(zip(payload.items, item_warehouse_ids), start=1)
     ]
     order.total_amount = _total(order.items)
     order.receivable_amount = order.total_amount
@@ -114,12 +126,23 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
         raise AppError("只有已审核订单才能出库", code=400)
     if db.scalar(select(SalesDelivery).where(SalesDelivery.order_id == order.id, SalesDelivery.status != "cancelled")):
         raise AppError("该订单已创建出库单", code=409)
+    active_items = [item for item in order.items if item.quantity > item.delivered_quantity]
+    warehouse_ids = {item.warehouse_id for item in active_items if item.warehouse_id}
+    if len(warehouse_ids) != 1:
+        raise AppError("销售订单必须指定同一个有效仓库后才能生成出库单", code=422)
+    valid_warehouse = db.scalar(select(MdWarehouse.id).where(
+        MdWarehouse.id == next(iter(warehouse_ids)),
+        MdWarehouse.org_id == context.org_id,
+        MdWarehouse.is_deleted.is_(False),
+    ))
+    if valid_warehouse is None:
+        raise AppError("销售订单指定的仓库不存在或已停用", code=404)
     delivery = SalesDelivery(
         org_id=order.org_id,
         doc_no=next_doc_no(db, "sales_delivery", context.org_id, order.order_date),
         order_id=order.id,
         customer_id=order.customer_id,
-        warehouse_id=next((item.warehouse_id for item in order.items if item.warehouse_id), "warehouse-1"),
+        warehouse_id=next(iter(warehouse_ids)),
         status="draft",
         delivery_date=local_today(),
         total_amount=order.total_amount,
@@ -132,8 +155,7 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
             unit_price=item.unit_price,
             amount=item.amount,
         )
-        for item in order.items
-        if item.quantity > item.delivered_quantity
+        for item in active_items
     ]
     db.add(delivery)
     db.commit()

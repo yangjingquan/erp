@@ -29,7 +29,7 @@ const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const actionLoading = ref("");
-const filters = reactive({ doc_no: "", customer_id: "", supplier_id: "", material_id: "", status: "" });
+const filters = reactive({ quote_keyword: "", procurement_keyword: "", doc_no: "", customer_id: "", supplier_id: "", material_id: "", status: "" });
 const editingId = ref("");
 const form = reactive<any>({
   customer_id: "",
@@ -45,7 +45,19 @@ const form = reactive<any>({
   items: [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }],
 });
 const { customers, suppliers, materials, warehouses, loadOptions } = useMasterOptions();
-const filteredRows = computed(() => rows.value.filter((row) => (!filters.doc_no || String(row.doc_no || "").includes(filters.doc_no)) && (!filters.customer_id || String(row.customer_id || "") === filters.customer_id) && (!filters.supplier_id || String(row.supplier_id || "") === filters.supplier_id) && (!filters.material_id || itemRows(row).some((item: any) => String(item.material_id) === filters.material_id)) && (!filters.status || row.status === filters.status)));
+const filteredRows = computed(() => rows.value.filter((row) => {
+  const quoteKeyword = filters.quote_keyword.trim().toLowerCase();
+  const procurementKeyword = filters.procurement_keyword.trim().toLowerCase();
+  const customerText = optionLabel(customers.value, row.customer_id);
+  const supplierText = [row.supplier_name, row.supplier_code, row.supplier_id, supplierLabel(row.supplier_id)].join(" ").toLowerCase();
+  const materialText = [row.material_name, row.material_code, row.material_id, ...itemRows(row).map((item: any) => [item.material_name, item.material_code, item.material_id, materialLabel(item.material_id)].join(" "))].join(" ").toLowerCase();
+  const quoteKeywordMatches = !quoteKeyword || [row.doc_no, row.customer_name, row.customer_id, customerText]
+    .some((value) => String(value || "").toLowerCase().includes(quoteKeyword));
+  const procurementKeywordMatches = !procurementKeyword || [row.doc_no, row.order_no, supplierText, materialText]
+    .some((value) => String(value || "").toLowerCase().includes(procurementKeyword));
+  const keywordMatches = props.kind === "quote" || props.kind === "sales-return" ? quoteKeywordMatches : props.kind === "purchase-request" || props.kind === "purchase-return" ? procurementKeywordMatches : (!filters.doc_no || String(row.doc_no || "").includes(filters.doc_no));
+  return keywordMatches && (!filters.customer_id || String(row.customer_id || "") === filters.customer_id) && (!filters.supplier_id || String(row.supplier_id || "") === filters.supplier_id) && (!filters.material_id || itemRows(row).some((item: any) => String(item.material_id) === filters.material_id)) && (!filters.status || row.status === filters.status);
+}));
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 
 const purchaseStatusLabels: Record<string, string> = {
@@ -94,6 +106,10 @@ function statusTagType(status: string) {
     approved: "success",
     rejected: "danger",
   } as Record<string, string>)[status] || "info";
+}
+
+function search() {
+  page.value = 1;
 }
 
 function itemRows(row: any) {
@@ -281,15 +297,19 @@ onMounted(async () => {
 <template>
   <section class="page-stack">
     <el-page-header :content="props.title" />
-    <el-space wrap>
-      <el-input v-model="filters.doc_no" clearable placeholder="单据号" style="width:180px" />
-      <el-select v-if="isQuote() || isSalesReturn()" v-model="filters.customer_id" clearable filterable placeholder="客户" style="width:180px"><el-option v-for="option in customers" :key="option.value" v-bind="option" /></el-select>
-      <el-select v-if="isRequest() || isPurchaseReturn()" v-model="filters.supplier_id" clearable filterable placeholder="供应商" style="width:180px"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select>
-      <el-select v-if="isRequest() || isPurchaseReturn()" v-model="filters.material_id" clearable filterable placeholder="物料" style="width:180px"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select>
-      <el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /><el-option label="已完成" value="completed" /></el-select>
-      <el-button type="primary" @click="openCreate">新建{{ props.title }}</el-button>
-      <el-button :loading="loading" @click="load">刷新</el-button>
-    </el-space>
+    <div class="extension-toolbar">
+      <div class="extension-filters">
+        <el-input v-if="isQuote() || isSalesReturn()" v-model="filters.quote_keyword" clearable placeholder="按单据号或客户搜索" style="width:360px" @keyup.enter="search" />
+        <el-input v-else-if="isRequest() || isPurchaseReturn()" v-model="filters.procurement_keyword" clearable placeholder="搜索单据号、供应商、物料" style="width:360px" @keyup.enter="search" />
+        <el-input v-else v-model="filters.doc_no" clearable placeholder="单据号" style="width:180px" />
+        <el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /><el-option label="已完成" value="completed" /></el-select>
+        <el-button v-if="isQuote() || isSalesReturn()" @click="search">查询</el-button>
+      </div>
+      <div class="extension-actions">
+        <el-button type="primary" @click="openCreate">新建{{ props.title }}</el-button>
+        <el-button :loading="loading" @click="load">刷新</el-button>
+      </div>
+    </div>
 
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="doc_no" label="单据号" min-width="180" />
@@ -376,13 +396,16 @@ onMounted(async () => {
           </el-table-column>
         </template>
         <template v-else>
-          <el-table-column label="状态" width="110">
+          <el-table-column v-if="!isQuote()" label="状态" width="110">
             <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
           </el-table-column>
           <el-table-column v-if="isQuote() || isSalesReturn()" label="客户" min-width="180">
             <template #default="scope">{{ scope.row.customer_name || scope.row.customer_id || '-' }}</template>
           </el-table-column>
           <el-table-column prop="total_amount" label="金额" min-width="140" />
+          <el-table-column v-if="isQuote()" label="状态" width="110">
+            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
+          </el-table-column>
           <el-table-column label="操作" width="220" v-if="isQuote() || isSalesReturn()">
             <template #default="scope">
               <el-button v-if="isQuote() && scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button>
@@ -451,5 +474,8 @@ onMounted(async () => {
 
 <style scoped>
 .page-stack { display: flex; flex-direction: column; gap: 16px; }
+.extension-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; flex-wrap: wrap; }
+.extension-filters, .extension-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.extension-actions { margin-left: auto; }
 .request-status-tag { min-width: 64px; justify-content: center; }
 </style>

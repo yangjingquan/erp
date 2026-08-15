@@ -50,7 +50,7 @@ const labels: Record<string, string> = {
       <div class="filter-row">
         <el-input :model-value="keyword" clearable placeholder="检索单号、客户名称" class="keyword-input" @update:model-value="emit('update:keyword', String($event))" @keyup.enter="emit('search')"><template #prefix><el-icon><Search /></el-icon></template></el-input>
         <el-select :model-value="status" clearable placeholder="全部状态" style="width: 150px" @update:model-value="emit('update:status', String($event || ''))"><el-option v-for="(label, key) in labels" :key="key" :label="label" :value="key" /></el-select>
-        <el-date-picker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" style="width: 260px" @update:model-value="emit('update:dateRange', ($event || []) as string[])" />
+        <el-date-picker :model-value="dateRange" type="daterange" value-format="YYYY-MM-DD" start-placeholder="开始日期" end-placeholder="结束日期" class="date-range-picker" style="width: 260px" @update:model-value="emit('update:dateRange', ($event || []) as string[])" />
         <el-button type="primary" @click="emit('search')">查询</el-button>
         <el-button @click="emit('reset')">重置</el-button>
         <el-button :icon="Refresh" :loading="loading" circle title="刷新" @click="emit('refresh')" />
@@ -74,6 +74,9 @@ const labels: Record<string, string> = {
 .filter-card :deep(.el-card__body), .table-card :deep(.el-card__body) { padding: 14px 16px; }
 .filter-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .keyword-input { width: min(320px, 100%); }
+:global(.date-range-picker) { width: 260px !important; min-width: 0 !important; max-width: 260px !important; flex: 0 0 260px !important; }
+:global(.date-range-picker .el-range-input) { width: 90px !important; max-width: 90px !important; min-width: 0 !important; }
+:global(.date-range-picker .el-range-separator) { flex: 0 0 18px !important; width: 18px !important; }
 .table-card { min-width: 0; }
 .list-footer { display: flex; align-items: center; justify-content: space-between; color: var(--erp-muted-text); }
 @media (max-width: 1100px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }

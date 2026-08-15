@@ -26,8 +26,8 @@ const errorMessage = ref("");
 const dialogVisible = ref(false);
 const detailVisible = ref(false);
 const selected = ref<Row | null>(null);
-const form = reactive<SalesOrderPayload>({ customer_id: "", order_date: localDateString(), expected_date: null, remark: "", items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }] });
-const { customers, materials, loadOptions } = useMasterOptions();
+const form = reactive<SalesOrderPayload>({ customer_id: "", order_date: localDateString(), expected_date: null, remark: "", items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: "", tax_rate: 0 }] });
+const { customers, materials, warehouses, loadOptions } = useMasterOptions();
 
 function unwrap(response: any): Row {
   if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "销售订单接口返回失败");
@@ -49,7 +49,7 @@ async function load() {
   }
 }
 
-function resetForm() { form.customer_id = ""; form.order_date = localDateString(); form.expected_date = null; form.remark = ""; form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }]; }
+function resetForm() { form.customer_id = ""; form.order_date = localDateString(); form.expected_date = null; form.remark = ""; form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: "", tax_rate: 0 }]; }
 function openCreate() { selected.value = null; resetForm(); dialogVisible.value = true; }
 function openDetail(row: Row) { selected.value = row; detailVisible.value = true; }
 function search() { page.value = 1; load(); }
@@ -64,7 +64,7 @@ async function copyToForm(row: Row) {
     form.order_date = source.order_date || localDateString();
     form.expected_date = source.expected_date || null;
     form.remark = source.remark || `复制自 ${source.doc_no || "订单"}`;
-    form.items = [{ material_id: item?.material_id || "", quantity: Number(item?.quantity || 1), unit_price: Number(item?.unit_price || 0), warehouse_id: item?.warehouse_id || null, tax_rate: Number(item?.tax_rate || 0) }];
+    form.items = [{ material_id: item?.material_id || "", quantity: Number(item?.quantity || 1), unit_price: Number(item?.unit_price || 0), warehouse_id: item?.warehouse_id || "", tax_rate: Number(item?.tax_rate || 0) }];
     dialogVisible.value = true;
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "复制订单失败");
@@ -72,7 +72,7 @@ async function copyToForm(row: Row) {
 }
 
 async function save() {
-  if (!form.customer_id || !form.items[0]?.material_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写客户、物料和有效数量"); return; }
+  if (!form.customer_id || !form.items[0]?.material_id || !form.items[0]?.warehouse_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写客户、物料、仓库和有效数量"); return; }
   saving.value = true;
   try {
     const response = await createSalesOrder(form);
@@ -95,7 +95,7 @@ async function confirmAction(row: Row, action: Row) {
   } finally { actionLoading.value = null; }
 }
 
-onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "materials"])]); });
+onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "materials", "warehouses"])]); });
 </script>
 
 <template>
@@ -127,6 +127,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
         <el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>
         <el-form-item label="预计交期"><el-date-picker v-model="form.expected_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>
         <el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable placeholder="请选择物料" style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item>
+        <el-form-item label="仓库" required><el-select v-model="form.items[0].warehouse_id" filterable clearable placeholder="请选择仓库" style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item>
         <el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item>
         <el-form-item label="含税单价" required><el-input-number v-model="form.items[0].unit_price" :min="0" :precision="2" /></el-form-item>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" /></el-form-item>
