@@ -114,6 +114,8 @@ def _now() -> datetime:
 
 
 def _can_access_type(context: UserContext, business_type: str) -> bool:
+    if context.user.is_superuser:
+        return True
     if "*" in context.permissions:
         return True
     module = TYPE_MODULE.get(business_type)
@@ -126,6 +128,8 @@ def _assert_type_access(context: UserContext, business_type: str) -> None:
 
 
 def _can_manage_type(context: UserContext, business_type: str) -> bool:
+    if context.user.is_superuser:
+        return True
     module = TYPE_MODULE.get(business_type)
     return "*" in context.permissions or bool(module and f"{module}:manage" in context.permissions)
 

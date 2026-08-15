@@ -39,6 +39,7 @@ from app.services.startup_check import check_schema
 from app.services.runtime_migrations import (
     ensure_api_client_schema,
     ensure_employee_account_column,
+    ensure_leave_request_reason_column,
     ensure_purchase_request_supplier_column,
     ensure_quality_inspection_columns,
     ensure_p1_control_schema,
@@ -59,6 +60,7 @@ async def lifespan(application: FastAPI):
     try:
         try:
             ensure_employee_account_column(db)
+            ensure_leave_request_reason_column(db)
             ensure_purchase_request_supplier_column(db)
             ensure_api_client_schema(db)
             ensure_quality_inspection_columns(db)

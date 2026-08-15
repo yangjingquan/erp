@@ -2,9 +2,12 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createChangeRequest, createRevision, listChangeImpacts, listChangeRequests, listRevisions, resolveChangeImpact, transitionChangeRequest, transitionRevision } from "../../api/phase2";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const revisions = ref<Row[]>([]); const impacts = ref<Row[]>([]); const loading = ref(false); const saving = ref(false); const visible = ref(false); const revisionVisible = ref(false); const impactVisible = ref(false); const selectedChange = ref<Row | null>(null);
+const { pagedRows: changeRows, page: changePage, pageSize: changePageSize, total: changeTotal, updatePageSize: updateChangePageSize } = useClientPagination(rows);
+const { pagedRows: revisionRows, page: revisionPage, pageSize: revisionPageSize, total: revisionTotal, updatePageSize: updateRevisionPageSize } = useClientPagination(revisions);
 const form = reactive({ title: "", change_type: "engineering", description: "", due_date: "", impact_snapshot: [] as Array<{ object_type: string; object_id: string; impact: string }> });
 const revisionForm = reactive({ material_id: "", revision: "", effective_from: "", effective_to: "", change_summary: "", snapshot: {} });
 function unwrap(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "接口返回失败"); return response.data.data; }
@@ -28,14 +31,15 @@ onMounted(load);
     </header>
     <el-alert title="变更生效后会保存 ECN、影响对象和操作人，可从统一单据继续追溯。" type="info" show-icon />
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="rows" stripe>
+      <el-table v-loading="loading" :data="changeRows" stripe>
         <el-table-column prop="change_no" label="申请号" width="170" /><el-table-column prop="title" label="标题" min-width="220" /><el-table-column prop="change_type" label="类型" width="120" /><el-table-column prop="status" label="状态" width="120" /><el-table-column prop="due_date" label="期限" width="120" />
         <el-table-column label="影响对象" min-width="220"><template #default="scope">{{ (scope.row.impact_snapshot || []).map((item: Row) => `${item.object_type}:${item.object_id}`).join("、") || "待评估" }}</template></el-table-column>
         <el-table-column label="操作" width="330"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="transition(scope.row, 'submitted')">提交评估</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="transition(scope.row, 'approved')">批准</el-button><el-button v-if="scope.row.status === 'approved'" link type="warning" @click="transition(scope.row, 'effective')">生效</el-button><el-button v-if="scope.row.status === 'effective'" link type="info" @click="openImpacts(scope.row)">处理影响</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无工程变更" /></template>
       </el-table>
+      <ClientPagination v-model:page="changePage" v-model:page-size="changePageSize" :total="changeTotal" @update:page-size="updateChangePageSize" />
     </el-card>
-    <el-card shadow="never"><template #header><div class="card-heading"><span>产品版本基线</span><el-button type="primary" plain @click="openRevision">新建版本</el-button></div></template><el-table :data="revisions" stripe><el-table-column prop="material_id" label="物料"/><el-table-column prop="revision" label="版本"/><el-table-column prop="change_summary" label="变更摘要" min-width="220"/><el-table-column prop="effective_from" label="生效日期"/><el-table-column prop="status" label="状态"/><el-table-column label="操作"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="revise(scope.row, 'submitted')">提交</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="revise(scope.row, 'effective')">生效</el-button><el-button v-if="scope.row.status === 'effective'" link type="warning" @click="revise(scope.row, 'obsolete')">作废</el-button></template></el-table-column></el-table></el-card>
+    <el-card shadow="never"><template #header><div class="card-heading"><span>产品版本基线</span><el-button type="primary" plain @click="openRevision">新建版本</el-button></div></template><el-table :data="revisionRows" stripe><el-table-column prop="material_id" label="物料"/><el-table-column prop="revision" label="版本"/><el-table-column prop="change_summary" label="变更摘要" min-width="220"/><el-table-column prop="effective_from" label="生效日期"/><el-table-column prop="status" label="状态"/><el-table-column label="操作"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="revise(scope.row, 'submitted')">提交</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" @click="revise(scope.row, 'effective')">生效</el-button><el-button v-if="scope.row.status === 'effective'" link type="warning" @click="revise(scope.row, 'obsolete')">作废</el-button></template></el-table-column></el-table><ClientPagination v-model:page="revisionPage" v-model:page-size="revisionPageSize" :total="revisionTotal" @update:page-size="updateRevisionPageSize" /></el-card>
     <el-dialog v-model="visible" title="新建工程变更申请" width="720px">
       <el-form label-width="100px">
         <el-form-item label="变更标题" required><el-input v-model="form.title" /></el-form-item>

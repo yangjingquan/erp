@@ -3,7 +3,9 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createBatch, deleteBatch, listBatches, updateBatch } from "../../api/inventory-advanced";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { useClientPagination } from "../../composables/useClientPagination";
 const rows = ref<any[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const visible = ref(false); const editingId = ref<string | null>(null); const form = reactive({ material_id: "", batch_no: "", production_date: "", expiry_date: "", status: "active" });
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const { materials, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { active: "启用", inactive: "停用" };
 function materialLabel(id: unknown) { const value = String(id || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
@@ -21,7 +23,7 @@ watch(() => form.material_id, load); onMounted(() => Promise.all([load(), loadOp
   <section class="page-stack">
     <el-page-header content="批次管理" />
     <el-space><el-select v-model="form.material_id" filterable clearable placeholder="全部物料" style="width: 250px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select><el-button type="primary" @click="openCreate">新增批次</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
-    <el-table v-loading="loading" :data="rows" stripe :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+    <el-table v-loading="loading" :data="pagedRows" stripe :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="batch_no" label="批次号" min-width="200" />
       <el-table-column label="物料" min-width="220"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column>
       <el-table-column prop="production_date" label="生产日期" width="140" />
@@ -30,6 +32,7 @@ watch(() => form.material_id, load); onMounted(() => Promise.all([load(), loadOp
       <el-table-column label="操作" width="240"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button link :type="scope.row.status === 'active' ? 'warning' : 'success'" :loading="actionLoading === scope.row.id" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button><el-button link type="danger" :loading="actionLoading === scope.row.id" @click="remove(scope.row)">删除</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无批次" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="visible" :title="editingId ? '修改批次' : '新增批次'" width="500px"><el-form label-width="90px"><el-form-item label="物料" required><el-select v-model="form.material_id" filterable style="width: 100%" :disabled="Boolean(editingId)"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="批次号" required><el-input v-model="form.batch_no" /></el-form-item><el-form-item label="生产日期"><el-date-picker v-model="form.production_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="失效日期"><el-date-picker v-model="form.expiry_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="状态"><el-select v-model="form.status" style="width: 100%"><el-option label="启用" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item></el-form><template #footer><el-button @click="visible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template></el-dialog>
   </section>
 </template>

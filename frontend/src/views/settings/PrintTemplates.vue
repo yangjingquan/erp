@@ -2,8 +2,10 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { createPrintTemplate, listPrintTemplates, type PrintTemplate } from "../../api/config";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 const rows = ref<PrintTemplate[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
@@ -50,12 +52,13 @@ onMounted(load);
   <section>
     <el-page-header content="打印模板" />
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新增模板</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
-    <el-table v-loading="loading" :data="rows" border>
+    <el-table v-loading="loading" :data="pagedRows" border>
       <el-table-column prop="business_type" label="业务类型" />
       <el-table-column prop="name" label="模板名称" />
       <el-table-column prop="status" label="状态" />
       <template #empty><el-empty description="暂无打印模板" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="dialogVisible" title="新增打印模板" width="620px">
       <el-form label-width="100px">
         <el-form-item label="业务类型" required><el-select v-model="form.business_type" style="width: 100%"><el-option label="销售报价" value="sales_quote"/><el-option label="销售订单" value="sales_order"/><el-option label="采购订单" value="purchase_order"/><el-option label="采购入库" value="purchase_receipt"/><el-option label="生产工单" value="mfg_work_order"/></el-select></el-form-item>

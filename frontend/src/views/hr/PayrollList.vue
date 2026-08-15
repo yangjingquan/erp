@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useClientPagination } from "../../composables/useClientPagination";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approvePayroll, calculatePayroll, listPayroll, payPayroll } from "../../api/hr";
 import { localMonthString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const period = ref(localMonthString());
 const loading = ref(false);
 const saving = ref(false);
@@ -18,7 +20,7 @@ onMounted(load);
 </script>
 
 <template>
-  <section class="page-stack"><el-page-header content="薪资管理" /><el-space><el-date-picker v-model="period" type="month" value-format="YYYY-MM" placeholder="选择薪资期间" clearable style="width: 180px" /><el-button type="primary" :loading="saving" @click="calculate">计算薪资</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space><el-alert title="薪资必须按 YYYY-MM 期间计算，并按“已计算 → 已审批 → 已支付”顺序操作。" type="info" show-icon /><el-table v-loading="loading" :data="rows" stripe width="100%" fit><el-table-column prop="period" label="薪资期间" width="140" /><el-table-column prop="total_amount" label="应付总额" min-width="160" /><el-table-column prop="status" label="状态" width="120" /><el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'calculated'" link type="success" :loading="saving" @click="approve(scope.row)">审批</el-button><el-button v-if="scope.row.status === 'approved'" link type="primary" :loading="saving" @click="pay(scope.row)">支付</el-button></template></el-table-column><template #empty><el-empty description="暂无薪资批次" /></template></el-table></section>
+  <section class="page-stack"><el-page-header content="薪资管理" /><el-space><el-date-picker v-model="period" type="month" value-format="YYYY-MM" placeholder="选择薪资期间" clearable style="width: 180px" /><el-button type="primary" :loading="saving" @click="calculate">计算薪资</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space><el-alert title="薪资必须按 YYYY-MM 期间计算，并按“已计算 → 已审批 → 已支付”顺序操作。" type="info" show-icon /><el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit><el-table-column prop="period" label="薪资期间" width="140" /><el-table-column prop="total_amount" label="应付总额" min-width="160" /><el-table-column prop="status" label="状态" width="120" /><el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'calculated'" link type="success" :loading="saving" @click="approve(scope.row)">审批</el-button><el-button v-if="scope.row.status === 'approved'" link type="primary" :loading="saving" @click="pay(scope.row)">支付</el-button></template></el-table-column><template #empty><el-empty description="暂无薪资批次" /></template></el-table><ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" /></section>
 </template>
 
 <style scoped>.page-stack { display: flex; flex-direction: column; gap: 16px; }</style>

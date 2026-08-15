@@ -13,10 +13,12 @@ import {
   type PurchaseOrderPayload,
 } from "../../api/purchase";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { useClientPagination } from "../../composables/useClientPagination";
 import { formatLocalDateTime, localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -161,7 +163,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     <el-page-header content="采购订单" />
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
       <el-table-column label="操作" width="300"><template #default="scope">
         <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button><el-button link @click="copyToForm(scope.row)">复制填充</el-button>
@@ -172,6 +174,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
         <el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'receipt')">生成入库</el-button>
       </template></el-table-column>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="dialogVisible" :title="editingId ? '修改采购订单' : '新建采购订单'" width="560px">
       <el-form label-width="92px"><el-form-item label="供应商" required><el-select v-model="form.supplier_id" filterable clearable placeholder="请选择供应商" style="width: 100%"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="预计到货"><el-date-picker v-model="form.expected_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable placeholder="请选择物料" style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item label="含税单价" required><el-input-number v-model="form.items[0].unit_price" :min="0" :precision="2" /></el-form-item></el-form>
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>

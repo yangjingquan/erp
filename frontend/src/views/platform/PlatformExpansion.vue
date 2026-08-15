@@ -11,6 +11,7 @@ import {
   scanAiAlerts, transitionTaxInvoice, updateGroupMember,
 } from "../../api/phase2";
 import { useMasterOptions, type SelectOption } from "../../composables/useMasterOptions";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type PlatformTab = "group" | "compliance" | "low-code" | "metrics";
 type Row = Record<string, any>;
@@ -29,6 +30,13 @@ const alerts = ref<Row[]>([]);
 const users = ref<SelectOption[]>([]);
 const organizations = ref<SelectOption[]>([]);
 const { customers, suppliers, loadOptions } = useMasterOptions();
+const { pagedRows: memberRows, page: memberPage, pageSize: memberPageSize, total: memberTotal, updatePageSize: updateMemberPageSize } = useClientPagination(members);
+const { pagedRows: intercompanyRows, page: intercompanyPage, pageSize: intercompanyPageSize, total: intercompanyTotal, updatePageSize: updateIntercompanyPageSize } = useClientPagination(intercompany);
+const { pagedRows: taxCodeRows, page: taxCodePage, pageSize: taxCodePageSize, total: taxCodeTotal, updatePageSize: updateTaxCodePageSize } = useClientPagination(taxCodes);
+const { pagedRows: invoiceRows, page: invoicePage, pageSize: invoicePageSize, total: invoiceTotal, updatePageSize: updateInvoicePageSize } = useClientPagination(invoices);
+const { pagedRows: lowCodeRows, page: lowCodePage, pageSize: lowCodePageSize, total: lowCodeTotal, updatePageSize: updateLowCodePageSize } = useClientPagination(lowCode);
+const { pagedRows: metricRows, page: metricPage, pageSize: metricPageSize, total: metricTotal, updatePageSize: updateMetricPageSize } = useClientPagination(metrics);
+const { pagedRows: alertRows, page: alertPage, pageSize: alertPageSize, total: alertTotal, updatePageSize: updateAlertPageSize } = useClientPagination(alerts);
 
 const groupForm = reactive({ from_org_id: "", to_org_id: "", source_type: "manual", source_id: "", amount: 0, currency: "CNY" });
 const memberForm = reactive({ user_id: "", org_id: "", membership_type: "member", status: "active" });
@@ -234,13 +242,13 @@ onMounted(load);
       <el-card shadow="never">
         <template #header><div class="card-header"><span>组织成员与权限</span><el-button type="primary" @click="openMemberEditor()">添加成员</el-button></div></template>
         <el-empty v-if="!loading && !members.length" description="暂无组织成员" />
-        <el-table v-else :data="members" stripe>
+        <el-table v-else :data="memberRows" stripe>
           <el-table-column prop="user_name" label="成员" />
           <el-table-column label="组织"><template #default="{ row }">{{ row.org_name || row.org_id }}</template></el-table-column>
           <el-table-column label="成员类型"><template #default="{ row }">{{ membershipTypeLabels[row.membership_type] || row.membership_type }}</template></el-table-column>
           <el-table-column label="状态"><template #default="{ row }">{{ statusLabels[row.status] || row.status }}</template></el-table-column>
           <el-table-column label="操作" width="150"><template #default="{ row }"><el-button link type="primary" @click="openMemberEditor(row)">编辑</el-button><el-button link type="danger" @click="removeMember(row)">删除</el-button></template></el-table-column>
-        </el-table>
+        </el-table><ClientPagination v-model:page="memberPage" v-model:page-size="memberPageSize" :total="memberTotal" @update:page-size="updateMemberPageSize" />
       </el-card>
       <el-card shadow="never">
         <template #header>内部交易登记</template>
@@ -252,7 +260,7 @@ onMounted(load);
           <el-form-item class="form-actions"><el-button type="primary" @click="saveGroup">登记交易</el-button></el-form-item>
         </el-form>
         <el-empty v-if="!loading && !intercompany.length" description="暂无内部交易" />
-        <el-table v-else :data="intercompany" stripe><el-table-column prop="transaction_no" label="交易号" /><el-table-column prop="from_org_id" label="转出组织" /><el-table-column prop="to_org_id" label="转入组织" /><el-table-column prop="amount" label="金额" /><el-table-column prop="currency" label="币种" /><el-table-column prop="status" label="状态" /></el-table>
+        <el-table v-else :data="intercompanyRows" stripe><el-table-column prop="transaction_no" label="交易号" /><el-table-column prop="from_org_id" label="转出组织" /><el-table-column prop="to_org_id" label="转入组织" /><el-table-column prop="amount" label="金额" /><el-table-column prop="currency" label="币种" /><el-table-column prop="status" label="状态" /></el-table><ClientPagination v-model:page="intercompanyPage" v-model:page-size="intercompanyPageSize" :total="intercompanyTotal" @update:page-size="updateIntercompanyPageSize" />
       </el-card>
     </template>
 
@@ -262,13 +270,13 @@ onMounted(load);
         <template #header>税码主数据</template>
         <el-form :model="taxCodeForm" inline><el-form-item label="税码"><el-input v-model="taxCodeForm.code" placeholder="VAT-13" /></el-form-item><el-form-item label="名称"><el-input v-model="taxCodeForm.name" /></el-form-item><el-form-item label="税率"><el-input-number v-model="taxCodeForm.rate" :min="0" :max="100" :precision="2" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveTaxCode">保存税码</el-button></el-form-item></el-form>
         <el-empty v-if="!loading && !taxCodes.length" description="暂无税码" />
-        <el-table v-else :data="taxCodes" stripe><el-table-column prop="code" label="税码" /><el-table-column prop="name" label="名称" /><el-table-column prop="rate" label="税率" /><el-table-column prop="status" label="状态" /></el-table>
+        <el-table v-else :data="taxCodeRows" stripe><el-table-column prop="code" label="税码" /><el-table-column prop="name" label="名称" /><el-table-column prop="rate" label="税率" /><el-table-column prop="status" label="状态" /></el-table><ClientPagination v-model:page="taxCodePage" v-model:page-size="taxCodePageSize" :total="taxCodeTotal" @update:page-size="updateTaxCodePageSize" />
       </el-card>
       <el-card shadow="never">
         <template #header>发票池</template>
         <el-form :model="invoiceForm" inline><el-form-item label="类型"><el-select v-model="invoiceForm.invoice_type"><el-option label="销项" value="output" /><el-option label="进项" value="input" /><el-option label="红字" value="credit" /></el-select></el-form-item><el-form-item label="来源类型"><el-input v-model="invoiceForm.source_type" /></el-form-item><el-form-item label="来源单据"><el-input v-model="invoiceForm.source_id" /></el-form-item><el-form-item label="往来方"><el-select v-model="invoiceForm.party_id" filterable placeholder="请选择"><el-option v-for="item in partyOptions" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="金额"><el-input-number v-model="invoiceForm.amount" :min="0.01" /></el-form-item><el-form-item label="税额"><el-input-number v-model="invoiceForm.tax_amount" :min="0" /></el-form-item><el-form-item label="税码"><el-input v-model="invoiceForm.tax_code" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveInvoice">加入发票池</el-button></el-form-item></el-form>
         <el-empty v-if="!loading && !invoices.length" description="暂无发票" />
-        <el-table v-else :data="invoices" stripe><el-table-column prop="invoice_no" label="发票号" /><el-table-column label="类型"><template #default="{ row }">{{ invoiceTypeLabels[row.invoice_type] || row.invoice_type }}</template></el-table-column><el-table-column prop="amount" label="金额" /><el-table-column prop="tax_amount" label="税额" /><el-table-column label="状态"><template #default="{ row }">{{ invoiceStatusLabels[row.status] || row.status }}</template></el-table-column><el-table-column label="操作" min-width="180"><template #default="{ row }"><el-button v-for="status in invoiceTransitions[row.status] || []" :key="status" link type="primary" @click="transitionInvoice(row, status)">{{ status === "submitted" ? "提交" : status === "issued" ? "开具" : status === "red_issued" ? "红冲" : status === "rejected" ? "驳回" : "取消" }}</el-button></template></el-table-column></el-table>
+        <el-table v-else :data="invoiceRows" stripe><el-table-column prop="invoice_no" label="发票号" /><el-table-column label="类型"><template #default="{ row }">{{ invoiceTypeLabels[row.invoice_type] || row.invoice_type }}</template></el-table-column><el-table-column prop="amount" label="金额" /><el-table-column prop="tax_amount" label="税额" /><el-table-column label="状态"><template #default="{ row }">{{ invoiceStatusLabels[row.status] || row.status }}</template></el-table-column><el-table-column label="操作" min-width="180"><template #default="{ row }"><el-button v-for="status in invoiceTransitions[row.status] || []" :key="status" link type="primary" @click="transitionInvoice(row, status)">{{ status === "submitted" ? "提交" : status === "issued" ? "开具" : status === "red_issued" ? "红冲" : status === "rejected" ? "驳回" : "取消" }}</el-button></template></el-table-column></el-table><ClientPagination v-model:page="invoicePage" v-model:page-size="invoicePageSize" :total="invoiceTotal" @update:page-size="updateInvoicePageSize" />
       </el-card>
     </template>
 
@@ -277,12 +285,12 @@ onMounted(load);
         <template #header>对象与工作流配置</template>
         <el-form :model="lowForm" label-width="100px" class="form-grid"><el-form-item label="对象编码"><el-input v-model="lowForm.object_key" /></el-form-item><el-form-item label="对象名称"><el-input v-model="lowForm.name" /></el-form-item><el-form-item label="字段 JSON"><el-input v-model="lowForm.schema" type="textarea" :rows="5" /></el-form-item><el-form-item label="工作流 JSON"><el-input v-model="lowForm.workflow" type="textarea" :rows="5" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveLowCode">保存对象</el-button></el-form-item></el-form>
       </el-card>
-      <el-card shadow="never"><template #header>对象发布</template><el-empty v-if="!loading && !lowCode.length" description="暂无低代码对象" /><el-table v-else :data="lowCode" stripe><el-table-column prop="object_key" label="对象" /><el-table-column prop="name" label="名称" /><el-table-column prop="status" label="状态" /><el-table-column prop="version" label="版本" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status !== 'published'" link type="primary" @click="publish(row)">发布</el-button><span v-else class="muted">已发布</span></template></el-table-column></el-table></el-card>
+      <el-card shadow="never"><template #header>对象发布</template><el-empty v-if="!loading && !lowCode.length" description="暂无低代码对象" /><el-table v-else :data="lowCodeRows" stripe><el-table-column prop="object_key" label="对象" /><el-table-column prop="name" label="名称" /><el-table-column prop="status" label="状态" /><el-table-column prop="version" label="版本" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status !== 'published'" link type="primary" @click="publish(row)">发布</el-button><span v-else class="muted">已发布</span></template></el-table-column></el-table><ClientPagination v-model:page="lowCodePage" v-model:page-size="lowCodePageSize" :total="lowCodeTotal" @update:page-size="updateLowCodePageSize" /></el-card>
     </template>
 
     <template v-else>
-      <el-card shadow="never"><template #header>指标口径</template><el-form :model="metricForm" inline><el-form-item label="指标编码"><el-input v-model="metricForm.metric_key" /></el-form-item><el-form-item label="名称"><el-input v-model="metricForm.name" /></el-form-item><el-form-item label="公式"><el-input v-model="metricForm.formula" /></el-form-item><el-form-item label="目标"><el-input-number v-model="metricForm.target" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveMetric">保存口径</el-button></el-form-item></el-form><el-empty v-if="!loading && !metrics.length" description="暂无指标口径" /><el-table v-else :data="metrics" stripe><el-table-column prop="metric_key" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="formula" label="公式" /><el-table-column prop="target" label="目标" /><el-table-column label="操作"><template #default="{ row }"><el-button link type="primary" @click="explain(row)">查看证据</el-button></template></el-table-column></el-table></el-card>
-      <el-card shadow="never"><template #header>异常助手</template><el-empty v-if="!loading && !alerts.length" description="暂无异常" /><el-table v-else :data="alerts" stripe><el-table-column prop="title" label="异常" /><el-table-column prop="severity" label="严重度" /><el-table-column prop="recommended_action" label="建议动作" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status === 'open'" link type="success" @click="resolve(row)">标记已处理</el-button></template></el-table-column></el-table></el-card>
+      <el-card shadow="never"><template #header>指标口径</template><el-form :model="metricForm" inline><el-form-item label="指标编码"><el-input v-model="metricForm.metric_key" /></el-form-item><el-form-item label="名称"><el-input v-model="metricForm.name" /></el-form-item><el-form-item label="公式"><el-input v-model="metricForm.formula" /></el-form-item><el-form-item label="目标"><el-input-number v-model="metricForm.target" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveMetric">保存口径</el-button></el-form-item></el-form><el-empty v-if="!loading && !metrics.length" description="暂无指标口径" /><el-table v-else :data="metricRows" stripe><el-table-column prop="metric_key" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="formula" label="公式" /><el-table-column prop="target" label="目标" /><el-table-column label="操作"><template #default="{ row }"><el-button link type="primary" @click="explain(row)">查看证据</el-button></template></el-table-column></el-table><ClientPagination v-model:page="metricPage" v-model:page-size="metricPageSize" :total="metricTotal" @update:page-size="updateMetricPageSize" /></el-card>
+      <el-card shadow="never"><template #header>异常助手</template><el-empty v-if="!loading && !alerts.length" description="暂无异常" /><el-table v-else :data="alertRows" stripe><el-table-column prop="title" label="异常" /><el-table-column prop="severity" label="严重度" /><el-table-column prop="recommended_action" label="建议动作" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status === 'open'" link type="success" @click="resolve(row)">标记已处理</el-button></template></el-table-column></el-table><ClientPagination v-model:page="alertPage" v-model:page-size="alertPageSize" :total="alertTotal" @update:page-size="updateAlertPageSize" /></el-card>
     </template>
 
     <el-dialog v-model="memberDialog" :title="memberFormTitle" width="420px"><el-form :model="memberForm" label-width="90px" class="member-dialog-form"><el-form-item label="用户"><el-select v-model="memberForm.user_id" filterable placeholder="请选择" :disabled="Boolean(editingMemberId)"><el-option v-for="item in users" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="组织"><el-select v-model="memberForm.org_id" filterable placeholder="请选择"><el-option v-for="item in organizationOptions" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="成员类型"><el-select v-model="memberForm.membership_type"><el-option label="普通成员" value="member" /><el-option label="管理员" value="admin" /><el-option label="只读成员" value="viewer" /></el-select></el-form-item><el-form-item v-if="editingMemberId" label="状态"><el-select v-model="memberForm.status"><el-option label="正常" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item></el-form><template #footer><el-button @click="memberDialog = false">取消</el-button><el-button type="primary" @click="saveMember">保存</el-button></template></el-dialog>

@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createAllocation, listAllocations, postAllocation } from "../../api/cost";
 import { localDateString } from "../../utils/time";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type Item = { project_id: string; quantity: number; amount: number; hours: number };
 type Row = Record<string, any>;
@@ -10,6 +11,7 @@ const rows = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const dialogVisible = ref(false);
 const form = reactive({ allocation_date: localDateString(), amount: 0, basis: "quantity", source_type: "expense", source_id: "", idempotency_key: "", items: [{ project_id: "", quantity: 1, amount: 0, hours: 0 }] as Item[] });
 
@@ -41,7 +43,7 @@ onMounted(load);
     <el-page-header content="成本分摊" />
     <el-space><el-button type="primary" @click="openCreate">新建分摊</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert title="分摊保存前必须填写项目和对应分摊基数，避免提交空明细导致后端拒绝。" type="info" show-icon />
-    <el-table v-loading="loading" :data="rows" stripe>
+    <el-table v-loading="loading" :data="pagedRows" stripe>
       <el-table-column prop="allocation_date" label="分摊日期" min-width="130" />
       <el-table-column prop="period" label="期间" width="100" />
       <el-table-column prop="amount" label="分摊金额" width="130" />
@@ -50,6 +52,7 @@ onMounted(load);
       <el-table-column label="操作" width="120"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="post(scope.row)">过账</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无成本分摊记录" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="dialogVisible" title="新建成本分摊" width="760px">
       <el-form label-width="96px">
         <el-form-item label="分摊日期" required><el-date-picker v-model="form.allocation_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>

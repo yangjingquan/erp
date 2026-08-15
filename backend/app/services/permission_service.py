@@ -8,7 +8,8 @@ from app.models.system import SysMenu, SysPermission, SysRole
 
 
 ROOT_CATALOG = [
-    ("dashboard:view", "经营看板", "/dashboard", 1),
+    ("dashboard:view", "经营分析", "/dashboard", 1),
+    ("operations:view", "运营协同", "/operations", 5),
     ("master:view", "基础资料", "/master-data", 10),
     ("sales:view", "销售管理", "/sales", 20),
     ("purchase:view", "采购管理", "/purchase", 30),
@@ -19,7 +20,7 @@ ROOT_CATALOG = [
     ("cost:view", "成本管理", "/cost", 45),
     ("quality:view", "质量管理", "/quality", 55),
     ("hr:view", "人事管理", "/hr", 65),
-    ("operations:view", "运营协同", "/operations", 70),
+    ("asset:view", "资产与服务", "/eam", 75),
     ("system:view", "系统运维", "/system", 90),
     ("config:view", "系统配置", "/settings", 95),
 ]
@@ -45,6 +46,8 @@ PAGE_CATALOG = [
     ("finance:view", "应付账款", "/finance/payables", 2),
     ("finance:view", "费用报销", "/finance/expenses", 3),
     ("finance:view", "会计凭证", "/finance/vouchers", 4),
+    ("finance:view", "总账基础", "/finance/foundation", 5),
+    ("finance:view", "多币种与汇率", "/finance/currencies", 6),
     ("crm:view", "线索管理", "/crm/leads", 1),
     ("crm:view", "商机管理", "/crm/opportunities", 2),
     ("inventory:view", "移动扫码", "/inventory/scan", 5),
@@ -52,6 +55,7 @@ PAGE_CATALOG = [
     ("inventory:view", "批次管理", "/inventory/batches", 7),
     ("inventory:view", "库存控制中心", "/inventory/control-center", 8),
     ("inventory:view", "WMS 作业中心", "/inventory/wms-tasks", 8),
+    ("operations:view", "业务单据中心", "/documents", 2),
     ("system:view", "操作日志", "/system/operation-logs", 1),
     ("system:view", "用户管理", "/system/users", 2),
     ("system:view", "权限设置", "/system/admin", 3),
@@ -61,9 +65,10 @@ PAGE_CATALOG = [
     ("config:view", "打印模板", "/settings/print-templates", 3),
     ("production:view", "BOM", "/production/boms", 1),
     ("production:view", "MRP", "/production/mrp", 2),
-    ("production:view", "生产工单", "/production/work-orders", 3),
-    ("production:view", "工艺与产能", "/production/resources", 4),
-    ("production:view", "生产执行控制台", "/production/execution", 5),
+    ("production:view", "生产计划", "/production/planning", 3),
+    ("production:view", "生产工单", "/production/work-orders", 4),
+    ("production:view", "工艺与产能", "/production/resources", 5),
+    ("production:view", "生产执行控制台", "/production/execution", 6),
     ("finance:view", "财务控制中心", "/finance/controls", 8),
     ("cost:view", "成本分摊", "/cost/allocations", 1),
     ("cost:view", "期间结账", "/cost/period-close", 2),
@@ -71,19 +76,22 @@ PAGE_CATALOG = [
     ("quality:view", "不合格与 CAPA", "/quality/nonconformances", 2),
     ("quality:view", "质量分析与索赔", "/quality/analytics", 3),
     ("hr:view", "人事员工档案", "/hr/employees", 1),
-    ("hr:view", "薪资核算", "/hr/payroll", 2),
-    ("hr:view", "人事全生命周期", "/hr/people-ops", 3),
+    ("hr:view", "人事全生命周期", "/hr/people-ops", 2),
+    ("hr:view", "请假管理", "/hr/leave", 3),
+    ("hr:view", "薪资核算", "/hr/payroll", 4),
     ("operations:view", "运输、OCR 与预算预测", "/operations/advanced", 1),
     ("config:view", "API 客户端", "/settings/api-clients", 4),
-    ("production:view", "PLM 工程变更", "/plm/changes", 6),
+    ("production:view", "PLM 工程变更", "/plm/changes", 7),
     ("purchase:view", "供应商协同", "/srm/collaboration", 4),
     ("cost:view", "项目与成本", "/projects/cost", 3),
-    ("production:view", "资产与维修", "/eam/service", 7),
+    ("asset:view", "资产与售后服务", "/eam/service", 1),
     ("crm:view", "客户 360", "/crm/customer-360", 3),
+    ("dashboard:view", "BI 报表中心", "/analytics/reports", 2),
     ("config:view", "集团与内部交易", "/platform/group", 6),
     ("config:view", "税务与电子发票", "/platform/compliance", 7),
     ("config:view", "低代码对象", "/platform/low-code", 8),
-    ("dashboard:view", "指标与异常助手", "/platform/metrics", 9),
+    ("dashboard:view", "指标与异常助手", "/platform/metrics", 3),
+    ("config:view", "事件订阅", "/settings/platform-events", 5),
 ]
 
 LEGACY_FUNCTIONS = {
@@ -105,6 +113,7 @@ LEGACY_FUNCTIONS = {
     "quality:view": [("quality:view", "查看质量检验"), ("quality:manage", "质量业务操作")],
     "hr:view": [("hr:view", "查看人事"), ("hr:salary:view", "查看薪资"), ("hr:salary:manage", "薪资业务操作"), ("hr:employee:manage", "员工信息管理")],
     "operations:view": [("operations:manage", "运营业务操作")],
+    "asset:view": [("asset:view", "查看资产与服务"), ("asset:manage", "资产与服务业务操作")],
     "config:view": [("config:manage", "系统配置操作"), ("workflow:manage", "审批流程配置"), ("workflow:approve", "审批任务处理")],
 }
 
@@ -137,6 +146,11 @@ def ensure_permission_catalog(db: Session) -> None:
 
     for parent_code, name, path, sort_order in PAGE_CATALOG:
         code = _page_code(path)
+        # Older migrations used module-prefixed codes for a few pages.  Keep
+        # one canonical permission node per route so the admin dialog never
+        # shows duplicate pages after a menu regrouping.
+        for legacy in db.scalars(select(SysMenu).where(SysMenu.path == path, SysMenu.code != code)).all():
+            legacy.status = "inactive"
         row = db.scalar(select(SysMenu).where(SysMenu.code == code))
         if row is None:
             row = SysMenu(
@@ -208,6 +222,13 @@ def ensure_permission_catalog(db: Session) -> None:
                 name=permission_name, permission_type="button",
             ))
             known_permission_codes.add(permission_code)
+    # Retire the old catch-all group after its pages have been reassigned to
+    # their business owners.  Keeping the row inactive avoids stale entries
+    # in the permissions dialog on upgraded local databases.
+    active_root_codes = {code for code, *_ in ROOT_CATALOG}
+    for row in db.scalars(select(SysMenu)).all():
+        if row.parent_id is None and row.code not in active_root_codes and row.code not in {"system:view", "config:view"}:
+            row.status = "inactive"
     db.flush()
 
 

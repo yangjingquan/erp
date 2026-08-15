@@ -3,8 +3,10 @@ import { onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createLocation, deleteLocation, listLocations, updateLocation } from "../../api/inventory-advanced";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 const rows = ref<any[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -122,7 +124,7 @@ onMounted(async () => {
       <el-button type="primary" @click="openCreate">新增库位</el-button>
       <el-button :loading="loading" @click="load">刷新</el-button>
     </el-space>
-    <el-table v-loading="loading" :data="rows" stripe :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+    <el-table v-loading="loading" :data="pagedRows" stripe :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="code" label="库位编码" min-width="180" />
       <el-table-column prop="name" label="库位名称" min-width="220" />
       <el-table-column label="库区" min-width="180"><template #default="scope">{{ warehouseName(scope.row.warehouse_id) }}</template></el-table-column>
@@ -130,6 +132,7 @@ onMounted(async () => {
       <el-table-column label="操作" width="240"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button link :type="scope.row.status === 'active' ? 'warning' : 'success'" :loading="actionLoading === scope.row.id" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button><el-button link type="danger" :loading="actionLoading === scope.row.id" @click="remove(scope.row)">删除</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无库位" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="visible" :title="editingId ? '修改库位' : '新增库位'" width="460px">
       <el-form label-width="90px">
         <el-form-item label="仓库" required>

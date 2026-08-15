@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { createCurrency, listCurrencies, listExchangeRates, upsertExchangeRate } from "../../api/finance";
 import { localDateString } from "../../utils/time";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const currencies = ref<Row[]>([]);
@@ -12,6 +13,8 @@ const saving = ref(false);
 const dialog = ref<"currency" | "rate" | "">("");
 const currencyForm = reactive({ code: "", name: "", symbol: "", decimal_places: 2, is_base: false });
 const rateForm = reactive({ base_currency: "", quote_currency: "", rate_date: localDateString(), rate: 1, source: "manual" });
+const { pagedRows: currencyRows, page: currencyPage, pageSize: currencyPageSize, total: currencyTotal, updatePageSize: updateCurrencyPageSize } = useClientPagination(currencies);
+const { pagedRows: rateRows, page: ratePage, pageSize: ratePageSize, total: rateTotal, updatePageSize: updateRatePageSize } = useClientPagination(rates);
 
 function unwrap(response: any) {
   if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "接口返回失败");
@@ -44,8 +47,8 @@ onMounted(load);
     <header class="page-heading"><div><small>MULTI-CURRENCY</small><h1>多币种与汇率</h1><p>维护组织币种档案、本位币和按日汇率，供财务换算使用。</p></div><el-button :loading="loading" @click="load">刷新</el-button></header>
     <el-card v-loading="loading" shadow="never">
       <el-tabs>
-        <el-tab-pane label="币种档案"><div class="toolbar"><el-button type="primary" @click="openCurrency">新增币种</el-button></div><el-table :data="currencies" stripe><el-table-column prop="code" label="编码" width="110" /><el-table-column prop="name" label="名称" /><el-table-column prop="symbol" label="符号" width="90" /><el-table-column prop="decimal_places" label="小数位" width="90" /><el-table-column label="本位币" width="90"><template #default="scope">{{ scope.row.is_base ? '是' : '否' }}</template></el-table-column><el-table-column prop="status" label="状态" width="100" /><template #empty><el-empty description="暂无币种" /></template></el-table></el-tab-pane>
-        <el-tab-pane label="汇率"><div class="toolbar"><el-button type="primary" :disabled="currencies.length < 2" @click="openRate">新增汇率</el-button></div><el-table :data="rates" stripe><el-table-column prop="rate_date" label="日期" width="130" /><el-table-column label="币种对" width="180"><template #default="scope">{{ scope.row.base_currency }} / {{ scope.row.quote_currency }}</template></el-table-column><el-table-column prop="rate" label="汇率" /><el-table-column prop="source" label="来源" /><template #empty><el-empty description="暂无汇率" /></template></el-table></el-tab-pane>
+        <el-tab-pane label="币种档案"><div class="toolbar"><el-button type="primary" @click="openCurrency">新增币种</el-button></div><el-table :data="currencyRows" stripe><el-table-column prop="code" label="编码" width="110" /><el-table-column prop="name" label="名称" /><el-table-column prop="symbol" label="符号" width="90" /><el-table-column prop="decimal_places" label="小数位" width="90" /><el-table-column label="本位币" width="90"><template #default="scope">{{ scope.row.is_base ? '是' : '否' }}</template></el-table-column><el-table-column prop="status" label="状态" width="100" /><template #empty><el-empty description="暂无币种" /></template></el-table><ClientPagination v-model:page="currencyPage" v-model:page-size="currencyPageSize" :total="currencyTotal" @update:page-size="updateCurrencyPageSize" /></el-tab-pane>
+        <el-tab-pane label="汇率"><div class="toolbar"><el-button type="primary" :disabled="currencies.length < 2" @click="openRate">新增汇率</el-button></div><el-table :data="rateRows" stripe><el-table-column prop="rate_date" label="日期" width="130" /><el-table-column label="币种对" width="180"><template #default="scope">{{ scope.row.base_currency }} / {{ scope.row.quote_currency }}</template></el-table-column><el-table-column prop="rate" label="汇率" /><el-table-column prop="source" label="来源" /><template #empty><el-empty description="暂无汇率" /></template></el-table><ClientPagination v-model:page="ratePage" v-model:page-size="ratePageSize" :total="rateTotal" @update:page-size="updateRatePageSize" /></el-tab-pane>
       </el-tabs>
     </el-card>
     <el-dialog :model-value="Boolean(dialog)" :title="dialog === 'currency' ? '新增币种' : '新增汇率'" width="520px" @update:model-value="(visible: boolean) => { if (!visible) dialog = '' }">

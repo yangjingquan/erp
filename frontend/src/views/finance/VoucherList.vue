@@ -3,10 +3,12 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createManualVoucher, listAccountingDimensions, listFinanceAccounts, listVouchers, postVoucher, reverseVoucher } from "../../api/finance";
 import DocumentWorkbench from "../../components/DocumentWorkbench.vue";
+import { useClientPagination } from "../../composables/useClientPagination";
 import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const actionLoading = ref<string | null>(null);
 const errorMessage = ref("");
@@ -63,7 +65,8 @@ onMounted(load);
     <el-page-header content="会计凭证" />
     <el-space class="toolbar"><el-button type="primary" @click="openManualVoucher">新增手工凭证</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="rows" stripe width="100%" fit><el-table-column label="凭证号"><template #default="scope"><el-button link type="primary" @click="openDetail(scope.row)">{{ scope.row.voucher_no }}</el-button></template></el-table-column><el-table-column prop="voucher_date" label="日期" /><el-table-column prop="total_debit" label="借方合计" /><el-table-column prop="total_credit" label="贷方合计" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="success" :loading="actionLoading === scope.row.id" @click="changeStatus(scope.row, 'post')">记账</el-button><el-button v-if="scope.row.status === 'posted'" link type="danger" :loading="actionLoading === scope.row.id" @click="changeStatus(scope.row, 'reverse')">冲销</el-button><el-button link @click="openDetail(scope.row)">详情</el-button></template></el-table-column></el-table>
+    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit><el-table-column label="凭证号"><template #default="scope"><el-button link type="primary" @click="openDetail(scope.row)">{{ scope.row.voucher_no }}</el-button></template></el-table-column><el-table-column prop="voucher_date" label="日期" /><el-table-column prop="total_debit" label="借方合计" /><el-table-column prop="total_credit" label="贷方合计" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="220"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="success" :loading="actionLoading === scope.row.id" @click="changeStatus(scope.row, 'post')">记账</el-button><el-button v-if="scope.row.status === 'posted'" link type="danger" :loading="actionLoading === scope.row.id" @click="changeStatus(scope.row, 'reverse')">冲销</el-button><el-button link @click="openDetail(scope.row)">详情</el-button></template></el-table-column></el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <DocumentWorkbench v-if="selected" v-model:visible="detailVisible" business-type="fin_voucher" :business-id="String(selected.id)" @changed="load" />
     <el-dialog v-model="manualVisible" title="新增手工凭证" width="1120px" destroy-on-close>
       <el-form label-width="90px"><el-form-item label="凭证日期" required><el-date-picker v-model="voucherForm.voucher_date" type="date" value-format="YYYY-MM-DD" /></el-form-item></el-form>

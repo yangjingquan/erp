@@ -2,10 +2,12 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { createProject, createProjectEntry, createProjectMilestone, createWbs, getProjectDashboard, listProjectEntries, listProjectMilestones, listProjectWbs, listProjects } from "../../api/phase2";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]); const entries = ref<Row[]>([]); const wbs = ref<Row[]>([]); const milestones = ref<Row[]>([]); const dashboard = ref<Row | null>(null);
 const loading = ref(false); const visible = ref(false); const entryVisible = ref(false); const selected = ref<Row | null>(null);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const form = reactive({ project_code: "", name: "", customer_id: "", budget_amount: 0, start_date: "", end_date: "" });
 const entry = reactive({ project_id: "", wbs_id: "", entry_date: "", category: "expense", source_type: "manual", source_id: "", amount: 0 });
 const wbsForm = reactive({ code: "", name: "", planned_amount: 0 }); const milestoneForm = reactive({ name: "", due_date: "", wbs_id: "" });
@@ -23,7 +25,7 @@ onMounted(load);
 <template>
   <section class="page-stack">
     <header class="page-heading"><div><small>PROJECT / COST CONTROL</small><h1>项目与成本控制中心</h1><p>以项目/WBS 为主线归集采购、工时、库存、收入和费用，显示预算、实际和利润风险。</p></div><el-space><el-button type="primary" @click="openCreate">新建项目</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space></header>
-    <el-card shadow="never"><el-table v-loading="loading" :data="rows" stripe><el-table-column prop="project_code" label="项目编码" width="150" /><el-table-column prop="name" label="项目名称" min-width="220" /><el-table-column prop="budget_amount" label="预算" /><el-table-column prop="actual_amount" label="实际" /><el-table-column prop="variance" label="预算余额" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="120"><template #default="scope"><el-button link type="primary" @click="openEntries(scope.row)">成本驾驶舱</el-button></template></el-table-column><template #empty><el-empty description="暂无项目" /></template></el-table></el-card>
+    <el-card shadow="never"><el-table v-loading="loading" :data="pagedRows" stripe><el-table-column prop="project_code" label="项目编码" width="150" /><el-table-column prop="name" label="项目名称" min-width="220" /><el-table-column prop="budget_amount" label="预算" /><el-table-column prop="actual_amount" label="实际" /><el-table-column prop="variance" label="预算余额" /><el-table-column prop="status" label="状态" /><el-table-column label="操作" width="120"><template #default="scope"><el-button link type="primary" @click="openEntries(scope.row)">成本驾驶舱</el-button></template></el-table-column><template #empty><el-empty description="暂无项目" /></template></el-table><ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" /></el-card>
     <el-dialog v-model="visible" title="新建项目" width="560px"><el-form label-width="90px"><el-form-item label="项目编码" required><el-input v-model="form.project_code" /></el-form-item><el-form-item label="项目名称" required><el-input v-model="form.name" /></el-form-item><el-form-item label="客户 ID"><el-input v-model="form.customer_id" /></el-form-item><el-form-item label="预算金额"><el-input-number v-model="form.budget_amount" :min="0" :precision="2" /></el-form-item><el-form-item label="起止日期"><el-date-picker v-model="form.start_date" value-format="YYYY-MM-DD" /><el-date-picker v-model="form.end_date" value-format="YYYY-MM-DD" /></el-form-item></el-form><template #footer><el-button @click="visible = false">取消</el-button><el-button type="primary" @click="save">保存</el-button></template></el-dialog>
     <el-drawer v-model="entryVisible" title="项目成本驾驶舱" size="900px">
       <el-alert v-if="dashboard" :title="`收入 ${dashboard.revenue || 0} · 成本 ${dashboard.cost || 0} · 利润 ${dashboard.profit || 0} · 利润率 ${dashboard.margin || 0}%`" type="info" show-icon />

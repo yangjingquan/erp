@@ -3,10 +3,12 @@ import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approveBom, createBom, disableBom, getBomTree, importBoms, listBoms, submitBom, updateBom } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { useClientPagination } from "../../composables/useClientPagination";
 import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -42,7 +44,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
     <el-page-header content="BOM 管理" />
     <el-space><el-button type="primary" @click="openCreate">新建 BOM</el-button><el-button @click="importVisible = true">批量导入</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert title="支持多层组件、损耗率、虚拟件、BOM 树查看和草稿编辑；只有审核通过的 BOM 才能参与 MRP 和生产工单。" type="info" show-icon />
-    <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="bom_version" label="版本" width="100" />
       <el-table-column label="成品物料" min-width="180"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column>
       <el-table-column prop="effective_from" label="生效日期" width="130" /><el-table-column label="失效日期" width="130"><template #default="scope">{{ scope.row.effective_to || "长期有效" }}</template></el-table-column>
@@ -51,6 +53,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
       <el-table-column label="操作" min-width="300"><template #default="scope"><el-button link type="primary" @click="openTree(scope.row)">查看树</el-button><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="edit(scope.row)">编辑</el-button><el-button link @click="copy(scope.row)">复制</el-button><el-button v-if="scope.row.status === 'draft'" link type="warning" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'submit')">提交</el-button><el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button><el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'disable')">停用</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无 BOM" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑 BOM' : '新建 BOM'" width="960px"><el-form label-width="100px"><el-form-item label="成品物料" required><el-select v-model="form.material_id" filterable clearable style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="BOM 版本" required><el-input v-model="form.bom_version" /></el-form-item><el-form-item label="生效日期" required><el-date-picker v-model="form.effective_from" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="失效日期"><el-date-picker v-model="form.effective_to" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-divider content-position="left">多层组件明细</el-divider><div class="bom-lines"><div v-for="(item, index) in form.items" :key="index" class="bom-line"><span class="line-no">{{ index + 1 }}</span><el-select v-model="item.material_id" filterable clearable placeholder="组件物料"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select><el-input-number v-model="item.quantity" :min="0.000001" :precision="6" controls-position="right" /><el-input-number v-model="item.scrap_rate" :min="0" :max="0.9999" :precision="4" controls-position="right" placeholder="损耗率" /><el-input v-model="item.issue_operation_id" placeholder="绑定工序 ID（可选）" /><el-checkbox v-model="item.is_phantom">虚拟件</el-checkbox><el-button link type="danger" :disabled="form.items.length === 1" @click="removeItem(index)">删除</el-button></div><el-button plain @click="addItem">+ 添加组件行</el-button></div></el-form><template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存 BOM</el-button></template></el-dialog>
     <el-dialog v-model="importVisible" title="批量导入 BOM" width="720px"><el-alert title="JSON 数组格式：[{ material_id, bom_version, effective_from, items: [{ material_id, quantity, scrap_rate, is_phantom }] }]" type="info" show-icon /><el-input v-model="importText" type="textarea" :rows="12" /><template #footer><el-button @click="importVisible = false">取消</el-button><el-button type="primary" @click="doImport">导入</el-button></template></el-dialog>
     <el-drawer v-model="treeVisible" title="BOM 多层结构" size="520px"><el-tree v-if="tree" :data="[tree]" node-key="id" default-expand-all><template #default="scope"><span>{{ materialLabel(scope.data.material_id) }} × {{ scope.data.quantity || 1 }}<small v-if="scope.data.scrap_rate">（损耗 {{ scope.data.scrap_rate }}）</small></span></template></el-tree><el-empty v-else description="暂无结构" /></el-drawer>

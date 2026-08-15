@@ -6,9 +6,11 @@ import { listAdmin } from "../../api/admin";
 import { changeEmployeePassword, createEmployee, listEmployees, updateEmployee } from "../../api/hr";
 import { useAuthStore } from "../../stores/auth";
 import { usePermissionStore } from "../../stores/permission";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const departments = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -61,7 +63,7 @@ onMounted(async () => {
     <el-page-header content="人事员工档案" />
     <el-card shadow="never">
       <div class="toolbar"><div><strong>员工信息</strong><span>维护员工资料与系统登录账号</span></div><div><el-button v-if="canManage()" type="primary" @click="openCreate">新增员工</el-button><el-button :loading="loading" @click="load">刷新</el-button></div></div>
-      <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+      <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
         <el-table-column prop="employee_no" label="工号" min-width="120" />
         <el-table-column prop="name" label="姓名" min-width="120" />
         <el-table-column label="部门" min-width="140"><template #default="scope">{{ departments.find((item) => item.id === scope.row.department_id)?.name || "-" }}</template></el-table-column>
@@ -70,6 +72,7 @@ onMounted(async () => {
         <el-table-column v-if="canManage()" label="操作" width="220"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">设置员工信息</el-button><el-button link type="warning" @click="openPassword(scope.row)">修改密码</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无员工" /></template>
       </el-table>
+      <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '设置员工信息' : '新增员工'" width="620px">

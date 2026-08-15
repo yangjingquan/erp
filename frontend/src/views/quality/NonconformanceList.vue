@@ -15,6 +15,7 @@ import {
   type QualityNonconformance,
 } from "../../api/quality";
 import { usePermissionStore } from "../../stores/permission";
+import { useClientPagination } from "../../composables/useClientPagination";
 import { localDateString } from "../../utils/time";
 
 interface UserOption {
@@ -32,6 +33,7 @@ interface AdminUserRow {
 const permissions = usePermissionStore();
 const canManage = computed(() => permissions.hasPermission("quality:manage"));
 const rows = ref<QualityNonconformance[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const users = ref<UserOption[]>([]);
 const loading = ref(false);
 const saving = ref(false);
@@ -223,7 +225,7 @@ onMounted(load);
     </div>
     <el-alert title="不合格检验会自动生成 NCR；必须同时完成纠正和预防措施并留存证据，才能关闭检验单。" type="info" show-icon />
 
-    <el-table v-loading="loading" :data="rows" row-key="id" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+    <el-table v-loading="loading" :data="pagedRows" row-key="id" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column type="expand" width="48">
         <template #default="scope">
           <div class="detail-grid">
@@ -254,6 +256,7 @@ onMounted(load);
       <el-table-column v-if="canManage" label="操作" width="230"><template #default="scope"><el-button v-if="scope.row.status !== 'closed'" link type="primary" @click="openInvestigation(scope.row)">调查</el-button><el-button v-if="scope.row.status === 'investigating'" link type="warning" @click="openAction(scope.row)">制定措施</el-button><el-button v-if="scope.row.status === 'investigating'" link type="success" @click="openClose(scope.row)">验证关闭</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无不合格记录" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
 
     <el-dialog v-model="investigationVisible" title="不合格调查" width="620px"><el-form label-width="100px"><el-form-item label="严重度" required><el-select v-model="investigationForm.severity" style="width: 100%"><el-option label="一般" value="minor" /><el-option label="重大" value="major" /><el-option label="严重" value="critical" /></el-select></el-form-item><el-form-item label="处置结论" required><el-select v-model="investigationForm.disposition" style="width: 100%"><el-option label="返工" value="rework" /><el-option label="让步接收" value="accept" /><el-option label="报废" value="scrap" /><el-option label="退回供应商" value="return_to_supplier" /></el-select></el-form-item><el-form-item label="责任人" required><el-select v-model="investigationForm.owner_id" filterable style="width: 100%"><el-option v-for="user in users" :key="user.value" v-bind="user" /></el-select></el-form-item><el-form-item label="整改期限" required><el-date-picker v-model="investigationForm.due_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="根因分析" required><el-input v-model="investigationForm.root_cause" type="textarea" :rows="4" maxlength="1000" show-word-limit /></el-form-item></el-form><template #footer><el-button @click="investigationVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveInvestigation">保存调查</el-button></template></el-dialog>
     <el-dialog v-model="actionVisible" title="新增 CAPA 措施" width="620px"><el-form label-width="100px"><el-form-item label="措施类型" required><el-radio-group v-model="actionForm.action_type"><el-radio-button value="corrective">纠正措施</el-radio-button><el-radio-button value="preventive">预防措施</el-radio-button></el-radio-group></el-form-item><el-form-item label="措施内容" required><el-input v-model="actionForm.description" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item><el-form-item label="责任人" required><el-select v-model="actionForm.owner_id" filterable style="width: 100%"><el-option v-for="user in users" :key="user.value" v-bind="user" /></el-select></el-form-item><el-form-item label="完成期限" required><el-date-picker v-model="actionForm.due_date" type="date" value-format="YYYY-MM-DD" /></el-form-item></el-form><template #footer><el-button @click="actionVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveAction">创建措施</el-button></template></el-dialog>

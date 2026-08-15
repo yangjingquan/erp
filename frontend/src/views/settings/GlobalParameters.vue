@@ -3,8 +3,10 @@ import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 
 import { listGlobalParameters, updateGlobalParameter, type GlobalParameter } from "../../api/config";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 const rows = ref<GlobalParameter[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
 const savingKey = ref("");
 const errorMessage = ref("");
@@ -69,7 +71,7 @@ onMounted(load);
       <el-button :loading="loading" @click="load">刷新</el-button>
     </el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''" />
-    <el-table v-loading="loading" :data="rows" border>
+    <el-table v-loading="loading" :data="pagedRows" border>
       <el-table-column prop="parameter_key" label="参数键" min-width="220" />
       <el-table-column label="参数名称" min-width="220">
         <template #default="scope">{{ scope.row.description || scope.row.parameter_key }}</template>
@@ -93,6 +95,7 @@ onMounted(load);
       </el-table-column>
       <template #empty><el-empty description="暂无全局参数" /></template>
     </el-table>
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
   </section>
 </template>
 

@@ -17,6 +17,7 @@ import {
   updatePurchaseRequest,
 } from "../api/purchase";
 import { useMasterOptions, type SelectOption } from "../composables/useMasterOptions";
+import { useClientPagination } from "../composables/useClientPagination";
 import { formatLocalDateTime, localDateString } from "../utils/time";
 
 type Kind = "quote" | "purchase-request" | "sales-return" | "purchase-return";
@@ -42,6 +43,7 @@ const form = reactive<any>({
   items: [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }],
 });
 const { customers, suppliers, materials, warehouses, loadOptions } = useMasterOptions();
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 
 const purchaseStatusLabels: Record<string, string> = {
   draft: "草稿",
@@ -281,7 +283,7 @@ onMounted(async () => {
       <el-button :loading="loading" @click="load">刷新</el-button>
     </el-space>
 
-    <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="isPurchaseKind() ? { textAlign: 'center' } : undefined" :cell-style="isPurchaseKind() ? { textAlign: 'center' } : undefined">
+    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="doc_no" label="单据号" min-width="180" />
 
       <template v-if="isRequest()">
@@ -387,6 +389,8 @@ onMounted(async () => {
 
       <template #empty><el-empty description="暂无单据" /></template>
     </el-table>
+
+    <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
 
     <el-dialog v-model="dialogVisible" :title="editingId ? `修改${props.title}` : `新建${props.title}`" width="560px">
       <el-form label-width="100px">

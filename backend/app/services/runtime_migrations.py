@@ -27,6 +27,26 @@ def ensure_purchase_request_supplier_column(db: Session) -> None:
     db.commit()
 
 
+def ensure_leave_request_reason_column(db: Session) -> None:
+    """Bring legacy leave-request installations up to the current ORM contract."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    if "hr_leave_request" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("hr_leave_request")}
+    changed = False
+    if "reason" not in columns:
+        db.execute(text("ALTER TABLE hr_leave_request ADD COLUMN reason VARCHAR(500) NULL AFTER end_date"))
+        columns.add("reason")
+        changed = True
+    if "approved_by" not in columns:
+        db.execute(text("ALTER TABLE hr_leave_request ADD COLUMN approved_by VARCHAR(36) NULL AFTER status"))
+        changed = True
+    if changed:
+        db.commit()
+
+
 def ensure_api_client_schema(db: Session) -> None:
     """Bring the API client table up to the current ORM contract.
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { useClientPagination } from "../../composables/useClientPagination";
 
 import {
   changeAdminUserPassword,
@@ -13,6 +14,7 @@ import {
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const roles = ref<Row[]>([]);
 const departments = ref<Row[]>([]);
 const loading = ref(false);
@@ -97,7 +99,7 @@ onMounted(load);
     <el-page-header content="用户管理" />
     <el-card shadow="never">
       <div class="toolbar"><div><strong>登录用户</strong><span>维护可登录系统的用户账号、角色和数据范围</span></div><div><el-button type="primary" @click="openCreate">新增用户</el-button><el-button :loading="loading" @click="load">刷新</el-button></div></div>
-      <el-table v-loading="loading" :data="rows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
+      <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
         <el-table-column prop="username" label="登录账号" min-width="150" />
         <el-table-column prop="display_name" label="用户名称" min-width="130" />
         <el-table-column label="所属部门" min-width="140"><template #default="scope">{{ departmentName(scope.row.department_id) }}</template></el-table-column>
@@ -107,6 +109,7 @@ onMounted(load);
         <el-table-column label="操作" width="420" class-name="operation-column"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">设置用户信息</el-button><el-button link type="primary" @click="openRoles(scope.row)">配置角色</el-button><el-button link type="warning" @click="openPassword(scope.row)">修改密码</el-button><el-button link type="info" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无登录用户" /></template>
       </el-table>
+      <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     </el-card>
 
     <el-dialog v-model="dialogVisible" :title="editing ? '设置用户信息' : '新增用户'" width="620px">

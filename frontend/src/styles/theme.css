@@ -71,6 +71,10 @@ button, input, textarea, select { font: inherit; }
 .main-content > section, .main-content > .el-card, .main-content > .page-stack { width: 100%; min-width: 0; }
 .main-content .el-table, .main-content .el-table__inner-wrapper, .main-content .el-table__header-wrapper, .main-content .el-table__body-wrapper { width: 100%; }
 .el-table th.el-table__cell { font-weight: 600; }
+.el-table th.el-table__cell .cell { text-align: center; }
+.el-table td.el-table__cell .cell { text-align: center; }
+.preview-table th { text-align: center; }
+.preview-table td { text-align: center; }
 .el-table tr:hover > td.el-table__cell { background: var(--erp-panel-soft) !important; }
 .el-dialog { --el-dialog-bg-color: var(--erp-panel-bg); border-radius: 16px; }
 .el-dialog__title { color: var(--erp-text); font-weight: 700; }
