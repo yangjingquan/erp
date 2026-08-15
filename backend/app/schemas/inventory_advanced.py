@@ -92,6 +92,7 @@ class ScanProcessCreate(BaseModel):
     actual_quantity: Decimal | None = Field(default=None, ge=0)
     unit_cost: Decimal | None = Field(default=None, ge=0)
     items: list[ScanItem] = Field(default_factory=list, max_length=100)
+    serial_numbers: list[str] = Field(default_factory=list, max_length=500)
 
     @model_validator(mode="after")
     def validate_operation_payload(self):
@@ -114,6 +115,7 @@ class WarehouseTaskCreate(BaseModel):
     source_type: str | None = Field(default=None, max_length=64)
     source_id: str | None = Field(default=None, max_length=36)
     priority: int = Field(default=50, ge=1, le=100)
+    serial_tracking: bool = False
 
 
 class WarehouseTaskTransition(BaseModel):
@@ -121,6 +123,7 @@ class WarehouseTaskTransition(BaseModel):
     completed_quantity: Decimal | None = Field(default=None, ge=0)
     assigned_to: str | None = Field(default=None, max_length=36)
     exception_reason: str | None = Field(default=None, max_length=500)
+    serial_numbers: list[str] = Field(default_factory=list, max_length=500)
 
 
 class PickWaveCreate(BaseModel):

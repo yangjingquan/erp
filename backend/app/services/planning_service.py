@@ -253,6 +253,24 @@ def create_bom(db: Session, payload, context: UserContext) -> MfgBom:
     return bom
 
 
+def update_bom(db: Session, bom_id: str, payload, context: UserContext) -> MfgBom:
+    bom = _get_bom(db, bom_id, context)
+    if bom.status != "draft":
+        raise AppError("只有草稿 BOM 可以编辑", code=409)
+    _require_material(db, payload.material_id, context)
+    for item in payload.items:
+        _require_material(db, item.material_id, context)
+    _validate_source_reference(db, payload.source_type, payload.source_id, context)
+    bom.material_id = payload.material_id; bom.bom_version = payload.bom_version; bom.effective_from = payload.effective_from; bom.effective_to = payload.effective_to; bom.source_type = payload.source_type; bom.source_id = payload.source_id; bom.updated_by = context.id
+    bom.items.clear()
+    bom.items.extend(MfgBomItem(material_id=item.material_id, quantity=_quantity(item.quantity), line_no=index, scrap_rate=item.scrap_rate, issue_operation_id=item.issue_operation_id, is_phantom=item.is_phantom) for index, item in enumerate(payload.items, start=1))
+    _validate_bom(bom); db.flush(); return bom
+
+
+def bulk_create_boms(db: Session, payloads, context: UserContext) -> list[MfgBom]:
+    return [create_bom(db, payload, context) for payload in payloads]
+
+
 def submit_bom(db: Session, bom_id: str, context: UserContext) -> MfgBom:
     bom = _get_bom(db, bom_id, context)
     if bom.status != "draft":

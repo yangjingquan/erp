@@ -14,6 +14,8 @@ const scanToken = ref("");
 const tasks = ref<ScanTask[]>([]);
 const loading = ref(false);
 const processing = ref(false);
+const queued = ref<Array<{ token: string; payload: ScanProcessPayload }>>([]);
+const online = ref(globalThis.navigator?.onLine ?? true);
 const resultMessage = ref("");
 const form = reactive<ScanProcessPayload>({
   scan_id: createScanId(),
@@ -32,6 +34,11 @@ const { warehouses, materials, loadOptions } = useMasterOptions();
 function createScanId() {
   return globalThis.crypto?.randomUUID?.() ?? `scan-${Date.now()}`;
 }
+
+const QUEUE_KEY = "erp.scan.offline.queue";
+function loadQueue() { try { queued.value = JSON.parse(globalThis.localStorage?.getItem(QUEUE_KEY) || "[]"); } catch { queued.value = []; } }
+function persistQueue() { globalThis.localStorage?.setItem(QUEUE_KEY, JSON.stringify(queued.value)); }
+function isNetworkError(error: any) { return !error?.response || error?.code === "ERR_NETWORK"; }
 
 function tasksFrom(response: any): ScanTask[] {
   if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "扫描任务加载失败");
@@ -57,11 +64,24 @@ async function load() {
     if (tokenResponse?.data?.code !== 0) throw new Error(tokenResponse?.data?.msg || "扫描令牌创建失败");
     scanToken.value = tokenResponse?.data?.data?.token ?? tokenResponse?.data?.data ?? "";
     tasks.value = tasksFrom(tasksResponse);
+    await flushQueue();
   } catch (error) {
     ElMessage.error(messageFrom(error, "扫码任务加载失败，请检查接口服务后重试"));
   } finally {
     loading.value = false;
   }
+}
+
+async function flushQueue() {
+  if (!online.value || !scanToken.value || !queued.value.length) return;
+  const remaining: typeof queued.value = [];
+  for (const item of queued.value) {
+    try { const response = await processScan(scanToken.value, item.payload); if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "离线扫码重试失败"); }
+    catch { remaining.push({ token: scanToken.value, payload: item.payload }); }
+  }
+  queued.value = remaining;
+  persistQueue();
+  if (!remaining.length) ElMessage.success("离线扫码队列已全部重试");
 }
 
 async function submit() {
@@ -86,13 +106,14 @@ async function submit() {
     form.scan_id = createScanId();
     await load();
   } catch (error) {
-    ElMessage.error(messageFrom(error, "扫码处理失败，请检查扫描数据后重试"));
+    if (isNetworkError(error)) { queued.value.push({ token: scanToken.value, payload: { ...form } }); persistQueue(); ElMessage.warning("当前网络不可用，扫码已进入离线队列，恢复网络后自动重试"); form.scan_id = createScanId(); }
+    else ElMessage.error(messageFrom(error, "扫码处理失败，请检查扫描数据后重试"));
   } finally {
     processing.value = false;
   }
 }
 
-onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "materials"])]); });
+onMounted(async () => { loadQueue(); const onOnline = () => { online.value = true; void load(); }; const onOffline = () => { online.value = false; }; globalThis.addEventListener("online", onOnline); globalThis.addEventListener("offline", onOffline); await Promise.all([load(), loadOptions(["warehouses", "materials"])]); });
 </script>
 
 <template>
@@ -107,6 +128,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
       closable
       @close="resultMessage = ''"
     />
+    <el-alert v-if="queued.length || !online" class="result" :title="!online ? `离线模式：${queued.length} 条扫码待重试` : `${queued.length} 条扫码等待重试`" type="warning" show-icon />
 
     <el-card class="scan-card" shadow="never">
       <template #header>扫描信息</template>

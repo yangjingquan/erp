@@ -154,7 +154,7 @@ class PlanRunCreate(BaseModel):
     plan_from: date
     plan_to: date
     warehouse_id: str | None = Field(default=None, max_length=36)
-    demand_sources: list[str] = Field(default_factory=lambda: ["sales_order", "mps", "manual"])
+    demand_sources: list[str] = Field(default_factory=lambda: ["sales_order", "mps", "forecast", "project", "subcontract", "manual"])
 
 
 class DemandLineCreate(BaseModel):
@@ -168,3 +168,7 @@ class DemandLineCreate(BaseModel):
 
 class PlannedOrderCommand(BaseModel):
     planned_order_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class PlanExceptionResolve(BaseModel):
+    resolution: str = Field(min_length=2, max_length=500)

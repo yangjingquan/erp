@@ -19,6 +19,7 @@ export type ScanProcessPayload = {
   quantity?: number;
   actual_quantity?: number;
   items?: Array<{ material_id: string; quantity: number }>;
+  serial_numbers?: string[];
   unit_cost?: number;
 };
 
@@ -49,7 +50,7 @@ export function listTraceEvents(params?: { material_id?: string; batch_id?: stri
 
 export function listWarehouseTasks(params?: { status?: string; task_type?: string; warehouse_id?: string }) { return http.get("/inventory/advanced/tasks", { params }); }
 export function createWarehouseTask(payload: unknown) { return http.post("/inventory/advanced/tasks", payload); }
-export function generateWarehouseTasks(sourceType: string, sourceId: string) { return http.post("/inventory/advanced/tasks/from-document", null, { params: { source_type: sourceType, source_id: sourceId } }); }
+export function generateWarehouseTasks(sourceType: string, sourceId: string, serialTracking = false) { return http.post("/inventory/advanced/tasks/from-document", null, { params: { source_type: sourceType, source_id: sourceId, serial_tracking: serialTracking } }); }
 export function transitionWarehouseTask(id: string, payload: unknown) { return http.post(`/inventory/advanced/tasks/${id}/transition`, payload); }
 export function listPickWaves(status?: string) { return http.get("/inventory/advanced/waves", { params: status ? { status } : undefined }); }
 export function createPickWave(payload: unknown) { return http.post("/inventory/advanced/waves", payload); }

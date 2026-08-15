@@ -293,6 +293,8 @@ def _serialize_warehouse_task(row: InvWarehouseTask) -> dict:
         "status": row.status,
         "priority": row.priority,
         "exception_reason": row.exception_reason,
+        "serial_numbers": row.serial_numbers_json or [],
+        "serial_tracking": row.serial_tracking,
         "completed_at": row.completed_at.isoformat() if row.completed_at else None,
     }
 
@@ -331,6 +333,7 @@ def create_warehouse_task(db: Session, payload, context: UserContext) -> InvWare
         planned_quantity=payload.planned_quantity,
         priority=payload.priority,
         status="ready",
+        serial_tracking=payload.serial_tracking,
     )
     db.add(row)
     db.flush()
@@ -338,7 +341,7 @@ def create_warehouse_task(db: Session, payload, context: UserContext) -> InvWare
     return row
 
 
-def generate_warehouse_tasks(db: Session, source_type: str, source_id: str, context: UserContext) -> list[dict]:
+def generate_warehouse_tasks(db: Session, source_type: str, source_id: str, context: UserContext, serial_tracking: bool = False) -> list[dict]:
     """Generate idempotent warehouse tasks from a business document."""
     candidates: list[dict] = []
     if source_type == "purchase_receipt":
@@ -346,25 +349,25 @@ def generate_warehouse_tasks(db: Session, source_type: str, source_id: str, cont
         if document is None:
             raise AppError("采购入库单不存在", code=404)
         for item in document.items:
-            candidates.append({"task_type": "putaway", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id})
+            candidates.append({"task_type": "putaway", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
     elif source_type == "sales_delivery":
         document = db.scalar(select(SalesDelivery).where(SalesDelivery.id == source_id, SalesDelivery.org_id == context.org_id))
         if document is None:
             raise AppError("销售出库单不存在", code=404)
         for item in document.items:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
     elif source_type == "work_order":
         document = db.scalar(select(MfgWorkOrder).where(MfgWorkOrder.id == source_id, MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.is_deleted.is_(False)))
         if document is None:
             raise AppError("生产工单不存在", code=404)
         for item in document.materials:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.required_quantity, "source_type": source_type, "source_id": source_id})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.required_quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
     elif source_type == "material_issue":
         document = db.scalar(select(MfgMaterialIssue).where(MfgMaterialIssue.id == source_id, MfgMaterialIssue.org_id == context.org_id, MfgMaterialIssue.is_deleted.is_(False)))
         if document is None:
             raise AppError("生产领料单不存在", code=404)
         for item in document.items:
-            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id})
+            candidates.append({"task_type": "pick", "warehouse_id": document.warehouse_id, "material_id": item.material_id, "planned_quantity": item.quantity, "source_type": source_type, "source_id": source_id, "serial_tracking": serial_tracking})
     else:
         raise AppError("不支持自动生成任务的来源单据", code=422)
     result = []
@@ -432,6 +435,14 @@ def transition_warehouse_task(db: Session, task_id: str, payload, context: UserC
         if payload.completed_quantity > row.planned_quantity and row.planned_quantity > 0:
             raise AppError("完成数量不能超过计划数量", code=422)
         row.completed_quantity = payload.completed_quantity
+    if row.serial_tracking and payload.status == "completed" and row.planned_quantity > 0 and len(payload.serial_numbers) < int(row.planned_quantity):
+        raise AppError("序列号数量不能少于计划数量", code=422)
+    if payload.serial_numbers:
+        if len(payload.serial_numbers) != len(set(payload.serial_numbers)):
+            raise AppError("序列号不能重复", code=422)
+        if row.planned_quantity > 0 and len(payload.serial_numbers) < int(row.planned_quantity):
+            raise AppError("序列号数量不能少于计划数量", code=422)
+        row.serial_numbers_json = payload.serial_numbers
     if payload.assigned_to:
         row.assigned_to = payload.assigned_to
     row.status = payload.status
@@ -445,6 +456,18 @@ def transition_warehouse_task(db: Session, task_id: str, payload, context: UserC
     db.flush()
     if row.wave_id and row.status == "completed":
         _refresh_pick_wave_status(db, row.wave_id, context.org_id)
+    if row.status == "completed" and row.task_type in {"pick", "pack"}:
+        next_type = "pack" if row.task_type == "pick" else "check"
+        existing = db.scalar(select(InvWarehouseTask).where(InvWarehouseTask.org_id == row.org_id, InvWarehouseTask.source_type == row.source_type, InvWarehouseTask.source_id == row.source_id, InvWarehouseTask.task_type == next_type, InvWarehouseTask.material_id == row.material_id, InvWarehouseTask.is_deleted.is_(False)))
+        if existing is None:
+            db.add(InvWarehouseTask(org_id=row.org_id, task_no=f"WT-{local_now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8].upper()}", task_type=next_type, source_type=row.source_type, source_id=row.source_id, warehouse_id=row.warehouse_id, location_id=row.location_id, material_id=row.material_id, batch_id=row.batch_id, planned_quantity=row.completed_quantity or row.planned_quantity, priority=row.priority, status="ready", serial_numbers_json=row.serial_numbers_json or [], serial_tracking=row.serial_tracking))
+    if row.status == "completed" and row.task_type == "check" and row.source_type == "sales_delivery" and row.source_id:
+        delivery = db.scalar(select(SalesDelivery).where(SalesDelivery.id == row.source_id, SalesDelivery.org_id == row.org_id))
+        if delivery is not None:
+            check_statuses = db.scalars(select(InvWarehouseTask.status).where(InvWarehouseTask.source_type == row.source_type, InvWarehouseTask.source_id == row.source_id, InvWarehouseTask.task_type == "check", InvWarehouseTask.is_deleted.is_(False))).all()
+            if check_statuses and all(status == "completed" for status in check_statuses):
+                delivery.status = "completed"
+    db.flush()
     write_operation_log(db, user=context.user, action="transition", resource="inv_warehouse_task", target_id=row.id)
     return row
 

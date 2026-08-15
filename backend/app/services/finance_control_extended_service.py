@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import AppError
 from app.core.time import local_now
-from app.models.finance import FinBankAccount, FinBankStatement, FinBankStatementLine, FinPeriodCloseChecklist, FinPayment, FinReceipt, FinReconciliationMatch
+from app.models.finance import FinBankAccount, FinBankStatement, FinBankStatementLine, FinPeriodCloseChecklist, FinPayment, FinReceipt, FinReconciliationMatch, FinVoucher
 from app.services.auth_service import UserContext
 
 
@@ -120,8 +120,26 @@ def update_checklist_item(db: Session, item_id: str, payload, context: UserConte
 
 
 def ensure_close_ready(db: Session, period: str, context: UserContext) -> list[dict]:
-    # Keep legacy periods closable until a checklist has been explicitly opened
-    # in the control center. Once rows exist, every blocking item is enforced.
+    # Existing tenants may close legacy periods before the control center has
+    # created checklist rows. Once the checklist is opened, actual bank and
+    # voucher evidence is enforced below.
     rows = db.scalars(select(FinPeriodCloseChecklist).where(FinPeriodCloseChecklist.org_id == context.org_id, FinPeriodCloseChecklist.period == period, FinPeriodCloseChecklist.is_deleted.is_(False))).all()
+    if not rows:
+        return []
+    year, month = (int(item) for item in period.split("-"))
+    month_start = date(year, month, 1)
+    month_end = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+    unmatched_bank = db.scalar(select(FinBankStatementLine.id).join(FinBankStatement, FinBankStatement.id == FinBankStatementLine.statement_id).where(FinBankStatement.org_id == context.org_id, FinBankStatement.statement_date >= month_start, FinBankStatement.statement_date < month_end, FinBankStatementLine.status != "matched", FinBankStatementLine.is_deleted.is_(False)).limit(1))
+    unposted_voucher = db.scalar(select(FinVoucher.id).where(FinVoucher.org_id == context.org_id, FinVoucher.period == period, FinVoucher.status.not_in({"posted", "reversed"})).limit(1))
+    actual_checks = {"bank": (unmatched_bank is None, "该期间银行流水已全部匹配" if unmatched_bank is None else "存在未匹配银行流水"), "voucher": (unposted_voucher is None, "该期间凭证已全部记账" if unposted_voucher is None else "存在未记账凭证")}
+    for row in rows:
+        if row.item_code in actual_checks and row.status == "pending":
+            ready, evidence = actual_checks[row.item_code]
+            row.evidence = evidence
+            if ready:
+                row.status = "completed"
+                row.completed_at = local_now()
+                row.completed_by = context.id
+    db.flush()
     items = [_check_item(row) for row in rows]
     return [item for item in items if item["blocking"] and item["status"] not in {"completed", "waived"}]

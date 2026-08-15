@@ -1,0 +1,27 @@
+import { http } from "./http";
+
+export const listCandidates = () => http.get("/advanced/hr/candidates");
+export const createCandidate = (payload: unknown) => http.post("/advanced/hr/candidates", payload);
+export const updateCandidate = (id: string, payload: unknown) => http.put(`/advanced/hr/candidates/${id}`, payload);
+export const listLifecycle = (employeeId?: string) => http.get("/advanced/hr/lifecycle", { params: employeeId ? { employee_id: employeeId } : undefined });
+export const createLifecycle = (payload: unknown) => http.post("/advanced/hr/lifecycle", payload);
+export const listPerformance = (employeeId?: string) => http.get("/advanced/hr/performance", { params: employeeId ? { employee_id: employeeId } : undefined });
+export const savePerformance = (payload: unknown) => http.post("/advanced/hr/performance", payload);
+export const listBenefits = (employeeId?: string) => http.get("/advanced/hr/benefits", { params: employeeId ? { employee_id: employeeId } : undefined });
+export const createBenefit = (payload: unknown) => http.post("/advanced/hr/benefits", payload);
+
+export const listSpc = (materialId?: string) => http.get("/advanced/quality/spc", { params: materialId ? { material_id: materialId } : undefined });
+export const createSpc = (payload: unknown) => http.post("/advanced/quality/spc", payload);
+export const listSupplierQuality = (supplierId?: string) => http.get("/advanced/quality/supplier", { params: supplierId ? { supplier_id: supplierId } : undefined });
+export const saveSupplierQuality = (payload: unknown) => http.post("/advanced/quality/supplier", payload);
+export const listQualityCosts = (period?: string) => http.get("/advanced/quality/cost", { params: period ? { period } : undefined });
+export const createQualityCost = (payload: unknown) => http.post("/advanced/quality/cost", payload);
+export const listCustomerClaims = (status?: string) => http.get("/advanced/quality/claims", { params: status ? { status } : undefined });
+export const createCustomerClaim = (payload: unknown) => http.post("/advanced/quality/claims", payload);
+export const updateCustomerClaim = (id: string, payload: unknown) => http.put(`/advanced/quality/claims/${id}`, payload);
+
+export const listShipments = (status?: string) => http.get("/advanced/transport/shipments", { params: status ? { status } : undefined });
+export const createShipment = (payload: unknown) => http.post("/advanced/transport/shipments", payload);
+export const transitionShipment = (id: string, payload: unknown) => http.post(`/advanced/transport/shipments/${id}/transition`, payload);
+export const listOcrDocuments = () => http.get("/advanced/ocr/documents");
+export const processOcrDocument = (payload: unknown) => http.post("/advanced/ocr/documents/process", payload);

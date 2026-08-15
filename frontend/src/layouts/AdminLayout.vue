@@ -37,7 +37,7 @@ const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
   const currentGroup = route.path.split("/")[1];
   const group = ["settings", "analytics", "platform"].includes(currentGroup) ? "config" : ["plm", "srm", "projects", "eam"].includes(currentGroup) ? "extensions" : currentGroup;
-  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "system", "config", "extensions"].includes(group) ? [group] : [];
+  return ["master-data", "sales", "purchase", "inventory", "finance", "crm", "production", "cost", "quality", "hr", "operations", "system", "config", "extensions"].includes(group) ? [group] : [];
 });
 function canPage(path: string) { return !auth.user || auth.user.is_superuser || permissions.hasPagePermission(path); }
 function canAny(paths: string[]) { return paths.some((path) => canPage(path)); }
@@ -124,6 +124,10 @@ onMounted(loadOrganizations);
         <el-menu-item v-if="canPage('/dashboard')" index="/dashboard">
           <el-icon><DataAnalysis /></el-icon><template #title>经营看板</template>
         </el-menu-item>
+        <el-sub-menu v-if="canPage('/operations/advanced')" index="operations">
+          <template #title><el-icon><DataAnalysis /></el-icon><span>运营协同</span></template>
+          <el-menu-item index="/operations/advanced">运输、OCR 与预算预测</el-menu-item>
+        </el-sub-menu>
         <el-menu-item v-if="canPage('/documents')" index="/documents">
           <el-icon><Document /></el-icon><template #title>业务单据中心</template>
         </el-menu-item>
@@ -196,15 +200,17 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/cost/allocations')" index="/cost/allocations">成本分摊</el-menu-item>
           <el-menu-item v-if="canPage('/cost/period-close')" index="/cost/period-close">期间结账</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/quality/inspections', '/quality/nonconformances'])" index="quality">
+        <el-sub-menu v-if="canAny(['/quality/inspections', '/quality/nonconformances', '/quality/analytics'])" index="quality">
           <template #title><el-icon><Collection /></el-icon><span>质量管理</span></template>
           <el-menu-item v-if="canPage('/quality/inspections')" index="/quality/inspections">质量检验</el-menu-item>
           <el-menu-item v-if="canPage('/quality/nonconformances')" index="/quality/nonconformances">不合格与 CAPA</el-menu-item>
+          <el-menu-item v-if="canPage('/quality/analytics')" index="/quality/analytics">质量分析与索赔</el-menu-item>
         </el-sub-menu>
-        <el-sub-menu v-if="canAny(['/hr/employees', '/hr/payroll'])" index="hr">
+        <el-sub-menu v-if="canAny(['/hr/employees', '/hr/payroll', '/hr/people-ops'])" index="hr">
           <template #title><el-icon><UserFilled /></el-icon><span>人事管理</span></template>
           <el-menu-item v-if="canPage('/hr/employees')" index="/hr/employees">员工档案</el-menu-item>
           <el-menu-item v-if="canPage('/hr/payroll')" index="/hr/payroll">薪资核算</el-menu-item>
+          <el-menu-item v-if="canPage('/hr/people-ops')" index="/hr/people-ops">人事全生命周期</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/system/operation-logs', '/system/users', '/system/admin', '/system/backup'])" index="system">
           <template #title><el-icon><Setting /></el-icon><span>系统运维</span></template>

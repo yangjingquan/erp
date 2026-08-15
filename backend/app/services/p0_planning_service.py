@@ -12,12 +12,17 @@ from app.models.business_extensions import PurchaseRequest, PurchaseRequestItem
 from app.models.inventory import InvStock
 from app.models.master_data import MdMaterial, MdWarehouse
 from app.models.production import (
+    MfgCapacityCalendar,
     MfgBom,
     MfgDemandLine,
     MfgPlanException,
     MfgPlanRun,
     MfgPlannedOrder,
     MfgMps,
+    MfgRouting,
+    MfgRoutingOperation,
+    MfgWorkCenter,
+    MfgWorkOrderSchedule,
     MfgWorkOrder,
 )
 from app.models.purchase import PurchaseOrder, PurchaseOrderItem
@@ -180,11 +185,83 @@ def serialize_plan_run(row: MfgPlanRun, include_children: bool = True) -> dict:
     return result
 
 
+def compare_plan_runs(db: Session, baseline_id: str, candidate_id: str, context: UserContext) -> dict:
+    """Return a deterministic material/date delta between two plan versions."""
+    baseline = get_plan_run(db, baseline_id, context)
+    candidate = get_plan_run(db, candidate_id, context)
+
+    def index(run: MfgPlanRun) -> dict[tuple[str, str | None, date], dict]:
+        return {
+            (row.material_id, row.warehouse_id, row.due_date): {
+                "quantity": q(row.quantity),
+                "order_type": row.order_type,
+                "status": row.status,
+            }
+            for row in run.planned_orders
+            if not row.is_deleted
+        }
+
+    left = index(baseline)
+    right = index(candidate)
+    rows = []
+    for key in sorted(set(left) | set(right), key=lambda item: (item[2], item[0], item[1] or "")):
+        before = left.get(key, {"quantity": Decimal("0"), "order_type": None, "status": None})
+        after = right.get(key, {"quantity": Decimal("0"), "order_type": None, "status": None})
+        delta = q(after["quantity"] - before["quantity"])
+        if delta == 0 and before["order_type"] == after["order_type"]:
+            continue
+        rows.append({
+            "material_id": key[0], "warehouse_id": key[1], "due_date": key[2].isoformat(),
+            "before_quantity": text(before["quantity"]), "after_quantity": text(after["quantity"]),
+            "delta_quantity": text(delta), "before_order_type": before["order_type"],
+            "after_order_type": after["order_type"], "before_status": before["status"], "after_status": after["status"],
+        })
+    return {
+        "baseline": serialize_plan_run(baseline, include_children=False),
+        "candidate": serialize_plan_run(candidate, include_children=False),
+        "rows": rows,
+        "summary": {"changed_lines": len(rows), "increase": text(sum((q(item["delta_quantity"]) for item in rows if q(item["delta_quantity"]) > 0), Decimal("0"))), "decrease": text(sum((abs(q(item["delta_quantity"])) for item in rows if q(item["delta_quantity"]) < 0), Decimal("0")))},
+    }
+
+
+def resolve_plan_exception(db: Session, exception_id: str, resolution: str, context: UserContext) -> dict:
+    row = db.scalar(select(MfgPlanException).where(MfgPlanException.id == exception_id, MfgPlanException.org_id == context.org_id, MfgPlanException.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("计划异常不存在", code=404)
+    if row.status == "resolved":
+        return serialize_plan_exception(row)
+    row.status = "resolved"
+    row.resolution = resolution
+    row.owner_id = context.id
+    db.flush()
+    return serialize_plan_exception(row)
+
+
+def _capacity_snapshot(db: Session, material_id: str, due_date: date, quantity: Decimal, context: UserContext) -> list[dict]:
+    routing = db.scalar(select(MfgRouting).where(MfgRouting.org_id == context.org_id, MfgRouting.material_id == material_id, MfgRouting.status == "approved", MfgRouting.effective_from <= due_date, (MfgRouting.effective_to.is_(None) | (MfgRouting.effective_to >= due_date)), MfgRouting.is_deleted.is_(False)))
+    if routing is None:
+        return []
+    operations = db.execute(select(MfgRoutingOperation).where(MfgRoutingOperation.routing_id == routing.id, MfgRoutingOperation.is_deleted.is_(False)).order_by(MfgRoutingOperation.line_no)).scalars().all()
+    result = []
+    for operation in operations:
+        if not operation.work_center_id:
+            continue
+        center = db.scalar(select(MfgWorkCenter).where(MfgWorkCenter.id == operation.work_center_id, MfgWorkCenter.org_id == context.org_id, MfgWorkCenter.is_deleted.is_(False)))
+        if center is None:
+            continue
+        calendar = db.scalar(select(MfgCapacityCalendar).where(MfgCapacityCalendar.org_id == context.org_id, MfgCapacityCalendar.work_center_id == center.id, MfgCapacityCalendar.capacity_date == due_date, MfgCapacityCalendar.is_deleted.is_(False)))
+        capacity = q(calendar.available_hours if calendar else Decimal(center.daily_capacity_hours or 0) * Decimal(center.efficiency_rate or 1))
+        scheduled = q(db.scalar(select(func.coalesce(func.sum(MfgWorkOrderSchedule.scheduled_hours), 0)).where(MfgWorkOrderSchedule.org_id == context.org_id, MfgWorkOrderSchedule.work_center_id == center.id, MfgWorkOrderSchedule.schedule_date == due_date, MfgWorkOrderSchedule.status != "cancelled", MfgWorkOrderSchedule.is_deleted.is_(False))))
+        required = q(Decimal(operation.setup_hours or 0) + quantity * Decimal(operation.run_hours_per_unit or 0))
+        result.append({"operation_id": operation.id, "operation_name": operation.operation_name, "work_center_id": center.id, "work_center_code": center.code, "required_hours": text(required), "scheduled_hours": text(scheduled), "available_hours": text(capacity), "remaining_hours": text(capacity - scheduled - required), "overloaded": scheduled + required > capacity})
+    return result
+
+
 def run_plan(db: Session, payload, context: UserContext) -> MfgPlanRun:
     if payload.plan_to < payload.plan_from:
         raise AppError("计划结束日期不能早于开始日期", code=422)
     _require_warehouse(db, payload.warehouse_id, context)
-    sources = payload.demand_sources or ["sales_order", "mps", "manual"]
+    sources = payload.demand_sources or ["sales_order", "mps", "forecast", "project", "subcontract", "manual"]
     demands = _source_demands(db, payload.plan_from, payload.plan_to, payload.warehouse_id, sources, context)
     grouped: dict[tuple[str, str | None, date], Decimal] = defaultdict(lambda: Decimal("0"))
     source_map: dict[tuple[str, str | None, date], list[dict]] = defaultdict(list)
@@ -192,20 +269,43 @@ def run_plan(db: Session, payload, context: UserContext) -> MfgPlanRun:
         key = (demand["material_id"], demand["warehouse_id"], demand["demand_date"])
         grouped[key] += q(demand["quantity"])
         source_map[key].append({"source_type": demand["source_type"], "source_id": demand["source_id"], "source_line_id": demand["source_line_id"], "quantity": text(demand["quantity"])})
-    run = MfgPlanRun(org_id=context.org_id, run_no=f"PLAN-{local_now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6].upper()}", plan_from=payload.plan_from, plan_to=payload.plan_to, warehouse_id=payload.warehouse_id, algorithm_version="rules-v1", input_snapshot={"sources": sources, "demand_count": len(demands), "demand_lines": [{**item, "quantity": text(item["quantity"]), "demand_date": item["demand_date"].isoformat()} for item in demands]}, created_by=context.id)
+    run = MfgPlanRun(org_id=context.org_id, run_no=f"PLAN-{local_now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:6].upper()}", plan_from=payload.plan_from, plan_to=payload.plan_to, warehouse_id=payload.warehouse_id, algorithm_version="rules-v2-multilevel-capacity", input_snapshot={"sources": sources, "demand_count": len(demands), "demand_lines": [{**item, "quantity": text(item["quantity"]), "demand_date": item["demand_date"].isoformat()} for item in demands]}, created_by=context.id)
     db.add(run)
     db.flush()
     total_gross = Decimal("0")
     total_net = Decimal("0")
     material_count = 0
     exception_count = 0
+    # Explode approved multi-level BOMs before netting. Phantom items are
+    # expanded in place; ordinary subassemblies also receive their own supply
+    # recommendation so they remain traceable to a production order.
+    expanded = dict(grouped)
+    queue = list(grouped.items())
+    visited: set[tuple[str, date]] = set()
+    while queue:
+        (parent_id, parent_wh, parent_date), parent_qty = queue.pop(0)
+        visit_key = (parent_id, parent_date)
+        if visit_key in visited:
+            continue
+        visited.add(visit_key)
+        bom = _approved_bom(db, parent_id, parent_date, context)
+        if not bom:
+            continue
+        for item in bom.items:
+            child_qty = q(parent_qty * Decimal(item.quantity) * (Decimal("1") + Decimal(item.scrap_rate or 0)))
+            child_key = (item.material_id, parent_wh, parent_date)
+            expanded[child_key] = expanded.get(child_key, Decimal("0")) + child_qty
+            if item.is_phantom or child_key not in visited:
+                queue.append((child_key, child_qty))
+    grouped = expanded
     for (material_id, wh_id, due_date), gross in grouped.items():
         total_gross += gross
         material_count += 1
         supply = _supply_snapshot(db, material_id, wh_id, context)
         net = q(max(gross + Decimal(supply["safety_stock"]) - Decimal(supply["available_stock"]) - Decimal(supply["in_transit"]) + Decimal(supply["reserved"]), Decimal("0")))
         total_net += net
-        details = {"gross_requirement": text(gross), **supply, "demand_sources": source_map[(material_id, wh_id, due_date)]}
+        capacity = _capacity_snapshot(db, material_id, due_date, net, context)
+        details = {"gross_requirement": text(gross), **supply, "capacity": capacity, "demand_sources": source_map.get((material_id, wh_id, due_date), [])}
         if net <= 0:
             continue
         bom = _approved_bom(db, material_id, due_date, context)
@@ -214,6 +314,10 @@ def run_plan(db: Session, payload, context: UserContext) -> MfgPlanRun:
         run.planned_orders.append(planned)
         if bom and not bom.items:
             run.exceptions.append(MfgPlanException(org_id=context.org_id, run_id=run.id, material_id=material_id, exception_type="missing_bom_detail", severity="blocking", due_date=due_date, impact_quantity=net, details=details))
+            exception_count += 1
+        overloads = [item for item in capacity if item["overloaded"]]
+        if overloads:
+            run.exceptions.append(MfgPlanException(org_id=context.org_id, run_id=run.id, material_id=material_id, exception_type="capacity_overload", severity="blocking", due_date=due_date, impact_quantity=net, details={"capacity": overloads, "suggested_actions": ["调整计划日期", "切换工作中心", "维护例外处理"]}))
             exception_count += 1
     run.output_snapshot = {"material_count": material_count, "net_requirement": text(total_net), "gross_requirement": text(total_gross), "planned_order_count": len(run.planned_orders), "exception_count": exception_count, "calculated_at": local_now().isoformat(timespec="seconds")}
     db.flush()

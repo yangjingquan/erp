@@ -34,6 +34,7 @@ from app.models.purchase import PurchaseOrder, PurchaseReceipt, PurchaseReturn
 from app.models.quality import QaInspection
 from app.models.sales import SalesDelivery, SalesOrder, SalesReturn
 from app.models.system import SysDepartment, SysUser
+from app.models.phase2_extensions import EamWorkOrder, PlmChangeRequest, Project, SrmRfq, SvcCase, TaxInvoice
 from app.models.workflow import WfActionLog, WfInstance
 from app.services.auth_service import UserContext, apply_data_scope, data_scope_condition
 
@@ -59,6 +60,12 @@ TYPE_CONFIG: dict[str, dict[str, Any]] = {
     "inv_transfer": {"model": InvTransfer, "label": "库存调拨", "doc": "doc_no", "date": "transfer_date", "amount": None},
     "inv_count": {"model": InvCount, "label": "库存盘点", "doc": "doc_no", "date": "count_date", "amount": None},
     "inventory_transaction": {"model": InvStockTransaction, "label": "库存事务", "doc": None, "date": "transaction_date", "amount": "amount", "fixed_status": "posted"},
+    "plm_change": {"model": PlmChangeRequest, "label": "工程变更", "doc": "change_no", "date": "due_date", "amount": None},
+    "srm_rfq": {"model": SrmRfq, "label": "供应商询价", "doc": "rfq_no", "date": "due_date", "amount": "quote_amount", "party": ("supplier", "supplier_id")},
+    "project": {"model": Project, "label": "项目", "doc": "project_code", "date": "start_date", "amount": "budget_amount", "party": ("customer", "customer_id")},
+    "eam_work_order": {"model": EamWorkOrder, "label": "资产工单", "doc": "work_order_no", "date": "due_date", "amount": None},
+    "svc_case": {"model": SvcCase, "label": "服务工单", "doc": "case_no", "date": "due_date", "amount": None, "party": ("customer", "customer_id")},
+    "tax_invoice": {"model": TaxInvoice, "label": "税务发票", "doc": "invoice_no", "date": None, "amount": "amount"},
 }
 
 STATUS_LABELS = {
@@ -98,6 +105,7 @@ TYPE_MODULE = {
     "purchase_order": "purchase", "purchase_receipt": "purchase", "purchase_return": "purchase",
     "mfg_work_order": "production", "qa_inspection": "quality",
     "inv_transfer": "inventory", "inv_count": "inventory", "inventory_transaction": "inventory",
+    "plm_change": "production", "srm_rfq": "purchase", "project": "cost", "eam_work_order": "production", "svc_case": "crm", "tax_invoice": "finance",
 }
 
 

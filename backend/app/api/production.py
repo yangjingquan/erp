@@ -27,6 +27,7 @@ from app.schemas.production import (
     PlanRunCreate,
     DemandLineCreate,
     PlannedOrderCommand,
+    PlanExceptionResolve,
 )
 from app.services.auth_service import UserContext
 from app.services.planning_service import (
@@ -35,6 +36,7 @@ from app.services.planning_service import (
     approve_bom,
     confirm_mrp_result,
     create_bom,
+    bulk_create_boms,
     create_mps,
     disable_bom,
     list_boms,
@@ -44,6 +46,7 @@ from app.services.planning_service import (
     serialize_mps,
     serialize_mrp_run,
     submit_bom,
+    update_bom,
 )
 from app.services.production_service import (
     _get_work_order,
@@ -96,12 +99,14 @@ from app.services.production_execution_service import (
 )
 from app.services.p0_planning_service import (
     add_demand_line,
+    compare_plan_runs,
     confirm_planned_order,
     confirm_planned_orders,
     get_plan_run,
     ignore_planned_order,
     list_plan_runs,
     run_plan,
+    resolve_plan_exception,
     serialize_demand_line,
     serialize_plan_run,
 )
@@ -194,6 +199,11 @@ def list_boms_api(context: UserContext = Depends(get_current_user), db: Session 
     return ok(list_boms(db, context))
 
 
+@router.post("/boms/import")
+def import_boms(payload: list[BomCreate], context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    rows = bulk_create_boms(db, payload, context); db.commit(); return ok([serialize_bom(row) for row in rows])
+
+
 @router.post("/boms")
 def create_bom_api(payload: BomCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     bom = create_bom(db, payload, context)
@@ -204,6 +214,11 @@ def create_bom_api(payload: BomCreate, context: UserContext = Depends(require_pe
 @router.get("/boms/{bom_id}")
 def bom_detail(bom_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(serialize_bom(_get_bom(db, bom_id, context)))
+
+
+@router.put("/boms/{bom_id}")
+def update_bom_api(bom_id: str, payload: BomCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    bom = update_bom(db, bom_id, payload, context); db.commit(); return ok(serialize_bom(bom))
 
 
 @router.get("/boms/{bom_id}/tree")
@@ -246,6 +261,11 @@ def create_plan_run(payload: PlanRunCreate, context: UserContext = Depends(requi
     return ok(serialize_plan_run(row))
 
 
+@router.get("/plan-runs/compare")
+def compare_plan_runs_api(baseline_id: str, candidate_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(compare_plan_runs(db, baseline_id, candidate_id, context))
+
+
 @router.get("/plan-runs/{run_id}")
 def plan_run_detail(run_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(serialize_plan_run(get_plan_run(db, run_id, context)))
@@ -268,6 +288,13 @@ def bulk_confirm_planned_orders(payload: PlannedOrderCommand, context: UserConte
 @router.post("/planned-orders/{planned_order_id}/ignore")
 def ignore_planned_order_api(planned_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     result = ignore_planned_order(db, planned_order_id, context)
+    db.commit()
+    return ok(result)
+
+
+@router.post("/plan-exceptions/{exception_id}/resolve")
+def resolve_plan_exception_api(exception_id: str, payload: PlanExceptionResolve, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    result = resolve_plan_exception(db, exception_id, payload.resolution, context)
     db.commit()
     return ok(result)
 

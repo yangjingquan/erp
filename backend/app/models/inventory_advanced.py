@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditMixin, UUIDModel
@@ -54,6 +54,8 @@ class InvWarehouseTask(AuditMixin, UUIDModel):
     exception_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     completed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    serial_numbers_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    serial_tracking: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
 
 class InvLocation(AuditMixin, UUIDModel):

@@ -19,6 +19,7 @@ ROOT_CATALOG = [
     ("cost:view", "成本管理", "/cost", 45),
     ("quality:view", "质量管理", "/quality", 55),
     ("hr:view", "人事管理", "/hr", 65),
+    ("operations:view", "运营协同", "/operations", 70),
     ("system:view", "系统运维", "/system", 90),
     ("config:view", "系统配置", "/settings", 95),
 ]
@@ -68,8 +69,11 @@ PAGE_CATALOG = [
     ("cost:view", "期间结账", "/cost/period-close", 2),
     ("quality:view", "质量检验", "/quality/inspections", 1),
     ("quality:view", "不合格与 CAPA", "/quality/nonconformances", 2),
+    ("quality:view", "质量分析与索赔", "/quality/analytics", 3),
     ("hr:view", "人事员工档案", "/hr/employees", 1),
     ("hr:view", "薪资核算", "/hr/payroll", 2),
+    ("hr:view", "人事全生命周期", "/hr/people-ops", 3),
+    ("operations:view", "运输、OCR 与预算预测", "/operations/advanced", 1),
     ("config:view", "API 客户端", "/settings/api-clients", 4),
     ("production:view", "PLM 工程变更", "/plm/changes", 6),
     ("purchase:view", "供应商协同", "/srm/collaboration", 4),
@@ -100,6 +104,7 @@ LEGACY_FUNCTIONS = {
     "cost:view": [("cost:view", "查看成本"), ("cost:manage", "成本业务操作"), ("cost:close", "期间结账"), ("cost:period:reopen", "重开会计期间")],
     "quality:view": [("quality:view", "查看质量检验"), ("quality:manage", "质量业务操作")],
     "hr:view": [("hr:view", "查看人事"), ("hr:salary:view", "查看薪资"), ("hr:salary:manage", "薪资业务操作"), ("hr:employee:manage", "员工信息管理")],
+    "operations:view": [("operations:manage", "运营业务操作")],
     "config:view": [("config:manage", "系统配置操作"), ("workflow:manage", "审批流程配置"), ("workflow:approve", "审批任务处理")],
 }
 

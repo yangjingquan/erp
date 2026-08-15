@@ -24,6 +24,7 @@ const typeOptions = [
   ["sales_order", "销售订单"], ["sales_delivery", "销售出库"], ["purchase_order", "采购订单"], ["purchase_receipt", "采购入库"],
   ["inv_transfer", "库存调拨"], ["inv_count", "库存盘点"], ["mfg_work_order", "生产工单"], ["qa_inspection", "质量检验"],
   ["sales_receivable", "应收账款"], ["purchase_payable", "应付账款"], ["fin_voucher", "会计凭证"],
+  ["plm_change", "工程变更"], ["srm_rfq", "供应商询价"], ["project", "项目"], ["eam_work_order", "资产工单"], ["svc_case", "服务工单"], ["tax_invoice", "税务发票"],
 ] as const;
 const title = computed(() => typeOptions.find(([value]) => value === businessType.value)?.[1] || "业务单据中心");
 const bulkActions = computed(() => {

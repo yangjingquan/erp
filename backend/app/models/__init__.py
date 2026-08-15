@@ -110,3 +110,16 @@ from app.models.phase2_extensions import (  # noqa: F401,E402
     TaxCode,
     TaxInvoice,
 )
+from app.models.advanced_operations import (  # noqa: F401,E402
+    HrRecruitmentCandidate,
+    HrEmployeeLifecycle,
+    HrPerformanceReview,
+    HrBenefitRecord,
+    QaSpcRecord,
+    QaSupplierQuality,
+    QaQualityCost,
+    QaCustomerClaim,
+    TmsShipment,
+    TmsShipmentEvent,
+    OcrDocument,
+)

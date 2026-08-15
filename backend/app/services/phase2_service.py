@@ -12,12 +12,14 @@ from app.models.crm import CrmContact, CrmFollowUp, CrmLead, CrmOpportunity
 from app.models.master_data import MdCustomer, MdSupplier
 from app.models.system import SysOrg, SysOrgMembership, SysUser
 from app.models.phase2_extensions import (
-    AiExceptionAlert, EamAsset, EamWorkOrder, HrLeaveRequest, LowCodeDefinition, MetricDefinition,
+    AiExceptionAlert, EamAsset, EamMaintenancePlan, EamWorkOrder, HrLeaveRequest, LowCodeDefinition, MetricDefinition,
     OrgIntercompanyTransaction, PlmChangeImpact, PlmChangeOrder, PlmChangeRequest,
     PlmProductRevision, Project, ProjectEntry, ProjectMilestone, ProjectWbs, SrmRfq,
     SrmSupplierScore, SvcCase, SvcContract, SvcVisit, TaxCode, TaxInvoice,
 )
 from app.models.sales import SalesOrder
+from app.models.finance import FinReceipt
+from app.models.hr import HrAttendance
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
@@ -71,6 +73,14 @@ def create_revision(db, payload, context):
     db.add(row); db.flush(); return row
 
 
+def transition_revision(db, revision_id, status, context):
+    row = db.scalar(select(PlmProductRevision).where(PlmProductRevision.id == revision_id, PlmProductRevision.org_id == context.org_id, PlmProductRevision.is_deleted.is_(False)))
+    if row is None: raise AppError("产品版本不存在", code=404)
+    allowed = {"draft": {"submitted", "obsolete"}, "submitted": {"effective", "obsolete"}, "effective": {"obsolete"}, "obsolete": set()}
+    if status not in allowed.get(row.status, set()): raise AppError("产品版本状态流转不合法", code=409)
+    row.status = status; db.flush(); return row
+
+
 def list_change_requests(db, context, status=None):
     rows = _list(db, PlmChangeRequest, context, status=status)
     return [_row(row, ["change_no", "title", "change_type", "description", "status", "owner_id", "due_date", "impact_snapshot"]) for row in rows]
@@ -96,8 +106,32 @@ def transition_change_request(db, request_id, status, context):
     db.flush(); return row
 
 
+def list_change_impacts(db, change_id, context):
+    request = db.scalar(select(PlmChangeRequest).where(PlmChangeRequest.id == change_id, PlmChangeRequest.org_id == context.org_id, PlmChangeRequest.is_deleted.is_(False)))
+    if request is None: raise AppError("工程变更申请不存在", code=404)
+    order = db.scalar(select(PlmChangeOrder).where(PlmChangeOrder.request_id == request.id, PlmChangeOrder.org_id == context.org_id, PlmChangeOrder.is_deleted.is_(False)).order_by(PlmChangeOrder.created_at.desc()))
+    if order is None: return []
+    rows = db.scalars(select(PlmChangeImpact).where(PlmChangeImpact.change_order_id == order.id, PlmChangeImpact.org_id == context.org_id, PlmChangeImpact.is_deleted.is_(False))).all()
+    return [_row(item, ["change_order_id", "object_type", "object_id", "impact", "status"]) for item in rows]
+
+
+def resolve_change_impact(db, impact_id, status, context):
+    row = db.scalar(select(PlmChangeImpact).where(PlmChangeImpact.id == impact_id, PlmChangeImpact.org_id == context.org_id, PlmChangeImpact.is_deleted.is_(False)))
+    if row is None: raise AppError("变更影响项不存在", code=404)
+    if status not in {"applied", "accepted", "rejected"}: raise AppError("影响项状态不合法", code=422)
+    row.status = status; db.flush(); return row
+
+
 def list_rfqs(db, context, status=None):
     return [_row(row, ["rfq_no", "supplier_id", "material_id", "quantity", "due_date", "quote_amount", "promised_date", "status", "supplier_note"]) for row in _list(db, SrmRfq, context, status=status)]
+
+
+def compare_rfqs(db, context, material_id=None):
+    conditions = [SrmRfq.org_id == context.org_id, SrmRfq.is_deleted.is_(False), SrmRfq.status == "quoted"]
+    if material_id:
+        conditions.append(SrmRfq.material_id == material_id)
+    rows = db.scalars(select(SrmRfq).where(*conditions).order_by(SrmRfq.quote_amount.asc(), SrmRfq.promised_date.asc())).all()
+    return [_row(row, ["rfq_no", "supplier_id", "material_id", "quantity", "quote_amount", "promised_date", "supplier_note"]) | {"rank": index + 1} for index, row in enumerate(rows)]
 
 
 def create_rfq(db, payload, context):
@@ -119,6 +153,21 @@ def accept_rfq(db, rfq_id, context):
     if row is None: raise AppError("询价单不存在", code=404)
     if row.status != "quoted" or row.quote_amount is None: raise AppError("只有已报价询价单可以接受", code=409)
     row.status = "accepted"; db.flush(); return row
+
+
+def list_supplier_scores(db, context, supplier_id=None):
+    conditions = [SrmSupplierScore.org_id == context.org_id, SrmSupplierScore.is_deleted.is_(False)]
+    if supplier_id: conditions.append(SrmSupplierScore.supplier_id == supplier_id)
+    rows = db.scalars(select(SrmSupplierScore).where(*conditions).order_by(SrmSupplierScore.period.desc())).all()
+    return [_row(item, ["supplier_id", "period", "delivery_score", "quality_score", "service_score", "total_score", "evidence_json"]) for item in rows]
+
+
+def upsert_supplier_score(db, payload, context):
+    if db.scalar(select(MdSupplier.id).where(MdSupplier.id == payload.supplier_id, MdSupplier.org_id == context.org_id, MdSupplier.is_deleted.is_(False))) is None: raise AppError("供应商不存在或不属于当前组织", code=404)
+    row = db.scalar(select(SrmSupplierScore).where(SrmSupplierScore.org_id == context.org_id, SrmSupplierScore.supplier_id == payload.supplier_id, SrmSupplierScore.period == payload.period, SrmSupplierScore.is_deleted.is_(False)))
+    if row is None: row = SrmSupplierScore(org_id=context.org_id, supplier_id=payload.supplier_id, period=payload.period); db.add(row)
+    row.delivery_score = payload.delivery_score; row.quality_score = payload.quality_score; row.service_score = payload.service_score; row.total_score = (payload.delivery_score + payload.quality_score + payload.service_score) / 3; row.evidence_json = payload.evidence
+    db.flush(); return row
 
 
 def list_projects(db, context):
@@ -143,6 +192,30 @@ def create_wbs(db, payload, context):
     db.add(row); db.flush(); return row
 
 
+def list_project_wbs(db, project_id, context):
+    if db.scalar(select(Project.id).where(Project.id == project_id, Project.org_id == context.org_id, Project.is_deleted.is_(False))) is None: raise AppError("项目不存在", code=404)
+    rows = db.scalars(select(ProjectWbs).where(ProjectWbs.org_id == context.org_id, ProjectWbs.project_id == project_id, ProjectWbs.is_deleted.is_(False)).order_by(ProjectWbs.code)).all()
+    return [_row(item, ["project_id", "parent_id", "code", "name", "status", "planned_amount", "actual_amount"]) for item in rows]
+
+
+def create_milestone(db, payload, context):
+    if db.scalar(select(Project.id).where(Project.id == payload.project_id, Project.org_id == context.org_id, Project.is_deleted.is_(False))) is None: raise AppError("项目不存在", code=404)
+    row = ProjectMilestone(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+
+
+def list_milestones(db, project_id, context):
+    rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.org_id == context.org_id, ProjectMilestone.project_id == project_id, ProjectMilestone.is_deleted.is_(False)).order_by(ProjectMilestone.due_date)).all()
+    return [_row(item, ["project_id", "wbs_id", "name", "due_date", "status"]) for item in rows]
+
+
+def project_dashboard(db, project_id, context):
+    project = db.scalar(select(Project).where(Project.id == project_id, Project.org_id == context.org_id, Project.is_deleted.is_(False)))
+    if project is None: raise AppError("项目不存在", code=404)
+    entries = db.scalars(select(ProjectEntry).where(ProjectEntry.org_id == context.org_id, ProjectEntry.project_id == project_id, ProjectEntry.is_deleted.is_(False))).all()
+    revenue = sum((Decimal(item.amount) for item in entries if item.category == "revenue"), Decimal("0")); cost = sum((Decimal(item.amount) for item in entries if item.category != "revenue"), Decimal("0"))
+    return {"project": _row(project, ["project_code", "name", "status", "budget_amount", "start_date", "end_date"]), "revenue": str(revenue), "cost": str(cost), "profit": str(revenue - cost), "margin": str((revenue - cost) / revenue if revenue else Decimal("0")), "wbs": list_project_wbs(db, project_id, context), "milestones": list_milestones(db, project_id, context)}
+
+
 def create_project_entry(db, payload, context):
     if db.scalar(select(Project.id).where(Project.id == payload.project_id, Project.org_id == context.org_id, Project.is_deleted.is_(False))) is None: raise AppError("项目不存在", code=404)
     row = ProjectEntry(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
@@ -165,6 +238,26 @@ def create_asset(db, payload, context):
 def create_asset_work_order(db, payload, context):
     if db.scalar(select(EamAsset.id).where(EamAsset.id == payload.asset_id, EamAsset.org_id == context.org_id, EamAsset.is_deleted.is_(False))) is None: raise AppError("资产不存在", code=404)
     row = EamWorkOrder(org_id=context.org_id, work_order_no=_doc_no(db, "eam_work_order", context.org_id), owner_id=context.id, **payload.model_dump()); db.add(row); db.flush(); return row
+
+
+def list_maintenance_plans(db, context, asset_id=None):
+    conditions = [EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False)]
+    if asset_id: conditions.append(EamMaintenancePlan.asset_id == asset_id)
+    rows = db.scalars(select(EamMaintenancePlan).where(*conditions).order_by(EamMaintenancePlan.next_due)).all()
+    return [_row(item, ["asset_id", "name", "interval_days", "next_due", "status"]) for item in rows]
+
+
+def create_maintenance_plan(db, payload, context):
+    if db.scalar(select(EamAsset.id).where(EamAsset.id == payload.asset_id, EamAsset.org_id == context.org_id, EamAsset.is_deleted.is_(False))) is None: raise AppError("资产不存在", code=404)
+    row = EamMaintenancePlan(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+
+
+def transition_asset_work_order(db, work_order_id, status, context):
+    row = db.scalar(select(EamWorkOrder).where(EamWorkOrder.id == work_order_id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.is_deleted.is_(False)))
+    if row is None: raise AppError("资产工单不存在", code=404)
+    allowed = {"open": {"assigned", "cancelled"}, "assigned": {"in_progress", "cancelled"}, "in_progress": {"resolved", "cancelled"}, "resolved": {"closed"}}
+    if status not in allowed.get(row.status, set()): raise AppError("资产工单状态流转不合法", code=409)
+    row.status = status; db.flush(); return row
 
 
 def list_asset_work_orders(db, context):
@@ -197,6 +290,13 @@ def create_visit(db, payload, context):
     row = SvcVisit(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
 
 
+def list_visits(db, context, case_id=None):
+    conditions = [SvcVisit.org_id == context.org_id, SvcVisit.is_deleted.is_(False)]
+    if case_id: conditions.append(SvcVisit.case_id == case_id)
+    rows = db.scalars(select(SvcVisit).where(*conditions).order_by(SvcVisit.scheduled_at)).all()
+    return [_row(item, ["case_id", "scheduled_at", "technician_id", "status", "notes"]) for item in rows]
+
+
 def customer_360(db, customer_id, context):
     customer = db.scalar(select(MdCustomer).where(MdCustomer.id == customer_id, MdCustomer.org_id == context.org_id, MdCustomer.is_deleted.is_(False)))
     if customer is None: raise AppError("客户不存在", code=404)
@@ -206,6 +306,9 @@ def customer_360(db, customer_id, context):
     orders = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.customer_id == customer_id, SalesOrder.is_deleted.is_(False))).all()
     contracts = db.scalars(select(SvcContract).where(SvcContract.org_id == context.org_id, SvcContract.customer_id == customer_id, SvcContract.is_deleted.is_(False))).all()
     cases = db.scalars(select(SvcCase).where(SvcCase.org_id == context.org_id, SvcCase.customer_id == customer_id, SvcCase.is_deleted.is_(False))).all()
+    opportunity_ids = [item.id for item in opportunities]
+    follow_ups = db.scalars(select(CrmFollowUp).where(CrmFollowUp.org_id == context.org_id, CrmFollowUp.opportunity_id.in_(opportunity_ids), CrmFollowUp.is_deleted.is_(False)).order_by(CrmFollowUp.occurred_at.desc())).all() if opportunity_ids else []
+    receipts = db.scalars(select(FinReceipt).where(FinReceipt.org_id == context.org_id, FinReceipt.customer_id == customer_id).order_by(FinReceipt.receipt_date.desc())).all()
     return {
         "customer": _row(customer, ["code", "name", "short_name", "owner_id", "contact_name", "contact_phone", "status"]),
         "contacts": [_row(item, ["name", "phone", "email", "title"]) for item in contacts],
@@ -214,12 +317,15 @@ def customer_360(db, customer_id, context):
         "orders": [_row(item, ["doc_no", "status", "order_date", "expected_date", "total_amount"]) for item in orders],
         "contracts": [_row(item, ["contract_no", "start_date", "end_date", "value", "status"]) for item in contracts],
         "service_cases": [_row(item, ["case_no", "title", "priority", "status", "due_date"]) for item in cases],
+        "follow_ups": [_row(item, ["opportunity_id", "content", "occurred_at", "due_date", "status"]) for item in follow_ups],
+        "receipts": [_row(item, ["doc_no", "amount", "receipt_date", "status"]) for item in receipts],
         "summary": {
             "contact_count": len(contacts),
             "lead_count": len(leads),
             "opportunity_count": len(opportunities),
             "order_count": len(orders),
             "open_case_count": len([item for item in cases if item.status not in {"closed", "cancelled"}]),
+            "receipt_amount": _serialize(sum((item.amount for item in receipts), Decimal("0"))),
         },
     }
 
@@ -257,7 +363,16 @@ def list_intercompany(db, context):
 def list_memberships(db, context):
     rows = db.scalars(select(SysOrgMembership).where(SysOrgMembership.org_id == context.org_id, SysOrgMembership.is_deleted.is_(False)).order_by(SysOrgMembership.created_at.desc())).all()
     users = {row.id: row for row in db.scalars(select(SysUser).where(SysUser.id.in_([item.user_id for item in rows]))).all()} if rows else {}
-    return [{"id": row.id, "user_id": row.user_id, "user_name": users.get(row.user_id).display_name if users.get(row.user_id) else row.user_id, "org_id": row.org_id, "membership_type": row.membership_type, "status": row.status, "is_default": row.is_default} for row in rows]
+    orgs = {row.id: row for row in db.scalars(select(SysOrg).where(SysOrg.id.in_([item.org_id for item in rows]))).all()} if rows else {}
+    return [membership_row(db, row, users=users, orgs=orgs) for row in rows]
+
+
+def membership_row(db, row, *, users=None, orgs=None):
+    users = users or {}
+    orgs = orgs or {}
+    user = users.get(row.user_id) or db.get(SysUser, row.user_id)
+    org = orgs.get(row.org_id) or db.get(SysOrg, row.org_id)
+    return {"id": row.id, "user_id": row.user_id, "user_name": user.display_name if user else row.user_id, "org_id": row.org_id, "org_name": org.name if org else row.org_id, "membership_type": row.membership_type, "status": row.status, "is_default": row.is_default}
 
 
 def create_membership(db, payload, context):
@@ -274,6 +389,36 @@ def create_membership(db, payload, context):
         db.flush(); return existing
     row = SysOrgMembership(user_id=payload.user_id, org_id=payload.org_id, membership_type=payload.membership_type, is_default=False, status="active")
     db.add(row); db.flush(); return row
+
+
+def update_membership(db, membership_id, payload, context):
+    row = db.scalar(select(SysOrgMembership).where(SysOrgMembership.id == membership_id, SysOrgMembership.org_id == context.org_id, SysOrgMembership.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("组织成员不存在", code=404)
+    if db.scalar(select(SysOrg.id).where(SysOrg.id == payload.org_id, SysOrg.status == "active", SysOrg.is_deleted.is_(False))) is None:
+        raise AppError("组织不存在或已停用", code=404)
+    duplicate = db.scalar(select(SysOrgMembership.id).where(
+        SysOrgMembership.user_id == row.user_id,
+        SysOrgMembership.org_id == payload.org_id,
+        SysOrgMembership.id != membership_id,
+        SysOrgMembership.is_deleted.is_(False),
+    ))
+    if duplicate:
+        raise AppError("该用户已加入目标组织", code=409)
+    row.org_id = payload.org_id
+    row.membership_type = payload.membership_type
+    row.status = payload.status
+    db.flush()
+    return row
+
+
+def delete_membership(db, membership_id, context):
+    row = db.scalar(select(SysOrgMembership).where(SysOrgMembership.id == membership_id, SysOrgMembership.org_id == context.org_id, SysOrgMembership.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("组织成员不存在", code=404)
+    row.is_deleted = True
+    row.status = "inactive"
+    db.flush()
 
 
 def list_tax_invoices(db, context):
@@ -308,7 +453,15 @@ def list_metrics(db, context):
 def explain_metric(db, metric_key, context):
     row = db.scalar(select(MetricDefinition).where(MetricDefinition.org_id == context.org_id, MetricDefinition.metric_key == metric_key, MetricDefinition.is_deleted.is_(False)))
     if row is None: raise AppError("指标不存在", code=404)
-    return {"metric": _row(row, ["metric_key", "name", "formula", "target", "owner_id"]), "value": None, "baseline": None, "quality": "待接入事实表", "evidence": [{"source": "metric_definition", "id": row.id, "message": "当前版本先保存口径和证据链入口，运行值由事实表任务填充"}]}
+    facts = {
+        "open_service_cases": db.scalar(select(func.count(SvcCase.id)).where(SvcCase.org_id == context.org_id, SvcCase.status.not_in(["closed", "cancelled"]), SvcCase.is_deleted.is_(False))) or 0,
+        "overdue_service_cases": db.scalar(select(func.count(SvcCase.id)).where(SvcCase.org_id == context.org_id, SvcCase.status.not_in(["closed", "cancelled"]), SvcCase.due_date < local_today(), SvcCase.is_deleted.is_(False))) or 0,
+        "sales_order_amount": db.scalar(select(func.coalesce(func.sum(SalesOrder.total_amount), 0)).where(SalesOrder.org_id == context.org_id, SalesOrder.status.not_in(["cancelled"]), SalesOrder.is_deleted.is_(False))) or 0,
+    }
+    value = facts.get(metric_key)
+    quality = "verified" if value is not None else "formula_not_mapped"
+    message = f"事实表：{metric_key}；当前值 {value}" if value is not None else "公式未映射到标准事实表，请补充指标执行器配置"
+    return {"metric": _row(row, ["metric_key", "name", "formula", "target", "owner_id"]), "value": _serialize(value) if value is not None else None, "baseline": None, "quality": quality, "evidence": [{"source": "erp_fact_table", "id": metric_key, "message": message, "facts": facts}]}
 
 
 def scan_ai_alerts(db, context):
@@ -328,6 +481,14 @@ def list_ai_alerts(db, context):
 
 def list_leave_requests(db, context):
     return [_row(row, ["employee_id", "leave_type", "start_date", "end_date", "reason", "status", "approved_by"]) for row in _list(db, HrLeaveRequest, context)]
+
+
+def list_attendance(db, context, attendance_date=None):
+    conditions = [HrAttendance.org_id == context.org_id, HrAttendance.is_deleted.is_(False)]
+    if attendance_date:
+        conditions.append(HrAttendance.attendance_date == attendance_date)
+    rows = db.scalars(select(HrAttendance).where(*conditions).order_by(HrAttendance.attendance_date.desc())).all()
+    return [_row(row, ["employee_id", "attendance_date", "status"]) for row in rows]
 
 
 def create_leave_request(db, payload, context):

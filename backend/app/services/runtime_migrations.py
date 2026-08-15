@@ -372,7 +372,7 @@ def ensure_p1_p2_extension_schema(db: Session) -> None:
     rolling deployments from failing when the migration was not run manually.
     """
     from app.core.database import Base
-    from app.models import phase2_extensions  # noqa: F401
+    from app.models import phase2_extensions, advanced_operations  # noqa: F401
 
     table_names = {
         "plm_product_revision", "plm_change_request", "plm_change_order", "plm_change_impact",
@@ -380,8 +380,32 @@ def ensure_p1_p2_extension_schema(db: Session) -> None:
         "project_entry", "eam_asset", "eam_maintenance_plan", "eam_work_order", "svc_contract",
         "svc_case", "svc_visit", "tax_code", "tax_invoice", "org_intercompany_transaction",
         "low_code_definition", "metric_definition", "ai_exception_alert", "hr_leave_request",
+        "hr_recruitment_candidate", "hr_employee_lifecycle", "hr_performance_review", "hr_benefit_record",
+        "qa_spc_record", "qa_supplier_quality", "qa_quality_cost", "qa_customer_claim",
+        "tms_shipment", "tms_shipment_event", "ocr_document",
     }
     missing = [table for table in Base.metadata.sorted_tables if table.name in table_names and table.name not in inspect(db.bind).get_table_names()]
     if missing:
         Base.metadata.create_all(bind=db.bind, tables=missing, checkfirst=True)
+        db.commit()
+
+
+def ensure_wms_closure_schema(db: Session) -> None:
+    """Add WMS serial-number storage to installations created before closure support."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    if "inv_warehouse_task" not in tables:
+        return
+    columns = {item["name"] for item in inspector.get_columns("inv_warehouse_task")}
+    statements = []
+    if "serial_numbers_json" not in columns:
+        # Keep this nullable for rolling upgrades: existing rows predate serial tracking.
+        statements.append("ALTER TABLE inv_warehouse_task ADD COLUMN serial_numbers_json JSON NULL")
+    if "serial_tracking" not in columns:
+        statements.append("ALTER TABLE inv_warehouse_task ADD COLUMN serial_tracking TINYINT(1) NOT NULL DEFAULT 0")
+    for statement in statements:
+        db.execute(text(statement))
+    if statements:
         db.commit()

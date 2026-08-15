@@ -273,10 +273,11 @@ def create_warehouse_task_api(
 def generate_tasks_from_document(
     source_type: str = Query(min_length=1, max_length=64),
     source_id: str = Query(min_length=1, max_length=36),
+    serial_tracking: bool = Query(default=False),
     context: UserContext = Depends(require_permission("inventory:manage")),
     db: Session = Depends(get_db),
 ):
-    rows = generate_warehouse_tasks(db, source_type, source_id, context)
+    rows = generate_warehouse_tasks(db, source_type, source_id, context, serial_tracking=serial_tracking)
     db.commit()
     return ok({"items": rows, "total": len(rows), "idempotent": True})
 

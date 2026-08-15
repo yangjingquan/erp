@@ -14,6 +14,10 @@ class ProductRevisionCreate(BaseModel):
     snapshot: dict = Field(default_factory=dict)
 
 
+class RevisionTransition(BaseModel):
+    status: Literal["submitted", "effective", "obsolete"]
+
+
 class ChangeRequestCreate(BaseModel):
     title: str = Field(min_length=2, max_length=255)
     change_type: Literal["engineering", "quality", "supplier", "production"] = "engineering"
@@ -39,6 +43,15 @@ class RfqQuoteUpdate(BaseModel):
     supplier_note: str = Field(default="", max_length=1000)
 
 
+class SupplierScoreCreate(BaseModel):
+    supplier_id: str = Field(min_length=1, max_length=36)
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    delivery_score: Decimal = Field(ge=0, le=100)
+    quality_score: Decimal = Field(ge=0, le=100)
+    service_score: Decimal = Field(ge=0, le=100)
+    evidence: dict = Field(default_factory=dict)
+
+
 class ProjectCreate(BaseModel):
     project_code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=2, max_length=255)
@@ -54,6 +67,13 @@ class WbsCreate(BaseModel):
     name: str = Field(min_length=2, max_length=255)
     parent_id: str | None = None
     planned_amount: Decimal = Field(default=0, ge=0)
+
+
+class MilestoneCreate(BaseModel):
+    project_id: str = Field(min_length=1, max_length=36)
+    wbs_id: str | None = None
+    name: str = Field(min_length=2, max_length=255)
+    due_date: date
 
 
 class ProjectEntryCreate(BaseModel):
@@ -79,6 +99,13 @@ class AssetWorkOrderCreate(BaseModel):
     service_type: Literal["repair", "maintenance", "inspection"] = "repair"
     description: str = Field(min_length=2, max_length=1000)
     due_date: date | None = None
+
+
+class MaintenancePlanCreate(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=36)
+    name: str = Field(min_length=2, max_length=255)
+    interval_days: int = Field(default=30, ge=1, le=3650)
+    next_due: date
 
 
 class ServiceContractCreate(BaseModel):
@@ -119,6 +146,12 @@ class MembershipCreate(BaseModel):
     user_id: str = Field(min_length=1, max_length=36)
     org_id: str = Field(min_length=1, max_length=36)
     membership_type: Literal["member", "admin", "viewer"] = "member"
+
+
+class MembershipUpdate(BaseModel):
+    org_id: str = Field(min_length=1, max_length=36)
+    membership_type: Literal["member", "admin", "viewer"] = "member"
+    status: Literal["active", "inactive"] = "active"
 
 
 class LeaveRequestCreate(BaseModel):

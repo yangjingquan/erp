@@ -1,6 +1,8 @@
 import { http } from "./http";
 export const listBoms = () => http.get("/production/boms");
 export const createBom = (payload: unknown) => http.post("/production/boms", payload);
+export const updateBom = (id: string, payload: unknown) => http.put(`/production/boms/${id}`, payload);
+export const importBoms = (payload: unknown[]) => http.post("/production/boms/import", payload);
 export const submitBom = (id: string) => http.post(`/production/boms/${id}/submit`);
 export const approveBom = (id: string) => http.post(`/production/boms/${id}/approve`);
 export const disableBom = (id: string) => http.post(`/production/boms/${id}/disable`);
@@ -39,6 +41,8 @@ export const createDemandLine = (payload: unknown) => http.post("/production/dem
 export const listPlanRuns = () => http.get("/production/plan-runs");
 export const createPlanRun = (payload: unknown) => http.post("/production/plan-runs", payload);
 export const getPlanRun = (id: string) => http.get(`/production/plan-runs/${id}`);
+export const comparePlanRuns = (baselineId: string, candidateId: string) => http.get("/production/plan-runs/compare", { params: { baseline_id: baselineId, candidate_id: candidateId } });
+export const resolvePlanException = (id: string, resolution: string) => http.post(`/production/plan-exceptions/${id}/resolve`, { resolution });
 export const confirmPlannedOrder = (id: string) => http.post(`/production/planned-orders/${id}/confirm`);
 export const bulkConfirmPlannedOrders = (ids: string[]) => http.post("/production/planned-orders/bulk-confirm", { planned_order_ids: ids });
 export const ignorePlannedOrder = (id: string) => http.post(`/production/planned-orders/${id}/ignore`);

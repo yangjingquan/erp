@@ -28,6 +28,7 @@ from app.api.quality import router as quality_router
 from app.api.hr import router as hr_router
 from app.api.platform import router as platform_router
 from app.api.phase2 import router as phase2_router
+from app.api.advanced_operations import router as advanced_operations_router
 from app.api.documents import notification_router, router as documents_router
 from app.core.config import get_settings
 from app.core.database import SessionLocal
@@ -44,6 +45,7 @@ from app.services.runtime_migrations import (
     ensure_p0_wms_schema,
     ensure_p0_completion_schema,
     ensure_p1_p2_extension_schema,
+    ensure_wms_closure_schema,
 )
 from app.services.permission_service import ensure_permission_catalog
 
@@ -64,6 +66,7 @@ async def lifespan(application: FastAPI):
             ensure_p0_wms_schema(db)
             ensure_p0_completion_schema(db)
             ensure_p1_p2_extension_schema(db)
+            ensure_wms_closure_schema(db)
             ensure_permission_catalog(db)
             # Permission catalog upgrades may insert page/function rows. Keep
             # the startup transaction short so SQLite/dev environments and
@@ -123,5 +126,6 @@ app.include_router(quality_router)
 app.include_router(hr_router)
 app.include_router(platform_router)
 app.include_router(phase2_router)
+app.include_router(advanced_operations_router)
 app.include_router(documents_router)
 app.include_router(notification_router)
