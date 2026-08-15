@@ -129,7 +129,7 @@ onMounted(loadOrganizations);
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/operations/advanced', '/documents'])" index="operations">
           <template #title><el-icon><DataAnalysis /></el-icon><span>运营协同</span></template>
-          <el-menu-item v-if="canPage('/operations/advanced')" index="/operations/advanced">运输、OCR 与预算预测</el-menu-item>
+          <el-menu-item v-if="canPage('/operations/advanced')" index="/operations/advanced">运输与预测</el-menu-item>
           <el-menu-item v-if="canPage('/documents')" index="/documents">业务单据中心</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/master-data/materials', '/master-data/customers', '/master-data/suppliers', '/master-data/warehouses', '/master-data/units', '/master-data/tax-rates'])" index="master-data">

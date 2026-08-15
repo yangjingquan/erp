@@ -6,6 +6,11 @@ export type MasterResource = "materials" | "customers" | "suppliers" | "warehous
 
 export interface MasterListParams {
   keyword?: string;
+  code?: string;
+  name?: string;
+  category?: string;
+  material_type?: string;
+  status?: string;
   page?: number;
   pageSize?: number;
 }

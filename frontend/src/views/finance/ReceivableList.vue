@@ -8,8 +8,11 @@ import { useClientPagination } from "../../composables/useClientPagination";
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
 const receiptRows = ref<Row[]>([]);
-const { pagedRows: receivableRows, page: receivablePage, pageSize: receivablePageSize, total: receivableTotal, updatePageSize: updateReceivablePageSize } = useClientPagination(rows);
-const { pagedRows: receiptRowsPage, page: receiptPage, pageSize: receiptPageSize, total: receiptTotal, updatePageSize: updateReceiptPageSize } = useClientPagination(receiptRows);
+const filters = reactive({ docNo: "", customer: "", status: "" });
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.docNo || String(row.doc_no || "").toLowerCase().includes(filters.docNo.toLowerCase())) && (!filters.customer || String(row.customer_name || row.customer_id || "").toLowerCase().includes(filters.customer.toLowerCase())) && (!filters.status || row.status === filters.status)));
+const filteredReceiptRows = computed(() => receiptRows.value.filter((row) => (!filters.docNo || String(row.doc_no || "").toLowerCase().includes(filters.docNo.toLowerCase())) && (!filters.customer || String(row.customer_name || row.customer_id || "").toLowerCase().includes(filters.customer.toLowerCase())) && (!filters.status || row.status === filters.status)));
+const { pagedRows: receivableRows, page: receivablePage, pageSize: receivablePageSize, total: receivableTotal, updatePageSize: updateReceivablePageSize } = useClientPagination(filteredRows);
+const { pagedRows: receiptRowsPage, page: receiptPage, pageSize: receiptPageSize, total: receiptTotal, updatePageSize: updateReceiptPageSize } = useClientPagination(filteredReceiptRows);
 const loading = ref(false);
 const saving = ref(false);
 const errorMessage = ref("");
@@ -49,7 +52,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers"])]);
 <template>
   <section>
     <el-page-header content="应收账款" />
-    <el-space class="toolbar"><el-button type="primary" @click="openCreate">登记收款</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space class="toolbar"><el-input v-model="filters.docNo" placeholder="按单号筛选" clearable style="width: 180px" /><el-input v-model="filters.customer" placeholder="按客户筛选" clearable style="width: 180px" /><el-select v-model="filters.status" placeholder="按状态筛选" clearable style="width: 150px"><el-option label="未核销" value="open" /><el-option label="部分核销" value="partial" /><el-option label="已核销" value="settled" /></el-select><el-button type="primary" @click="openCreate">登记收款</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="receivableRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column prop="doc_no" label="应收单号" /><el-table-column label="客户"><template #default="scope">{{ scope.row.customer_name || scope.row.customer_id }}</template></el-table-column><el-table-column prop="total_amount" label="应收金额" /><el-table-column label="已核销"><template #default="scope"><el-tag class="status-tag" :type="reconciledTagType(scope.row)" effect="light">{{ reconciledLabel(scope.row) }}</el-tag></template></el-table-column><el-table-column label="状态"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column></el-table>
     <ClientPagination v-model:page="receivablePage" v-model:page-size="receivablePageSize" :total="receivableTotal" @update:page-size="updateReceivablePageSize" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approveInventoryTransfer, completeInventoryTransfer, createInventoryTransfer, listInventoryTransfers, type InventoryTransferPayload } from "../../api/inventory";
 import { useMasterOptions } from "../../composables/useMasterOptions";
@@ -7,7 +7,9 @@ import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
+const filters = reactive({ doc_no: "", from_warehouse_id: "", to_warehouse_id: "", status: "" });
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.doc_no || String(row.doc_no || "").includes(filters.doc_no)) && (!filters.from_warehouse_id || String(row.from_warehouse_id) === filters.from_warehouse_id) && (!filters.to_warehouse_id || String(row.to_warehouse_id) === filters.to_warehouse_id) && (!filters.status || row.status === filters.status)));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -49,7 +51,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
 <template>
   <section>
     <el-page-header content="库存调拨" />
-    <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建调拨单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space class="toolbar" wrap><el-input v-model="filters.doc_no" clearable placeholder="调拨单号" style="width:180px" /><el-select v-model="filters.from_warehouse_id" clearable filterable placeholder="调出仓库" style="width:180px"><el-option v-for="item in warehouses" :key="item.value" v-bind="item" /></el-select><el-select v-model="filters.to_warehouse_id" clearable filterable placeholder="调入仓库" style="width:180px"><el-option v-for="item in warehouses" :key="item.value" v-bind="item" /></el-select><el-select v-model="filters.status" clearable placeholder="状态" style="width:130px"><el-option label="草稿" value="draft" /><el-option label="已审核" value="approved" /><el-option label="已完成" value="completed" /></el-select><el-button type="primary" @click="openCreate">新建调拨单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column prop="doc_no" label="调拨单号" /><el-table-column label="调出仓库"><template #default="scope">{{ warehouseLabel(scope.row.from_warehouse_id) }}</template></el-table-column><el-table-column label="调入仓库"><template #default="scope">{{ warehouseLabel(scope.row.to_warehouse_id) }}</template></el-table-column><el-table-column label="状态"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="操作" width="180"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button><el-button v-if="scope.row.status === 'approved'" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'complete')">完成</el-button></template></el-table-column></el-table>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />

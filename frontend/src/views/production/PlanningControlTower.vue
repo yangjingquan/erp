@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import { useClientPagination } from "../../composables/useClientPagination";
 import { bulkConfirmPlannedOrders, comparePlanRuns, confirmPlannedOrder, createPlanRun, getPlanRun, ignorePlannedOrder, listPlanRuns, resolvePlanException } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
+import { statusLabel } from "../../utils/labels";
 
 type Row = Record<string, any>;
 const loading = ref(false); const running = ref(false); const saving = ref(false); const runs = ref<Row[]>([]); const selectedRun = ref<Row | null>(null); const drawerVisible = ref(false); const selectedIds = ref<string[]>([]); const compareVisible = ref(false); const compareBaseline = ref(""); const compareCandidate = ref(""); const compareResult = ref<Row | null>(null);
@@ -16,7 +17,7 @@ const exceptions = computed<Row[]>(() => selectedRun.value?.exceptions || []);
 function unwrap(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "计划控制塔接口失败"); return response.data.data; }
 function money(value: any) { return Number(value || 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 }); }
 function sourceLabel(value: string) { return ({ sales_order: "销售订单", mps: "主生产计划", forecast: "预测需求", project: "项目需求", subcontract: "委外需求", manual: "手工需求" } as Record<string, string>)[value] || value; }
-async function load() { loading.value = true; try { const result = unwrap(await listPlanRuns()); runs.value = result?.items || []; if (!selectedRun.value && runs.value.length) await openRun(runs.value[0]); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "计划运行加载失败"); } finally { loading.value = false; } }
+async function load() { loading.value = true; try { const result = unwrap(await listPlanRuns()); runs.value = (result?.items || []).map((item: Row) => ({ ...item, status: statusLabel(item.status) })); if (!selectedRun.value && runs.value.length) await openRun(runs.value[0]); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "计划运行加载失败"); } finally { loading.value = false; } }
 async function openRun(row: Row) { try { selectedRun.value = unwrap(await getPlanRun(String(row.id))); drawerVisible.value = true; selectedIds.value = []; } catch (error) { ElMessage.error(error instanceof Error ? error.message : "计划运行详情加载失败"); } }
 async function run() { if (!form.plan_from || !form.plan_to || form.plan_to < form.plan_from) return ElMessage.warning("请填写有效计划期间"); running.value = true; try { const data = unwrap(await createPlanRun({ ...form, warehouse_id: form.warehouse_id || undefined })); ElMessage.success(`计划运行完成：${data.run_no}`); await load(); await openRun(data); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "计划运行失败"); } finally { running.value = false; } }
 async function confirmOne(row: Row) { saving.value = true; try { unwrap(await confirmPlannedOrder(String(row.id))); ElMessage.success("建议已转正式单据"); if (selectedRun.value) await openRun(selectedRun.value); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "建议转单失败"); } finally { saving.value = false; } }

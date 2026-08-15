@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { approveBom, createBom, disableBom, getBomTree, importBoms, listBoms, submitBom, updateBom } from "../../api/production";
 import { useMasterOptions } from "../../composables/useMasterOptions";
@@ -8,7 +8,9 @@ import { localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
+const filters = reactive({ material: "", status: "" });
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.material || materialLabel(row.material_id).toLowerCase().includes(filters.material.toLowerCase()) || String(row.material_id || "").toLowerCase().includes(filters.material.toLowerCase())) && (!filters.status || row.status === filters.status)));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -42,7 +44,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
 <template>
   <section class="page-stack">
     <el-page-header content="BOM 管理" />
-    <el-space><el-button type="primary" @click="openCreate">新建 BOM</el-button><el-button @click="importVisible = true">批量导入</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <div class="toolbar"><el-input v-model="filters.material" placeholder="按物料名称筛选" clearable style="width: 220px" /><el-select v-model="filters.status" placeholder="按状态筛选" clearable style="width: 160px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已停用" value="disabled" /></el-select><el-button type="primary" @click="openCreate">新建 BOM</el-button><el-button @click="importVisible = true">批量导入</el-button><el-button :loading="loading" @click="load">刷新</el-button></div>
     <el-alert title="支持多层组件、损耗率、虚拟件、BOM 树查看和草稿编辑；只有审核通过的 BOM 才能参与 MRP 和生产工单。" type="info" show-icon />
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="bom_version" label="版本" width="100" />
@@ -62,6 +64,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
 
 <style scoped>
 .page-stack { display: flex; flex-direction: column; gap: 16px; }
+.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .bom-lines { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 .bom-line { display: grid; grid-template-columns: 32px 1.5fr 130px 120px 1fr auto auto; gap: 8px; align-items: center; }
 .line-no { color: var(--erp-muted-text); text-align: center; }

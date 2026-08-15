@@ -12,6 +12,7 @@ import {
 } from "../../api/phase2";
 import { useMasterOptions, type SelectOption } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
+import { labelOf, statusLabel, tagTypeOf } from "../../utils/labels";
 
 type PlatformTab = "group" | "compliance" | "low-code" | "metrics";
 type Row = Record<string, any>;
@@ -35,8 +36,6 @@ const { pagedRows: intercompanyRows, page: intercompanyPage, pageSize: intercomp
 const { pagedRows: taxCodeRows, page: taxCodePage, pageSize: taxCodePageSize, total: taxCodeTotal, updatePageSize: updateTaxCodePageSize } = useClientPagination(taxCodes);
 const { pagedRows: invoiceRows, page: invoicePage, pageSize: invoicePageSize, total: invoiceTotal, updatePageSize: updateInvoicePageSize } = useClientPagination(invoices);
 const { pagedRows: lowCodeRows, page: lowCodePage, pageSize: lowCodePageSize, total: lowCodeTotal, updatePageSize: updateLowCodePageSize } = useClientPagination(lowCode);
-const { pagedRows: metricRows, page: metricPage, pageSize: metricPageSize, total: metricTotal, updatePageSize: updateMetricPageSize } = useClientPagination(metrics);
-const { pagedRows: alertRows, page: alertPage, pageSize: alertPageSize, total: alertTotal, updatePageSize: updateAlertPageSize } = useClientPagination(alerts);
 
 const groupForm = reactive({ from_org_id: "", to_org_id: "", source_type: "manual", source_id: "", amount: 0, currency: "CNY" });
 const memberForm = reactive({ user_id: "", org_id: "", membership_type: "member", status: "active" });
@@ -44,6 +43,12 @@ const taxCodeForm = reactive({ code: "", name: "", rate: 0 });
 const invoiceForm = reactive({ invoice_type: "output", source_type: "sales_order", source_id: "", party_id: "", amount: 0, tax_amount: 0, tax_code: "" });
 const lowForm = reactive({ object_key: "", name: "", schema: '{"fields":[]}', workflow: '{"steps":[]}' });
 const metricForm = reactive({ metric_key: "", name: "", formula: "", target: null as number | null });
+const metricCodeFilter = ref("");
+const alertFilters = reactive({ severity: "", status: "" });
+const filteredMetrics = computed(() => metrics.value.filter((row) => !metricCodeFilter.value.trim() || String(row.metric_key || "").toLowerCase().includes(metricCodeFilter.value.trim().toLowerCase())));
+const filteredAlerts = computed(() => alerts.value.filter((row) => (!alertFilters.severity || row.severity === alertFilters.severity) && (!alertFilters.status || row.status === alertFilters.status)));
+const { pagedRows: metricRows, page: metricPage, pageSize: metricPageSize, total: metricTotal, updatePageSize: updateMetricPageSize } = useClientPagination(filteredMetrics);
+const { pagedRows: alertRows, page: alertPage, pageSize: alertPageSize, total: alertTotal, updatePageSize: updateAlertPageSize } = useClientPagination(filteredAlerts);
 const memberFormTitle = computed(() => editingMemberId.value ? "编辑组织成员" : "添加组织成员");
 const membershipTypeLabels: Record<string, string> = { member: "普通成员", admin: "管理员", viewer: "只读成员" };
 const statusLabels: Record<string, string> = { active: "正常", inactive: "停用" };
@@ -200,6 +205,7 @@ async function saveMetric() {
   try {
     if (!metricForm.metric_key || !metricForm.name || !metricForm.formula) throw new Error("请完整填写指标编码、名称和公式");
     unwrap(await createMetric({ ...metricForm }));
+    Object.assign(metricForm, { metric_key: "", name: "", formula: "", target: null });
     ElMessage.success("指标口径已保存");
     await load();
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : "指标保存失败"); }
@@ -289,8 +295,8 @@ onMounted(load);
     </template>
 
     <template v-else>
-      <el-card shadow="never"><template #header>指标口径</template><el-form :model="metricForm" inline><el-form-item label="指标编码"><el-input v-model="metricForm.metric_key" /></el-form-item><el-form-item label="名称"><el-input v-model="metricForm.name" /></el-form-item><el-form-item label="公式"><el-input v-model="metricForm.formula" /></el-form-item><el-form-item label="目标"><el-input-number v-model="metricForm.target" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveMetric">保存口径</el-button></el-form-item></el-form><el-empty v-if="!loading && !metrics.length" description="暂无指标口径" /><el-table v-else :data="metricRows" stripe><el-table-column prop="metric_key" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="formula" label="公式" /><el-table-column prop="target" label="目标" /><el-table-column label="操作"><template #default="{ row }"><el-button link type="primary" @click="explain(row)">查看证据</el-button></template></el-table-column></el-table><ClientPagination v-model:page="metricPage" v-model:page-size="metricPageSize" :total="metricTotal" @update:page-size="updateMetricPageSize" /></el-card>
-      <el-card shadow="never"><template #header>异常助手</template><el-empty v-if="!loading && !alerts.length" description="暂无异常" /><el-table v-else :data="alertRows" stripe><el-table-column prop="title" label="异常" /><el-table-column prop="severity" label="严重度" /><el-table-column prop="recommended_action" label="建议动作" /><el-table-column prop="status" label="状态" /><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status === 'open'" link type="success" @click="resolve(row)">标记已处理</el-button></template></el-table-column></el-table><ClientPagination v-model:page="alertPage" v-model:page-size="alertPageSize" :total="alertTotal" @update:page-size="updateAlertPageSize" /></el-card>
+      <el-card shadow="never"><template #header><div class="card-header"><span>指标口径</span><el-input v-model="metricCodeFilter" clearable placeholder="按指标编码筛选" style="width:220px" /></div></template><el-form :model="metricForm" inline><el-form-item label="指标编码"><el-input v-model="metricForm.metric_key" /></el-form-item><el-form-item label="名称"><el-input v-model="metricForm.name" /></el-form-item><el-form-item label="公式"><el-input v-model="metricForm.formula" /></el-form-item><el-form-item label="目标"><el-input-number v-model="metricForm.target" /></el-form-item><el-form-item class="form-actions"><el-button type="primary" @click="saveMetric">保存口径</el-button></el-form-item></el-form><el-empty v-if="!loading && !filteredMetrics.length" description="暂无指标口径" /><el-table v-else :data="metricRows" stripe><el-table-column prop="metric_key" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="formula" label="公式" /><el-table-column prop="target" label="目标" /><el-table-column label="操作"><template #default="{ row }"><el-button link type="primary" @click="explain(row)">查看证据</el-button></template></el-table-column></el-table><ClientPagination v-model:page="metricPage" v-model:page-size="metricPageSize" :total="metricTotal" @update:page-size="updateMetricPageSize" /></el-card>
+      <el-card shadow="never"><template #header><div class="card-header"><span>异常助手</span><el-space><el-select v-model="alertFilters.severity" clearable placeholder="全部严重度" style="width:130px"><el-option label="高" value="high" /><el-option label="中" value="medium" /><el-option label="低" value="low" /></el-select><el-select v-model="alertFilters.status" clearable placeholder="全部状态" style="width:130px"><el-option label="待处理" value="open" /><el-option label="已处理" value="resolved" /></el-select></el-space></div></template><el-empty v-if="!loading && !filteredAlerts.length" description="暂无异常" /><el-table v-else :data="alertRows" stripe><el-table-column prop="title" label="异常" /><el-table-column label="严重度"><template #default="{ row }"><el-tag :type="row.severity === 'high' ? 'danger' : row.severity === 'medium' ? 'warning' : 'info'" effect="light">{{ labelOf({ high: '高', medium: '中', low: '低' }, row.severity) }}</el-tag></template></el-table-column><el-table-column prop="recommended_action" label="建议动作" /><el-table-column label="状态"><template #default="{ row }"><el-tag :type="tagTypeOf(row.status)" effect="light">{{ statusLabel(row.status) }}</el-tag></template></el-table-column><el-table-column label="操作"><template #default="{ row }"><el-button v-if="row.status === 'open'" link type="success" @click="resolve(row)">标记已处理</el-button></template></el-table-column></el-table><ClientPagination v-model:page="alertPage" v-model:page-size="alertPageSize" :total="alertTotal" @update:page-size="updateAlertPageSize" /></el-card>
     </template>
 
     <el-dialog v-model="memberDialog" :title="memberFormTitle" width="420px"><el-form :model="memberForm" label-width="90px" class="member-dialog-form"><el-form-item label="用户"><el-select v-model="memberForm.user_id" filterable placeholder="请选择" :disabled="Boolean(editingMemberId)"><el-option v-for="item in users" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="组织"><el-select v-model="memberForm.org_id" filterable placeholder="请选择"><el-option v-for="item in organizationOptions" :key="item.value" v-bind="item" /></el-select></el-form-item><el-form-item label="成员类型"><el-select v-model="memberForm.membership_type"><el-option label="普通成员" value="member" /><el-option label="管理员" value="admin" /><el-option label="只读成员" value="viewer" /></el-select></el-form-item><el-form-item v-if="editingMemberId" label="状态"><el-select v-model="memberForm.status"><el-option label="正常" value="active" /><el-option label="停用" value="inactive" /></el-select></el-form-item></el-form><template #footer><el-button @click="memberDialog = false">取消</el-button><el-button type="primary" @click="saveMember">保存</el-button></template></el-dialog>

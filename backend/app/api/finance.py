@@ -44,6 +44,7 @@ from app.services.finance_service import (
 from app.services.ledger_service import (
     close_fiscal_period,
     create_account,
+    delete_account,
     create_asset,
     create_bank_account,
     create_dimension,
@@ -56,6 +57,7 @@ from app.services.ledger_service import (
     list_periods,
     post_voucher,
     reopen_fiscal_period,
+    update_account,
     reverse_voucher,
     run_asset_depreciation,
 )
@@ -128,6 +130,20 @@ def account(payload: AccountCreate, context: UserContext = Depends(require_permi
     row = create_account(db, payload, context)
     db.commit()
     return ok({"id": row.id, "code": row.code, "name": row.name, "status": row.status})
+
+
+@router.put("/accounts/{account_id}")
+def edit_account(account_id: str, payload: AccountCreate, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    row = update_account(db, account_id, payload, context)
+    db.commit()
+    return ok({"id": row.id, "code": row.code, "name": row.name, "status": row.status})
+
+
+@router.delete("/accounts/{account_id}")
+def remove_account(account_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    delete_account(db, account_id, context)
+    db.commit()
+    return ok(msg="会计科目已删除")
 
 
 @router.get("/dimensions")

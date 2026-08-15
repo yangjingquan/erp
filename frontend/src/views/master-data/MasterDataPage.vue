@@ -15,7 +15,8 @@ import {
   type MasterResource,
 } from "../../api/master-data";
 
-export interface MasterColumn { prop: string; label: string; width?: number; }
+export interface MasterColumn { prop: string; label: string; width?: number; labelMap?: Record<string, string>; }
+export interface MasterFilter { prop: string; label: string; placeholder?: string; options?: Array<{ label: string; value: string }>; }
 export interface MasterFormField { prop: string; label: string; type?: "text" | "number" | "textarea" | "select"; required?: boolean; defaultValue?: string | number; options?: Array<{ label: string; value: string }>; }
 export interface SummaryMetric { label: string; key: "total" | "active" | "inactive"; tone?: "rust" | "green" | "amber"; }
 
@@ -26,6 +27,7 @@ const props = withDefaults(defineProps<{
   fields: MasterFormField[];
   searchPlaceholder?: string;
   summaryMetrics?: SummaryMetric[];
+  filters?: MasterFilter[];
 }>(), {
   searchPlaceholder: "编码、名称或关键字",
   summaryMetrics: () => [
@@ -40,6 +42,7 @@ const loading = ref(false);
 const submitting = ref(false);
 const importing = ref(false);
 const keyword = ref("");
+const filterValues = reactive<Record<string, string>>({});
 const currentPage = ref(1);
 const pageSize = ref(10);
 const dialogVisible = ref(false);
@@ -69,7 +72,7 @@ function resetForm(source?: Record<string, unknown>) {
 async function load() {
   loading.value = true;
   try {
-    const response = await listMasterData(props.resource, { keyword: keyword.value.trim() || undefined, page: currentPage.value, pageSize: pageSize.value });
+    const response = await listMasterData(props.resource, { keyword: keyword.value.trim() || undefined, ...filterValues, page: currentPage.value, pageSize: pageSize.value });
     ensureResponseSuccess(response);
     const data = response.data.data;
     if (Array.isArray(data)) {
@@ -89,6 +92,7 @@ async function load() {
 }
 
 function search() { currentPage.value = 1; void load(); }
+function resetFilters() { keyword.value = ""; Object.keys(filterValues).forEach((key) => { filterValues[key] = ""; }); search(); }
 function openCreate() { editingId.value = ""; resetForm(); dialogVisible.value = true; void nextTick(() => formRef.value?.clearValidate()); }
 function closeCreate() { if (!submitting.value) dialogVisible.value = false; }
 function openDetail(row: Record<string, unknown>) { selectedRow.value = row; detailVisible.value = true; }
@@ -154,6 +158,7 @@ async function handleExport() {
 function formatCell(row: Record<string, unknown>, column: MasterColumn) {
   if (column.prop === "status") return row.status === "inactive" ? "停用" : "启用";
   if (column.prop === "material_type") return ({ goods: "商品", raw_material: "原材料", semi_finished: "半成品", finished: "成品" } as Record<string, string>)[String(row[column.prop])] ?? row[column.prop];
+  if (column.labelMap) return column.labelMap[String(row[column.prop])] ?? row[column.prop];
   const value = row[column.prop];
   return value === null || value === undefined || value === "" ? "-" : String(value);
 }
@@ -177,7 +182,7 @@ onMounted(load);
 
     <el-card class="toolbar-card" shadow="never">
       <div class="toolbar">
-        <div class="search-row"><el-input v-model="keyword" :placeholder="props.searchPlaceholder" clearable class="search-input" @keyup.enter="search" @clear="search"><template #prefix><el-icon><Search /></el-icon></template></el-input><el-button class="search-button" @click="search"><el-icon><Search /></el-icon>查询</el-button></div>
+        <div class="search-row"><el-input v-model="keyword" :placeholder="props.searchPlaceholder" clearable class="search-input" @keyup.enter="search" @clear="search"><template #prefix><el-icon><Search /></el-icon></template></el-input><template v-if="props.filters?.length"><el-input v-for="filter in props.filters.filter((item) => !item.options)" :key="filter.prop" v-model="filterValues[filter.prop]" clearable :placeholder="filter.placeholder || filter.label" /><el-select v-for="filter in props.filters.filter((item) => item.options)" :key="filter.prop" v-model="filterValues[filter.prop]" clearable :placeholder="filter.placeholder || filter.label"><el-option v-for="option in filter.options" :key="option.value" v-bind="option" /></el-select></template><el-button class="search-button" @click="search"><el-icon><Search /></el-icon>查询</el-button></div>
         <div class="toolbar-actions"><el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新增{{ props.title.replace('档案', '') }}</el-button><el-button :loading="importing" @click="chooseImportFile"><el-icon><FolderOpened /></el-icon>导入</el-button><el-button @click="handleExport"><el-icon><Download /></el-icon>导出</el-button><el-button :loading="loading" @click="load"><el-icon><Refresh /></el-icon>刷新</el-button><input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="handleImport" /></div>
       </div>
     </el-card>
@@ -225,7 +230,8 @@ h1 { margin: 6px 0 0; color: var(--erp-text); font-size: 25px; line-height: 1.2;
 .toolbar-card, .table-card { margin-bottom: 15px; }
 .toolbar-card :deep(.el-card__body) { padding: 16px 17px; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap; }
-.search-row { display: flex; flex: 1; min-width: 290px; max-width: 530px; gap: 8px; }
+.search-row { display: flex; flex: 1; min-width: 290px; max-width: 760px; gap: 8px; }
+.search-row :deep(.el-select) { width: 150px; }
 .search-input { min-width: 0; flex: 1; }.search-input :deep(.el-input__wrapper) { border-radius: 8px; }
 .search-button { color: var(--erp-primary-dark); border-color: var(--erp-border); background: var(--erp-panel-bg); }
 .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { completeInventoryCount, createInventoryCount, deleteInventoryCount, listInventoryCounts, updateInventoryCount, type InventoryCountPayload } from "../../api/inventory";
 import { useMasterOptions } from "../../composables/useMasterOptions";
@@ -7,7 +7,9 @@ import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
+const filters = reactive({ doc_no: "", material_id: "", warehouse_id: "", status: "", count_date: "" });
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.doc_no || String(row.doc_no || "").includes(filters.doc_no)) && (!filters.material_id || itemRows(row).some((item: any) => String(item.material_id) === filters.material_id)) && (!filters.warehouse_id || String(row.warehouse_id) === filters.warehouse_id) && (!filters.status || row.status === filters.status) && (!filters.count_date || String(row.count_date || "").startsWith(filters.count_date))));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const saving = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -38,7 +40,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
 <template>
   <section>
     <el-page-header content="库存盘点" />
-    <el-space class="toolbar"><el-button type="primary" @click="openCreate">新建盘点单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space class="toolbar" wrap><el-input v-model="filters.doc_no" clearable placeholder="盘点单号" style="width:180px" /><el-select v-model="filters.material_id" clearable filterable placeholder="物料" style="width:200px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select><el-select v-model="filters.warehouse_id" clearable filterable placeholder="仓库" style="width:180px"><el-option v-for="item in warehouses" :key="item.value" v-bind="item" /></el-select><el-select v-model="filters.status" clearable placeholder="状态" style="width:130px"><el-option label="草稿" value="draft" /><el-option label="已完成" value="completed" /></el-select><el-date-picker v-model="filters.count_date" type="date" value-format="YYYY-MM-DD" placeholder="盘点日期" /><el-button type="primary" @click="openCreate">新建盘点单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column prop="doc_no" label="盘点单号" /><el-table-column label="物料"><template #default="scope">{{ materialNames(scope.row) }}</template></el-table-column><el-table-column label="仓库"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column><el-table-column label="状态"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column prop="count_date" label="盘点日期" /><el-table-column label="操作" width="250"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="remove(scope.row)">删除</el-button><el-button v-if="scope.row.status === 'draft'" link type="warning" :loading="actionLoading === scope.row.id" @click="complete(scope.row)">完成盘点</el-button></template></el-table-column></el-table>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { listInventoryStock, listInventoryWarnings } from "../../api/inventory";
 import { useMasterOptions } from "../../composables/useMasterOptions";
@@ -7,8 +7,11 @@ import { useClientPagination } from "../../composables/useClientPagination";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const warningRows = ref<Row[]>([]);
+const filters = reactive({ warehouse_id: "", material_id: "" });
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.warehouse_id || String(row.warehouse_id) === filters.warehouse_id) && (!filters.material_id || String(row.material_id) === filters.material_id)));
+const filteredWarnings = computed(() => warningRows.value.filter((row) => (!filters.warehouse_id || String(row.warehouse_id) === filters.warehouse_id) && (!filters.material_id || String(row.material_id) === filters.material_id)));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const errorMessage = ref("");
 const { warehouses, materials, loadOptions } = useMasterOptions();
@@ -44,11 +47,10 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["warehouses", "m
 <template>
   <section>
     <el-page-header content="库存台账" />
-    <el-space class="toolbar"><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space class="toolbar" wrap><el-select v-model="filters.warehouse_id" clearable filterable placeholder="仓库" style="width:200px"><el-option v-for="item in warehouses" :key="item.value" v-bind="item" /></el-select><el-select v-model="filters.material_id" clearable filterable placeholder="物料" style="width:220px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-alert v-if="warningRows.length" :title="`当前有 ${warningRows.length} 条库存低于安全库存`" type="warning" show-icon />
-    <el-table v-if="warningRows.length" :data="warningRows" stripe class="warning-table" width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column label="仓库"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column><el-table-column prop="current_quantity" label="当前库存" /><el-table-column prop="min_quantity" label="安全库存" /></el-table>
-    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column label="仓库"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column><el-table-column prop="quantity" label="库存数量" /><el-table-column prop="available_quantity" label="可用数量" /></el-table>
+    <el-card v-if="filteredWarnings.length" shadow="never" class="warning-table"><template #header>库存预警</template><el-alert :title="`当前有 ${filteredWarnings.length} 条库存低于安全库存`" type="warning" show-icon /><el-table :data="filteredWarnings" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column label="仓库"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column><el-table-column prop="current_quantity" label="当前库存" /><el-table-column prop="min_quantity" label="安全库存" /></el-table></el-card>
+    <el-card shadow="never"><template #header>库存余额</template><el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }"><el-table-column label="仓库"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column><el-table-column prop="quantity" label="库存数量" /><el-table-column prop="available_quantity" label="可用数量" /></el-table></el-card>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
   </section>
 </template>

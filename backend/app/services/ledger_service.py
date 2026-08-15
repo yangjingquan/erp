@@ -124,6 +124,33 @@ def create_account(db: Session, payload, context: UserContext) -> FinAccount:
     return row
 
 
+def update_account(db: Session, account_id: str, payload, context: UserContext) -> FinAccount:
+    row = db.scalar(select(FinAccount).where(FinAccount.id == account_id, FinAccount.org_id == context.org_id, FinAccount.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("会计科目不存在", code=404)
+    if payload.parent_id and payload.parent_id == row.id:
+        raise AppError("科目不能设置自己为上级科目", code=400)
+    row.code, row.name = payload.code.strip(), payload.name.strip()
+    row.account_type, row.balance_direction = payload.account_type, payload.balance_direction
+    row.parent_id, row.allow_posting = payload.parent_id, payload.allow_posting
+    row.version += 1
+    return row
+
+
+def delete_account(db: Session, account_id: str, context: UserContext) -> None:
+    row = db.scalar(select(FinAccount).where(FinAccount.id == account_id, FinAccount.org_id == context.org_id, FinAccount.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("会计科目不存在", code=404)
+    child = db.scalar(select(FinAccount.id).where(FinAccount.org_id == context.org_id, FinAccount.parent_id == row.id, FinAccount.is_deleted.is_(False)))
+    used = db.scalar(select(FinVoucherEntry.id).where(FinVoucherEntry.account_code == row.code).limit(1))
+    if child:
+        raise AppError("当前科目存在下级科目，不能删除", code=409)
+    if used:
+        raise AppError("当前科目已被凭证使用，不能删除", code=409)
+    row.is_deleted = True
+    row.version += 1
+
+
 def list_dimensions(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinAccountingDimension).where(
         FinAccountingDimension.org_id == context.org_id,

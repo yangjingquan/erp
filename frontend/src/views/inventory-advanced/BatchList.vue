@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { createBatch, deleteBatch, listBatches, updateBatch } from "../../api/inventory-advanced";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
 const rows = ref<any[]>([]); const loading = ref(false); const saving = ref(false); const actionLoading = ref<string | null>(null); const visible = ref(false); const editingId = ref<string | null>(null); const form = reactive({ material_id: "", batch_no: "", production_date: "", expiry_date: "", status: "active" });
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
+const filteredRows = computed(() => rows.value.filter((row) => !form.status || row.status === form.status));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const { materials, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { active: "启用", inactive: "停用" };
 function materialLabel(id: unknown) { const value = String(id || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
@@ -22,7 +23,7 @@ watch(() => form.material_id, load); onMounted(() => Promise.all([load(), loadOp
 <template>
   <section class="page-stack">
     <el-page-header content="批次管理" />
-    <el-space><el-select v-model="form.material_id" filterable clearable placeholder="全部物料" style="width: 250px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select><el-button type="primary" @click="openCreate">新增批次</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    <el-space wrap><el-select v-model="form.material_id" filterable clearable placeholder="全部物料" style="width: 220px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select><el-select v-model="form.status" clearable placeholder="全部状态" style="width:140px" @change="load"><el-option label="启用" value="active" /><el-option label="停用" value="inactive" /></el-select><el-button type="primary" @click="openCreate">新增批次</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-table v-loading="loading" :data="pagedRows" stripe :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="batch_no" label="批次号" min-width="200" />
       <el-table-column label="物料" min-width="220"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column>

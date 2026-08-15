@@ -56,13 +56,18 @@ def export_master_data(
 def list_master_data(
     resource: str,
     keyword: str | None = Query(default=None),
+    code: str | None = Query(default=None),
+    name: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    material_type: str | None = Query(default=None),
+    status: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=200, ge=1, le=500),
     context: UserContext = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     config = get_config(resource)
-    rows, total, active, inactive = list_items(db, resource, context.org_id, keyword, page, page_size)
+    rows, total, active, inactive = list_items(db, resource, context.org_id, keyword, page, page_size, code, name, category, material_type, status)
     return ok({"items": [serialize_item(item, config["fields"]) for item in rows], "total": total, "active": active, "inactive": inactive, "page": page, "page_size": page_size})
 
 

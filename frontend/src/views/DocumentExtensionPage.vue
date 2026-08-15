@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import { completeSalesReturn, createSalesQuote, createSalesReturn, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn } from "../api/sales";
@@ -19,6 +19,7 @@ import {
 import { useMasterOptions, type SelectOption } from "../composables/useMasterOptions";
 import { useClientPagination } from "../composables/useClientPagination";
 import { formatLocalDateTime, localDateString } from "../utils/time";
+import { statusLabel as commonStatusLabel, tagTypeOf } from "../utils/labels";
 
 type Kind = "quote" | "purchase-request" | "sales-return" | "purchase-return";
 
@@ -28,6 +29,7 @@ const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
 const actionLoading = ref("");
+const filters = reactive({ doc_no: "", customer_id: "", supplier_id: "", material_id: "", status: "" });
 const editingId = ref("");
 const form = reactive<any>({
   customer_id: "",
@@ -43,7 +45,8 @@ const form = reactive<any>({
   items: [{ material_id: "", quantity: 1, unit_price: 0, estimated_price: 0 }],
 });
 const { customers, suppliers, materials, warehouses, loadOptions } = useMasterOptions();
-const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.doc_no || String(row.doc_no || "").includes(filters.doc_no)) && (!filters.customer_id || String(row.customer_id || "") === filters.customer_id) && (!filters.supplier_id || String(row.supplier_id || "") === filters.supplier_id) && (!filters.material_id || itemRows(row).some((item: any) => String(item.material_id) === filters.material_id)) && (!filters.status || row.status === filters.status)));
+const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 
 const purchaseStatusLabels: Record<string, string> = {
   draft: "草稿",
@@ -81,7 +84,7 @@ function materialLabel(id: unknown) {
 }
 
 function statusLabel(status: string) {
-  return isPurchaseKind() ? purchaseStatusLabels[status] || status || "-" : status || "-";
+  return purchaseStatusLabels[status] || commonStatusLabel(status);
 }
 
 function statusTagType(status: string) {
@@ -278,7 +281,12 @@ onMounted(async () => {
 <template>
   <section class="page-stack">
     <el-page-header :content="props.title" />
-    <el-space>
+    <el-space wrap>
+      <el-input v-model="filters.doc_no" clearable placeholder="单据号" style="width:180px" />
+      <el-select v-if="isQuote() || isSalesReturn()" v-model="filters.customer_id" clearable filterable placeholder="客户" style="width:180px"><el-option v-for="option in customers" :key="option.value" v-bind="option" /></el-select>
+      <el-select v-if="isRequest() || isPurchaseReturn()" v-model="filters.supplier_id" clearable filterable placeholder="供应商" style="width:180px"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select>
+      <el-select v-if="isRequest() || isPurchaseReturn()" v-model="filters.material_id" clearable filterable placeholder="物料" style="width:180px"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select>
+      <el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /><el-option label="已完成" value="completed" /></el-select>
       <el-button type="primary" @click="openCreate">新建{{ props.title }}</el-button>
       <el-button :loading="loading" @click="load">刷新</el-button>
     </el-space>
@@ -369,7 +377,7 @@ onMounted(async () => {
         </template>
         <template v-else>
           <el-table-column label="状态" width="110">
-            <template #default="scope">{{ statusLabel(scope.row.status) }}</template>
+            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
           </el-table-column>
           <el-table-column v-if="isQuote() || isSalesReturn()" label="客户" min-width="180">
             <template #default="scope">{{ scope.row.customer_name || scope.row.customer_id || '-' }}</template>

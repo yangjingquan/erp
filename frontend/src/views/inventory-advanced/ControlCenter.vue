@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { createReservation, listReservations, listTraceEvents, releaseReservation } from "../../api/inventory-advanced";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
+import { sourceTypeLabels, statusLabel, tagTypeOf } from "../../utils/labels";
 type Row = Record<string, any>;
 const tab = ref("reservations"); const loading = ref(false); const saving = ref(false); const reservations = ref<Row[]>([]); const trace = ref<Row[]>([]); const reservationStatus = ref(""); const traceFilters = reactive({ material_id: "", batch_id: "" });
 const form = reactive({ source_type: "sales_order", source_id: "", material_id: "", warehouse_id: "", quantity: 1, note: "" });

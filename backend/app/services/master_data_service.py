@@ -49,12 +49,15 @@ def get_config(resource: str) -> dict[str, Any]:
     return RESOURCE_CONFIG[resource]
 
 
-def list_items(db: Session, resource: str, org_id: str, keyword: str | None = None, page: int = 1, page_size: int = 200) -> tuple[list[Any], int, int, int]:
+def list_items(db: Session, resource: str, org_id: str, keyword: str | None = None, page: int = 1, page_size: int = 200, code: str | None = None, name: str | None = None, category: str | None = None, material_type: str | None = None, status: str | None = None) -> tuple[list[Any], int, int, int]:
     model = get_config(resource)["model"]
     statement = select(model).where(model.org_id == org_id, model.is_deleted.is_(False))
     if keyword:
         pattern = f"%{keyword.strip()}%"
         statement = statement.where((model.code.like(pattern)) | (model.name.like(pattern)))
+    for field, value in (("code", code), ("name", name), ("category", category), ("material_type", material_type), ("status", status)):
+        if value and hasattr(model, field):
+            statement = statement.where(getattr(model, field).like(f"%{value.strip()}%") if field != "status" else getattr(model, field) == value)
     total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
     active = db.scalar(select(func.count()).select_from(statement.where(model.status == "active").subquery())) if hasattr(model, "status") else total
     active = int(active or 0)

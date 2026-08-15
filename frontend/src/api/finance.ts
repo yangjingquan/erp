@@ -26,6 +26,8 @@ export function listVouchers(params?: Record<string, unknown>) {
 
 export const listFinanceAccounts = (params?: { page?: number; page_size?: number }) => http.get("/finance/accounts", { params });
 export const createFinanceAccount = (payload: unknown) => http.post("/finance/accounts", payload);
+export const updateFinanceAccount = (id: string, payload: unknown) => http.put(`/finance/accounts/${id}`, payload);
+export const deleteFinanceAccount = (id: string) => http.delete(`/finance/accounts/${id}`);
 export const listAccountingDimensions = () => http.get("/finance/dimensions");
 export const createAccountingDimension = (payload: unknown) => http.post("/finance/dimensions", payload);
 export const listFiscalPeriods = () => http.get("/finance/periods");
