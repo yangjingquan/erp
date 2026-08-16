@@ -266,6 +266,35 @@ def list_counts(db: Session, context: UserContext) -> list[dict]:
     return [serialize_count(row) for row in db.scalars(statement).all()]
 
 
+def update_transfer(db: Session, transfer_id: str, context: UserContext, *, from_warehouse_id: str, to_warehouse_id: str, items: list[dict]) -> InvTransfer:
+    from app.services.inventory_advanced_service import assert_warehouse_access
+
+    transfer = db.get(InvTransfer, transfer_id)
+    if transfer is None or transfer.org_id != context.org_id:
+        raise AppError("调拨单不存在", code=404)
+    if transfer.status != "draft":
+        raise AppError("只有草稿调拨单才能修改", code=400)
+    if from_warehouse_id == to_warehouse_id:
+        raise AppError("调出仓库和调入仓库不能相同", code=400)
+    assert_warehouse_access(context, from_warehouse_id)
+    assert_warehouse_access(context, to_warehouse_id)
+    transfer.from_warehouse_id = from_warehouse_id
+    transfer.to_warehouse_id = to_warehouse_id
+    transfer.items = [InvTransferItem(material_id=item["material_id"], quantity=item["quantity"], unit_cost=item.get("unit_cost", 0)) for item in items]
+    db.flush()
+    return transfer
+
+
+def delete_transfer(db: Session, transfer_id: str, context: UserContext) -> None:
+    transfer = db.get(InvTransfer, transfer_id)
+    if transfer is None or transfer.org_id != context.org_id:
+        raise AppError("调拨单不存在", code=404)
+    if transfer.status != "draft":
+        raise AppError("只有草稿调拨单才能删除", code=400)
+    db.delete(transfer)
+    db.commit()
+
+
 def approve_transfer(db: Session, transfer_id: str, context: UserContext) -> InvTransfer:
     from app.services.inventory_advanced_service import assert_warehouse_access
 

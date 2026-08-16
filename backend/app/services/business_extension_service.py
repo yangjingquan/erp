@@ -200,6 +200,32 @@ def _validate_sales_return_source(db: Session, payload, context: UserContext) ->
             raise AppError(f"退货数量超过已出库数量：{item.material_id}", code=400)
 
 
+def update_sales_return(db: Session, return_id: str, payload, context: UserContext):
+    row = db.scalar(select(SalesReturn).where(SalesReturn.id == return_id, SalesReturn.org_id == context.org_id, SalesReturn.is_deleted.is_(False)))
+    if row is None: raise AppError("销售退货单不存在", code=404)
+    if row.status != "draft": raise AppError("只有草稿状态的销售退货单可以修改", code=400)
+    _validate_sales_return_source(db, payload, context)
+    row.source_delivery_id = payload.source_delivery_id
+    row.customer_id = payload.customer_id
+    row.warehouse_id = payload.warehouse_id
+    row.return_date = payload.return_date or local_today()
+    create_return_items(row, payload.items, SalesReturnItem)
+    row.version += 1
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_sales_return(db: Session, return_id: str, context: UserContext) -> None:
+    row = db.get(SalesReturn, return_id)
+    if row is None or row.org_id != context.org_id or row.is_deleted:
+        raise AppError("销售退货单不存在", code=404)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的销售退货单可以删除", code=400)
+    row.is_deleted = True
+    db.commit()
+
+
 def submit_sales_return(db: Session, return_id: str, context: UserContext):
     row = db.scalar(select(SalesReturn).where(SalesReturn.id == return_id, SalesReturn.org_id == context.org_id, SalesReturn.is_deleted.is_(False)))
     if row is None: raise AppError("销售退货单不存在", code=404)
@@ -211,6 +237,13 @@ def complete_sales_return(db: Session, return_id: str, context: UserContext):
     row = db.scalar(select(SalesReturn).where(SalesReturn.id == return_id, SalesReturn.org_id == context.org_id, SalesReturn.is_deleted.is_(False)))
     if row is None: raise AppError("销售退货单不存在", code=404)
     if row.status != "submitted": raise AppError("只有已提交退货单可以完成", code=400)
+    from app.services.inventory_service import post_stock_transaction
+    for item in row.items:
+        post_stock_transaction(
+            db, context, source_type="sales_return", source_id=row.id,
+            warehouse_id=row.warehouse_id, material_id=item.material_id,
+            quantity=item.quantity, direction="in", unit_cost=item.unit_price,
+        )
     row.status = "completed"; row.version += 1; db.flush(); return row
 
 
@@ -225,6 +258,13 @@ def complete_purchase_return(db: Session, return_id: str, context: UserContext):
     row = db.scalar(select(PurchaseReturn).where(PurchaseReturn.id == return_id, PurchaseReturn.org_id == context.org_id, PurchaseReturn.is_deleted.is_(False)))
     if row is None: raise AppError("采购退货单不存在", code=404)
     if row.status != "submitted": raise AppError("只有已提交退货单可以完成", code=400)
+    from app.services.inventory_service import post_stock_transaction
+    for item in row.items:
+        post_stock_transaction(
+            db, context, source_type="purchase_return", source_id=row.id,
+            warehouse_id=row.warehouse_id, material_id=item.material_id,
+            quantity=item.quantity, direction="out", unit_cost=item.unit_price,
+        )
     row.status = "completed"; row.version += 1; db.flush(); return row
 
 

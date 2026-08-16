@@ -50,6 +50,7 @@ export function createPurchaseRequest(payload: Record<string, unknown>) { return
 export function updatePurchaseRequest(id: string, payload: Record<string, unknown>) { return http.put(`/purchase/requests/${id}`, payload); }
 export function deletePurchaseRequest(id: string) { return http.delete(`/purchase/requests/${id}`); }
 export function requestAction(id: string, action: "submit" | "approve" | "reject") { return http.post(`/purchase/requests/${id}/${action}`); }
+export function convertRequestToOrder(id: string, warehouseId: string) { return http.post(`/purchase/requests/${id}/convert`, { warehouse_id: warehouseId }); }
 export function listPurchaseReturns() { return http.get("/purchase/returns"); }
 export function createPurchaseReturn(payload: Record<string, unknown>) { return http.post("/purchase/returns", payload); }
 export function updatePurchaseReturn(id: string, payload: Record<string, unknown>) { return http.put(`/purchase/returns/${id}`, payload); }

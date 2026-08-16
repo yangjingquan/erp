@@ -75,11 +75,14 @@ def auto_match_bank_statement(db: Session, statement_id: str, context: UserConte
             continue
         model = FinReceipt if line.direction == "in" else FinPayment
         date_field = model.receipt_date if line.direction == "in" else model.payment_date
+        # Receipts/payments are recorded with status "confirmed" and move to
+        # "partial"/"settled" as they are reconciled.  Only match rows that are
+        # not yet fully settled so every open cash movement can be suggested.
         candidates = db.scalars(select(model).where(
             model.org_id == context.org_id,
             model.amount == line.amount,
             date_field.between(line.transaction_date, line.transaction_date),
-            model.status.in_({"draft", "submitted", "approved", "posted"}),
+            model.status.in_({"confirmed", "partial"}),
         ).order_by(model.doc_no).limit(10)).all()
         suggestions.append({
             "line_id": line.id,

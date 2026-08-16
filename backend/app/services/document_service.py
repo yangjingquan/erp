@@ -585,12 +585,16 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
     _assert_command_access(context, business_type)
     if business_type == "sales_order":
         from app.services.sales_service import approve_sales_order, create_delivery_from_order, submit_sales_order
+        from app.services.workflow_service import has_running_workflow, start_workflow_if_active
         if command == "submit":
             result = submit_sales_order(db, business_id, context)
+            start_workflow_if_active(db, "sales_order", business_id, context)
             document = _sync_row(db, business_type, result)
             db.commit()
             return {"document": _serialize_document(document, context, db)}
         if command == "approve":
+            if has_running_workflow(db, "sales_order", business_id, context):
+                raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
             result = approve_sales_order(db, business_id, context)
             document = _sync_row(db, business_type, result)
             db.commit()
@@ -613,9 +617,13 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
         return {"document": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == delivery.id)), context, db), "created": {"business_type": "sales_receivable", "business_id": receivable.id}}
     if business_type == "purchase_order":
         from app.services.purchase_service import approve_purchase_order, create_receipt_from_order, submit_purchase_order
+        from app.services.workflow_service import has_running_workflow, start_workflow_if_active
         if command == "submit":
             result = submit_purchase_order(db, business_id, context)
+            start_workflow_if_active(db, "purchase_order", business_id, context)
         elif command == "approve":
+            if has_running_workflow(db, "purchase_order", business_id, context):
+                raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
             result = approve_purchase_order(db, business_id, context)
         elif command == "create_receipt":
             result = create_receipt_from_order(db, business_id, context)

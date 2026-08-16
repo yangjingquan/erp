@@ -42,7 +42,7 @@ def payroll_details(payroll_id: str, context: UserContext = Depends(get_current_
         raise AppError("薪资批次不存在", code=404)
     employee_ids = [item.get("employee_id") for item in (row.items_json or []) if item.get("employee_id")]
     employees = {item.id: item for item in db.scalars(select(HrEmployee).where(HrEmployee.id.in_(employee_ids), HrEmployee.org_id == context.org_id)).all()} if employee_ids else {}
-    return ok([{"employee_id": item.get("employee_id"), "employee_no": employees.get(item.get("employee_id")).employee_no if employees.get(item.get("employee_id")) else None, "employee_name": employees.get(item.get("employee_id")).name if employees.get(item.get("employee_id")) else None, "amount": item.get("amount", "0")} for item in (row.items_json or [])])
+    return ok([{"employee_id": item.get("employee_id"), "employee_no": item.get("employee_no") or (employees.get(item.get("employee_id")).employee_no if employees.get(item.get("employee_id")) else None), "employee_name": item.get("name") or (employees.get(item.get("employee_id")).name if employees.get(item.get("employee_id")) else None), "base_amount": item.get("base_amount", item.get("amount", "0")), "deduction": item.get("deduction", "0"), "absent_days": item.get("absent_days", 0), "late_days": item.get("late_days", 0), "leave_days": item.get("leave_days", 0), "amount": item.get("amount", "0")} for item in (row.items_json or [])])
 @router.post("/payroll/{payroll_id}/approve")
 def approve(payroll_id:str,context:UserContext=Depends(require_permission("hr:salary:manage")),db:Session=Depends(get_db)): row=approve_payroll(db,payroll_id,context);db.commit();return ok({"id":row.id,"status":row.status})
 @router.post("/payroll/{payroll_id}/pay")

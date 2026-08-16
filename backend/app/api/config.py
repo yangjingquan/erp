@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.response import ok
 from app.models.configuration import CfgGlobalParameter
 from app.services.auth_service import UserContext
-from app.services.configuration_service import create_print_template, list_print_templates
+from app.services.configuration_service import create_print_template, delete_print_template, list_print_templates, render_document_print, update_print_template
 
 router = APIRouter(prefix="/api/config", tags=["configuration"])
 
@@ -16,11 +16,35 @@ def print_templates(context: UserContext = Depends(get_current_user), db: Sessio
     return ok(list_print_templates(db, context))
 
 
+@router.get("/print-templates/render")
+def render_print(
+    business_type: str = Query(min_length=1),
+    business_id: str = Query(min_length=1),
+    template_id: str | None = Query(default=None),
+    context: UserContext = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return ok(render_document_print(db, context, business_type=business_type, business_id=business_id, template_id=template_id))
+
+
 @router.post("/print-templates")
 def create_template(payload: dict, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
     result = create_print_template(db, payload, context)
     db.commit()
     return ok(result, "打印模板已创建")
+
+
+@router.put("/print-templates/{template_id}")
+def update_template(template_id: str, payload: dict, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    result = update_print_template(db, template_id, payload, context)
+    db.commit()
+    return ok(result, "打印模板已更新")
+
+
+@router.delete("/print-templates/{template_id}")
+def delete_template(template_id: str, context: UserContext = Depends(require_permission("config:manage")), db: Session = Depends(get_db)):
+    delete_print_template(db, template_id, context)
+    return ok(msg="打印模板已删除")
 
 
 @router.get("/field/{business_type}/{field_key}")

@@ -9,6 +9,7 @@ export const disableBom = (id: string) => http.post(`/production/boms/${id}/disa
 export const listMps = () => http.get("/production/mps");
 export const createMps = (payload: unknown) => http.post("/production/mps", payload);
 export const runMrp = (id: string) => http.post(`/production/mps/${id}/run-mrp`);
+export const confirmMrpResult = (resultId: string) => http.post(`/production/mrp-results/${resultId}/confirm`);
 export const listWorkOrders = () => http.get("/production/work-orders");
 export const createWorkOrder = (payload: unknown) => http.post("/production/work-orders", payload);
 export const releaseWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/release`);
@@ -47,3 +48,9 @@ export const confirmPlannedOrder = (id: string) => http.post(`/production/planne
 export const bulkConfirmPlannedOrders = (ids: string[]) => http.post("/production/planned-orders/bulk-confirm", { planned_order_ids: ids });
 export const ignorePlannedOrder = (id: string) => http.post(`/production/planned-orders/${id}/ignore`);
 export const getBomTree = (id: string) => http.get(`/production/boms/${id}/tree`);
+export const listSubcontractOrders = () => http.get("/production/subcontract-orders");
+export const createSubcontractOrder = (payload: unknown) => http.post("/production/subcontract-orders", payload);
+export const releaseSubcontractOrder = (id: string) => http.post(`/production/subcontract-orders/${id}/release`);
+export const cancelSubcontractOrder = (id: string) => http.post(`/production/subcontract-orders/${id}/cancel`);
+export const issueSubcontractMaterial = (id: string, items: Array<{ material_id: string; quantity: number }>) => http.post(`/production/subcontract-orders/${id}/issue`, { items });
+export const receiveSubcontractOrder = (id: string, payload: { good_quantity: number; unit_cost: number; operation_key: string }) => http.post(`/production/subcontract-orders/${id}/receipts`, payload);

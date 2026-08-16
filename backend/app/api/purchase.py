@@ -11,6 +11,7 @@ from app.schemas.purchase import PurchaseOrderCreate, PurchaseOrderUpdate, Purch
 from app.services.auth_service import UserContext
 from app.services.purchase_service import (
     approve_purchase_order,
+    convert_request_to_order,
     create_purchase_order,
     create_receipt_from_order,
     delete_purchase_order,
@@ -22,6 +23,7 @@ from app.services.purchase_service import (
 from app.services.finance_service import create_payable_from_purchase_receipt
 from app.services.inventory_service import complete_purchase_receipt
 from app.services.business_extension_service import complete_purchase_return, create_purchase_return, create_request, delete_purchase_return, delete_request, list_purchase_returns, list_requests, serialize_request, serialize_return, submit_purchase_return, transition_request, update_purchase_return, update_request
+from app.services.workflow_service import has_running_workflow, start_workflow_if_active
 
 router = APIRouter(prefix="/api/purchase", tags=["purchase"])
 
@@ -53,11 +55,16 @@ def remove_order(order_id: str, context: UserContext = Depends(require_permissio
 
 @router.post("/orders/{order_id}/submit")
 def submit_order(order_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
-    return ok(serialize_order(submit_purchase_order(db, order_id, context)))
+    result = submit_purchase_order(db, order_id, context)
+    start_workflow_if_active(db, "purchase_order", order_id, context)
+    db.commit()
+    return ok(serialize_order(result))
 
 
 @router.post("/orders/{order_id}/approve")
 def approve_order(order_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    if has_running_workflow(db, "purchase_order", order_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
     return ok(serialize_order(approve_purchase_order(db, order_id, context)))
 
 
@@ -113,6 +120,12 @@ def edit_request(request_id: str, payload: PurchaseRequestUpdate, context: UserC
 def remove_request(request_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     delete_request(db, request_id, context)
     return ok(msg="采购申请已删除")
+
+
+@router.post("/requests/{request_id}/convert")
+def convert_request(request_id: str, payload: dict, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    order = convert_request_to_order(db, request_id, str(payload.get("warehouse_id") or ""), context)
+    return ok(serialize_order(order), "采购申请已转为采购订单")
 
 
 @router.post("/requests/{request_id}/{action}")

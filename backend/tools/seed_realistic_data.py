@@ -38,6 +38,144 @@ def month_value(index: int) -> str:
     return f"{year:04d}-{((month - 1) % 12) + 1:02d}"
 
 
+# Realistic per-table status/type pools so that seeded rows can participate in
+# the documented state machines instead of being stuck at a single sentinel
+# value.  Values are cycled by index.  Master-data tables intentionally fall
+# back to the "active/inactive" default defined in ENUM_FALLBACK.
+STATUS_POOLS: dict[str, dict[str, list[str]]] = {
+    "sales_quote": {"status": ["draft", "submitted", "approved", "rejected"]},
+    "sales_order": {"status": ["draft", "submitted", "approved", "completed"]},
+    "sales_delivery": {"status": ["draft", "completed"]},
+    "sales_return": {"status": ["draft", "submitted", "completed"]},
+    "sales_receivable": {"status": ["open", "partial", "settled"], "source_type": ["sales_delivery"]},
+    "purchase_request": {"status": ["draft", "submitted", "approved", "rejected"]},
+    "purchase_order": {"status": ["draft", "submitted", "approved", "completed"]},
+    "purchase_receipt": {"status": ["draft", "completed"]},
+    "purchase_return": {"status": ["draft", "submitted", "completed"]},
+    "purchase_payable": {"status": ["open", "partial", "settled"], "source_type": ["purchase_receipt"]},
+    "fin_receipt": {"status": ["confirmed", "partial", "settled"]},
+    "fin_payment": {"status": ["confirmed", "partial", "settled"]},
+    "fin_expense": {"status": ["draft", "submitted", "approved", "settled"]},
+    "fin_voucher": {"status": ["draft", "posted", "reversed"]},
+    "fin_account": {"status": ["active", "inactive"]},
+    "fin_budget": {"status": ["draft", "approved"]},
+    "fin_cash_forecast": {"status": ["draft", "approved"]},
+    "fin_reconciliation_statement": {"status": ["draft", "confirmed"]},
+    "fin_bank_statement": {"status": ["imported", "matched"]},
+    "fin_bank_statement_line": {"status": ["pending", "matched", "partial"]},
+    "fin_asset": {"status": ["active", "scrapped"]},
+    "fin_fiscal_period": {"status": ["open", "closed"]},
+    "fin_period_close_checklist": {"status": ["pending", "completed"]},
+    "mfg_bom": {"status": ["draft", "submitted", "approved", "disabled"]},
+    "mfg_mps": {"status": ["draft", "planned"]},
+    "mfg_mrp_run": {"status": ["draft", "completed"]},
+    "mfg_plan_run": {"status": ["draft", "completed"]},
+    "mfg_planned_order": {"status": ["pending", "confirmed", "ignored"], "order_type": ["purchase", "manufacture"]},
+    "mfg_work_order": {"status": ["draft", "released", "in_progress", "completed"]},
+    "mfg_routing": {"status": ["draft", "submitted", "approved", "disabled"]},
+    "mfg_work_center": {"status": ["active", "inactive"]},
+    "mfg_subcontract_order": {"status": ["draft", "released", "completed", "cancelled"]},
+    "mfg_work_order_exception": {"status": ["open", "resolved"]},
+    "mfg_work_order_schedule": {"status": ["planned", "completed"]},
+    "qa_inspection": {"status": ["draft", "submitted", "completed", "closed"]},
+    "qa_nonconformance": {"status": ["open", "investigating", "closed"]},
+    "qa_plan": {"status": ["draft", "active"]},
+    "qa_capa_action": {"status": ["open", "completed"]},
+    "qa_customer_claim": {"status": ["open", "investigating", "approved", "rejected", "closed"]},
+    "qa_spc_record": {"status": ["in_control", "out_of_control"]},
+    "crm_lead": {"status": ["new", "contacted", "qualified", "converted", "lost"]},
+    "crm_opportunity": {"stage": ["new", "prospecting", "negotiation", "won", "lost"]},
+    "hr_employee": {"status": ["active", "inactive"]},
+    "hr_leave_request": {"status": ["draft", "submitted", "approved", "rejected"]},
+    "hr_attendance": {"status": ["present", "absent", "late", "leave"]},
+    "hr_payroll_run": {"status": ["draft", "approved", "paid"]},
+    "hr_recruitment_candidate": {"status": ["new", "interview", "hired", "rejected"]},
+    "eam_asset": {"status": ["active", "inactive"]},
+    "eam_work_order": {"status": ["open", "assigned", "in_progress", "resolved", "closed"]},
+    "eam_maintenance_plan": {"status": ["active", "inactive"]},
+    "svc_case": {"status": ["open", "assigned", "in_progress", "resolved", "closed"]},
+    "svc_contract": {"status": ["active", "expired"]},
+    "svc_visit": {"status": ["planned", "completed"]},
+    "plm_change_request": {"status": ["draft", "submitted", "approved", "effective"]},
+    "plm_change_order": {"status": ["draft", "approved", "effective"]},
+    "plm_change_impact": {"status": ["pending", "applied", "rejected"]},
+    "plm_product_revision": {"status": ["draft", "submitted", "effective", "obsolete"]},
+    "srm_rfq": {"status": ["draft", "quoted", "accepted"]},
+    "srm_supplier_score": {"status": ["draft", "confirmed"]},
+    "tax_code": {"status": ["active", "inactive"]},
+    "tax_invoice": {"status": ["draft", "submitted", "issued", "red_issued"]},
+    "org_intercompany_transaction": {"status": ["draft", "confirmed"]},
+    "project": {"status": ["draft", "active", "closed"]},
+    "project_milestone": {"status": ["pending", "completed"]},
+    "project_wbs": {"status": ["active", "completed"]},
+    "low_code_definition": {"status": ["draft", "published"]},
+    "metric_definition": {"status": ["draft", "published"]},
+    "ai_exception_alert": {"status": ["open", "resolved"], "severity": ["low", "medium", "high"]},
+    "sys_api_client": {"status": ["active", "disabled"]},
+    "ext_event_outbox": {"status": ["pending", "processed", "failed"]},
+    "ext_event_delivery": {"status": ["pending", "delivered", "failed"]},
+    "ext_event_subscription": {"status": ["active", "disabled"]},
+    "inv_transfer": {"status": ["draft", "approved", "completed"]},
+    "inv_count": {"status": ["draft", "completed"]},
+    "inv_warehouse_task": {"status": ["ready", "in_progress", "completed"], "task_type": ["pick", "pack", "check"]},
+    "inv_pick_wave": {"status": ["draft", "released", "completed"]},
+    "inv_reservation": {"status": ["active", "released"]},
+    "inv_batch": {"status": ["active", "used"]},
+    "inv_location": {"status": ["active", "inactive"]},
+    "inv_zone": {"status": ["active", "inactive"]},
+    "inv_warehouse_access": {"status": ["active", "inactive"]},
+    "tms_shipment": {"status": ["draft", "planned", "dispatched", "in_transit", "delivered"]},
+    "ocr_document": {"status": ["completed", "needs_review"]},
+    "biz_document": {"status": ["draft", "submitted", "approved", "completed"]},
+    "biz_export_job": {"status": ["pending", "processing", "completed", "failed"]},
+    "biz_saved_view": {"status": ["active", "inactive"]},
+    "biz_report_definition": {"status": ["active", "inactive"]},
+    "biz_report_run": {"status": ["completed", "failed"]},
+    "cost_allocation": {"status": ["draft", "posted"]},
+    "cost_period_close": {"status": ["open", "closed"]},
+    "wf_definition": {"status": ["draft", "active"]},
+    "wf_instance": {"status": ["running", "completed", "rejected"]},
+    "wf_task": {"status": ["pending", "approved", "rejected"]},
+}
+
+# Fallback pools for enum-style columns that are not listed per-table above.
+ENUM_FALLBACK: dict[str, list[str]] = {
+    "status": ["active", "inactive"],
+    "stage": ["new", "prospecting", "negotiation", "won"],
+    "severity": ["low", "medium", "high"],
+    "result": ["pass"],
+    "disposition": ["use_as_is"],
+    "account_type": ["asset", "liability", "equity", "cost", "revenue", "expense"],
+    "balance_direction": ["debit", "credit"],
+    "dimension_type": ["department"],
+    "depreciation_method": ["straight_line"],
+    "basis": ["manual"],
+    "source_type": ["manual"],
+    "statement_type": ["ar", "ap"],
+    "match_type": ["rule", "manual"],
+    "direction": ["in", "out"],
+    "task_type": ["pick", "pack", "check"],
+    "order_type": ["purchase", "manufacture"],
+    "inspection_type": ["incoming", "process", "final"],
+    "change_type": ["engineering"],
+    "object_type": ["bom", "routing", "purchase", "work_order"],
+    "service_type": ["repair", "maintenance", "inspection"],
+    "invoice_type": ["input", "output"],
+    "event_type": ["created", "updated"],
+    "membership_type": ["user"],
+    "action_type": ["create"],
+    "notification_type": ["info"],
+    "document_type": ["sales_order"],
+    "visibility": ["private"],
+    "reset_cycle": ["monthly"],
+}
+
+
+def enum_value(table_name: str, key: str, index: int) -> str:
+    pool = STATUS_POOLS.get(table_name, {}).get(key) or ENUM_FALLBACK.get(key, ["active"])
+    return pool[(index - 1) % len(pool)]
+
+
 def table_rows(table: Table, index: int) -> dict[str, object]:
     name = table.name
     row: dict[str, object] = {}
@@ -103,8 +241,8 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
             row[key] = (index % 20) + 1
         elif key in {"amount", "total_amount", "actual_amount", "budget_amount", "original_value", "accumulated_depreciation", "standard_cost", "sale_price", "purchase_price", "credit_limit", "quote_amount", "processing_fee", "processing_fee_amount", "inflow_amount", "outflow_amount", "net_amount", "total_debit", "total_credit", "debit_amount", "credit_amount", "value", "freight_amount", "statement_amount", "reconciled_amount", "matched_amount", "unit_cost", "total_cost", "material_cost", "labor_cost", "overhead_cost", "subcontract_cost", "scrap_cost", "variance_amount", "actual_unit_cost", "base_salary", "allowance", "score", "target", "rate", "tax_amount", "delivery_score", "quality_score", "service_score", "total_score", "defect_rate", "sample_value", "lsl", "usl", "cpk", "impact_quantity", "quantity", "min_stock", "max_stock", "plan_quantity", "receivable_amount", "payable_amount", "residual_rate", "efficiency_rate", "labor_rate", "overhead_rate", "required_quantity", "issued_quantity", "returned_quantity", "completed_quantity", "reported_good_quantity", "reported_scrap_quantity", "planned_quantity", "good_quantity", "scrap_quantity", "hours", "scheduled_hours", "actual_hours", "original_quantity", "remaining_quantity", "released_quantity", "locked_quantity", "available_quantity", "average_cost", "estimated_price", "unit_price", "tax_rate"}:
             row[key] = Decimal(str(10 + index * 3))
-        elif key in {"status", "result", "disposition", "severity", "stage", "account_type", "balance_direction", "dimension_type", "depreciation_method", "basis", "source_type", "statement_type", "match_type", "direction", "task_type", "order_type", "inspection_type", "change_type", "object_type", "priority", "service_type", "invoice_type", "event_type", "membership_type", "action_type", "notification_type", "document_type", "visibility", "reset_cycle"}:
-            row[key] = "active"
+        elif key in {"status", "result", "disposition", "severity", "stage", "account_type", "balance_direction", "dimension_type", "depreciation_method", "basis", "source_type", "statement_type", "match_type", "direction", "task_type", "order_type", "inspection_type", "change_type", "object_type", "service_type", "invoice_type", "event_type", "membership_type", "action_type", "notification_type", "document_type", "visibility", "reset_cycle"}:
+            row[key] = enum_value(name, key, index)
         else:
             row[key] = f"{name.replace('_', ' ').title()} {index:02d}"
 

@@ -1,3 +1,4 @@
+import logging
 from decimal import Decimal
 from uuid import uuid4
 
@@ -23,6 +24,8 @@ from app.models.production import MfgSubcontractReceipt
 from app.models.sales import SalesDelivery
 from app.services.auth_service import UserContext
 
+LOGGER = logging.getLogger("erp.finance")
+
 
 def _new_finance_doc_no(prefix: str, context: UserContext) -> str:
     """Build a human-readable finance number with a collision-resistant suffix."""
@@ -36,6 +39,7 @@ def create_receivable_from_sales_delivery(db: Session, delivery_id: str, context
         raise AppError("销售出库单不存在", code=404)
     existing = db.scalar(select(SalesReceivable).where(SalesReceivable.source_type == "sales_delivery", SalesReceivable.source_id == delivery.id))
     if existing:
+        auto_generate_voucher(db, "sales_delivery", delivery.id, context)
         return existing
     receivable = SalesReceivable(
         org_id=context.org_id,
@@ -48,6 +52,7 @@ def create_receivable_from_sales_delivery(db: Session, delivery_id: str, context
     )
     db.add(receivable)
     db.flush()
+    auto_generate_voucher(db, "sales_delivery", delivery.id, context)
     return receivable
 
 
@@ -57,6 +62,7 @@ def create_payable_from_purchase_receipt(db: Session, receipt_id: str, context: 
         raise AppError("采购入库单不存在", code=404)
     existing = db.scalar(select(PurchasePayable).where(PurchasePayable.source_type == "purchase_receipt", PurchasePayable.source_id == receipt.id))
     if existing:
+        auto_generate_voucher(db, "purchase_receipt", receipt.id, context)
         return existing
     payable = PurchasePayable(
         org_id=context.org_id,
@@ -69,6 +75,7 @@ def create_payable_from_purchase_receipt(db: Session, receipt_id: str, context: 
     )
     db.add(payable)
     db.flush()
+    auto_generate_voucher(db, "purchase_receipt", receipt.id, context)
     return payable
 
 
@@ -86,6 +93,7 @@ def create_payable_from_subcontract_receipt(
         )
     )
     if existing:
+        auto_generate_voucher(db, "subcontract_receipt", receipt.id, context)
         return existing
     payable = PurchasePayable(
         org_id=context.org_id,
@@ -110,7 +118,9 @@ def create_payable_from_subcontract_receipt(
         )
         if existing is None:
             raise
+        auto_generate_voucher(db, "subcontract_receipt", receipt.id, context)
         return existing
+    auto_generate_voucher(db, "subcontract_receipt", receipt.id, context)
     return payable
 
 
@@ -289,6 +299,43 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
             FinVoucherEntry(line_no=1, account_code="2202", account_name="应付账款", summary="付款核销", debit_amount=amount, credit_amount=0),
             FinVoucherEntry(line_no=2, account_code="1002", account_name="银行存款", summary="支付供应商款项", debit_amount=0, credit_amount=amount),
         ]
+    elif source_type == "sales_delivery":
+        source = db.get(SalesDelivery, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="1122", account_name="应收账款", summary="销售出库确认收入", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="6001", account_name="主营业务收入", summary="销售收入", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "purchase_receipt":
+        source = db.get(PurchaseReceipt, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="1403", account_name="原材料", summary="采购入库", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="2202", account_name="应付账款", summary="采购应付", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "subcontract_receipt":
+        source = db.get(MfgSubcontractReceipt, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.processing_fee_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="5001", account_name="生产成本", summary="委外加工费", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="2202", account_name="应付账款", summary="委外应付", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "allocation":
+        from app.models.cost import CostAllocation
+        source = db.get(CostAllocation, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="5001", account_name="生产成本", summary="成本分摊计入", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="4101", account_name="制造费用", summary="成本分摊转出", debit_amount=0, credit_amount=amount),
+        ]
     else:
         raise AppError("暂不支持该凭证来源", code=400)
     assert_fiscal_period_open(db, context.org_id, local_today())
@@ -321,6 +368,21 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
     db.add(voucher)
     db.flush()
     return voucher
+
+
+def auto_generate_voucher(db: Session, source_type: str, source_id: str, context: UserContext) -> FinVoucher | None:
+    """Best-effort voucher generation for a completed business document.
+
+    The business completion (stock posting, receivable/payable creation) must
+    always succeed; voucher generation depends on an open fiscal period and
+    configured ledger accounts, so a failure here is logged but never blocks
+    the primary document flow.
+    """
+    try:
+        return generate_voucher(db, source_type, source_id, context)
+    except AppError as exc:
+        LOGGER.warning("自动生成凭证失败 source_type=%s source_id=%s: %s", source_type, source_id, exc.msg)
+        return None
 
 
 def _money(value: Decimal) -> str:

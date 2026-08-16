@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { createSalesOrder, type SalesOrderPayload } from "../../api/sales";
+import { createSalesOrder, deleteSalesOrder, updateSalesOrder, type SalesOrderPayload } from "../../api/sales";
 import { getDocumentWorkspace, listDocuments, runDocumentCommand } from "../../api/documents";
 import DocumentListWorkbench from "../../components/DocumentListWorkbench.vue";
 import DocumentWorkbench from "../../components/DocumentWorkbench.vue";
@@ -26,6 +26,7 @@ const errorMessage = ref("");
 const dialogVisible = ref(false);
 const detailVisible = ref(false);
 const selected = ref<Row | null>(null);
+const editingId = ref("");
 const form = reactive<SalesOrderPayload>({ customer_id: "", order_date: localDateString(), expected_date: null, remark: "", items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: "", tax_rate: 0 }] });
 const { customers, materials, warehouses, loadOptions } = useMasterOptions();
 
@@ -50,7 +51,23 @@ async function load() {
 }
 
 function resetForm() { form.customer_id = ""; form.order_date = localDateString(); form.expected_date = null; form.remark = ""; form.items = [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: "", tax_rate: 0 }]; }
-function openCreate() { selected.value = null; resetForm(); dialogVisible.value = true; }
+function openCreate() { selected.value = null; editingId.value = ""; resetForm(); dialogVisible.value = true; }
+async function openEdit(row: Row) {
+  try {
+    const data = unwrap(await getDocumentWorkspace("sales_order", String(row.business_id)));
+    const source = data.details || {};
+    const item = source.items?.[0];
+    editingId.value = String(row.business_id);
+    form.customer_id = source.customer_id || "";
+    form.order_date = source.order_date || localDateString();
+    form.expected_date = source.expected_date || null;
+    form.remark = source.remark || "";
+    form.items = [{ material_id: item?.material_id || "", quantity: Number(item?.quantity || 1), unit_price: Number(item?.unit_price || 0), warehouse_id: item?.warehouse_id || "", tax_rate: Number(item?.tax_rate || 0) }];
+    dialogVisible.value = true;
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "加载订单失败");
+  }
+}
 function openDetail(row: Row) { selected.value = row; detailVisible.value = true; }
 function search() { page.value = 1; load(); }
 function resetFilters() { keyword.value = ""; status.value = ""; dateRange.value = []; page.value = 1; load(); }
@@ -75,11 +92,23 @@ async function save() {
   if (!form.customer_id || !form.items[0]?.material_id || !form.items[0]?.warehouse_id || form.items[0].quantity <= 0) { ElMessage.warning("请填写客户、物料、仓库和有效数量"); return; }
   saving.value = true;
   try {
-    const response = await createSalesOrder(form);
+    const response = editingId.value ? await updateSalesOrder(editingId.value, form) : await createSalesOrder(form);
     if (response.data.code !== 0) throw new Error(response.data.msg);
-    ElMessage.success("销售订单已创建"); dialogVisible.value = false; await load();
-  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "销售订单创建失败"); }
+    ElMessage.success(editingId.value ? "销售订单已修改" : "销售订单已创建"); dialogVisible.value = false; await load();
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : "销售订单保存失败"); }
   finally { saving.value = false; }
+}
+
+async function removeOrder(row: Row) {
+  const id = String(row.business_id || "");
+  try {
+    await ElMessageBox.confirm(`确认删除销售订单“${row.doc_no || id}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
+    actionLoading.value = id;
+    unwrap(await deleteSalesOrder(id));
+    ElMessage.success("销售订单已删除"); await load();
+  } catch (error: any) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "删除失败");
+  } finally { actionLoading.value = null; }
 }
 
 async function confirmAction(row: Row, action: Row) {
@@ -114,6 +143,8 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button>
+          <el-button v-if="scope.row.status === 'draft'" link @click="openEdit(scope.row)">修改</el-button>
+          <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === scope.row.business_id" @click="removeOrder(scope.row)">删除</el-button>
           <el-button link @click="copyToForm(scope.row)">复制填充</el-button>
           <el-button v-for="action in scope.row.available_actions" :key="action.command" link :type="action.type" :loading="actionLoading === scope.row.business_id" @click="confirmAction(scope.row, action)">{{ action.label }}</el-button>
         </template>
@@ -121,7 +152,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
       <template #empty><el-empty description="当前筛选范围内暂无销售订单，可调整筛选或新建订单" /></template>
     </el-table>
 
-    <el-dialog v-model="dialogVisible" title="新建销售订单" width="560px">
+    <el-dialog v-model="dialogVisible" :title="editingId ? '修改销售订单' : '新建销售订单'" width="560px">
       <el-form label-width="92px" @submit.prevent="save">
         <el-form-item label="客户" required><el-select v-model="form.customer_id" filterable clearable placeholder="请选择客户" style="width: 100%"><el-option v-for="option in customers" :key="option.value" v-bind="option" /></el-select></el-form-item>
         <el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item>

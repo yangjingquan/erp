@@ -173,6 +173,15 @@ def serialize_subcontract_receipt(row: MfgSubcontractReceipt) -> dict:
     }
 
 
+def list_subcontract_orders(db: Session, context: UserContext) -> list[dict]:
+    rows = db.scalars(
+        select(MfgSubcontractOrder)
+        .where(MfgSubcontractOrder.org_id == context.org_id, MfgSubcontractOrder.is_deleted.is_(False))
+        .order_by(MfgSubcontractOrder.created_at.desc())
+    ).all()
+    return [serialize_subcontract_order(row) for row in rows]
+
+
 def _get_work_order(db: Session, work_order_id: str, context: UserContext, *, lock: bool = False) -> MfgWorkOrder:
     statement = (
         select(MfgWorkOrder)

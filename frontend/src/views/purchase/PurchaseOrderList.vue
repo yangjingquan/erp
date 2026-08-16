@@ -40,7 +40,7 @@ const form = reactive<PurchaseOrderPayload>({
   expected_date: null,
   items: [{ material_id: "", quantity: 1, unit_price: 0, warehouse_id: null, tax_rate: 0 }],
 });
-const { suppliers, materials, loadOptions } = useMasterOptions();
+const { suppliers, materials, warehouses, loadOptions } = useMasterOptions();
 
 const statusLabels: Record<string, string> = {
   draft: "草稿",
@@ -64,6 +64,11 @@ function supplierLabel(id: unknown) {
 function materialLabel(id: unknown) {
   const value = String(id || "");
   return materials.value.find((option) => option.value === value)?.label || value || "-";
+}
+
+function warehouseLabel(id: unknown) {
+  const value = String(id || "");
+  return warehouses.value.find((option) => option.value === value)?.label || value || "-";
 }
 
 function itemRows(row: Row) {
@@ -112,8 +117,8 @@ function copyToForm(row: Row) {
 }
 
 async function save() {
-  if (!form.supplier_id || !form.items[0]?.material_id || form.items[0].quantity <= 0) {
-    ElMessage.warning("请填写供应商、物料和有效数量");
+  if (!form.supplier_id || !form.items[0]?.material_id || !form.items[0]?.warehouse_id || form.items[0].quantity <= 0) {
+    ElMessage.warning("请填写供应商、物料、仓库和有效数量");
     return;
   }
   saving.value = true;
@@ -162,7 +167,7 @@ async function confirmAction(row: Row, action: "submit" | "approve" | "receipt")
   } finally { actionLoading.value = null; }
 }
 
-onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "materials"])]); });
+onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "materials", "warehouses"])]); });
 </script>
 
 <template>
@@ -183,7 +188,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     </el-table>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
     <el-dialog v-model="dialogVisible" :title="editingId ? '修改采购订单' : '新建采购订单'" width="560px">
-      <el-form label-width="92px"><el-form-item label="供应商" required><el-select v-model="form.supplier_id" filterable clearable placeholder="请选择供应商" style="width: 100%"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="预计到货"><el-date-picker v-model="form.expected_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable placeholder="请选择物料" style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item label="含税单价" required><el-input-number v-model="form.items[0].unit_price" :min="0" :precision="2" /></el-form-item></el-form>
+      <el-form label-width="92px"><el-form-item label="供应商" required><el-select v-model="form.supplier_id" filterable clearable placeholder="请选择供应商" style="width: 100%"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="预计到货"><el-date-picker v-model="form.expected_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable placeholder="请选择物料" style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="仓库" required><el-select v-model="form.items[0].warehouse_id" filterable clearable placeholder="请选择仓库" style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item label="含税单价" required><el-input-number v-model="form.items[0].unit_price" :min="0" :precision="2" /></el-form-item></el-form>
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>
     </el-dialog>
     <el-dialog v-model="detailVisible" title="采购订单详情" width="680px"><el-descriptions v-if="selected" :column="2" border><el-descriptions-item label="订单号">{{ selected.doc_no }}</el-descriptions-item><el-descriptions-item label="状态">{{ selected.status }}</el-descriptions-item><el-descriptions-item label="供应商">{{ selected.supplier_name || selected.supplier_id }}</el-descriptions-item><el-descriptions-item label="金额">{{ selected.total_amount }}</el-descriptions-item></el-descriptions></el-dialog>

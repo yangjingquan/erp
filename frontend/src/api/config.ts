@@ -31,3 +31,17 @@ export function listPrintTemplates() {
 export function createPrintTemplate(payload: Omit<PrintTemplate, "id">) {
   return http.post("/config/print-templates", payload);
 }
+
+export function updatePrintTemplate(id: string, payload: Omit<PrintTemplate, "id">) {
+  return http.put(`/config/print-templates/${id}`, payload);
+}
+
+export function deletePrintTemplate(id: string) {
+  return http.delete(`/config/print-templates/${id}`);
+}
+
+export function renderPrintTemplate(businessType: string, businessId: string, templateId?: string) {
+  return http.get("/config/print-templates/render", {
+    params: { business_type: businessType, business_id: businessId, template_id: templateId },
+  });
+}

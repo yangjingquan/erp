@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -22,6 +23,8 @@ from app.models.finance import FinReceipt
 from app.models.hr import HrAttendance
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
+
+LOGGER = logging.getLogger("erp.phase2")
 
 
 def _serialize(value):
@@ -119,7 +122,48 @@ def resolve_change_impact(db, impact_id, status, context):
     row = db.scalar(select(PlmChangeImpact).where(PlmChangeImpact.id == impact_id, PlmChangeImpact.org_id == context.org_id, PlmChangeImpact.is_deleted.is_(False)))
     if row is None: raise AppError("变更影响项不存在", code=404)
     if status not in {"applied", "accepted", "rejected"}: raise AppError("影响项状态不合法", code=422)
+    if status == "applied":
+        _apply_impact_to_object(db, row, context)
     row.status = status; db.flush(); return row
+
+
+def _apply_impact_to_object(db, impact: PlmChangeImpact, context) -> None:
+    """Write an applied engineering change back onto the affected object.
+
+    Applying a change makes the old revision unusable so the wrong version can
+    no longer be produced: BOM/routing are disabled, work orders and purchase
+    orders are cancelled.  This is best-effort — a stale object id only logs a
+    warning and the impact itself still records as applied.
+    """
+    from app.models.production import MfgBom, MfgRouting, MfgWorkOrder
+    from app.models.purchase import PurchaseOrder
+
+    obj_type = impact.object_type
+    obj_id = impact.object_id
+    try:
+        if obj_type == "bom":
+            obj = db.scalar(select(MfgBom).where(MfgBom.id == obj_id, MfgBom.org_id == context.org_id))
+            if obj is not None and obj.status != "disabled":
+                obj.status = "disabled"; obj.updated_by = context.id
+        elif obj_type == "routing":
+            obj = db.scalar(select(MfgRouting).where(MfgRouting.id == obj_id, MfgRouting.org_id == context.org_id))
+            if obj is not None and obj.status != "disabled":
+                obj.status = "disabled"; obj.updated_by = context.id
+        elif obj_type == "work_order":
+            obj = db.scalar(select(MfgWorkOrder).where(MfgWorkOrder.id == obj_id, MfgWorkOrder.org_id == context.org_id))
+            if obj is None:
+                obj = db.scalar(select(MfgWorkOrder).where(MfgWorkOrder.doc_no == obj_id, MfgWorkOrder.org_id == context.org_id))
+            if obj is not None and obj.status not in {"completed", "cancelled"}:
+                obj.status = "cancelled"; obj.updated_by = context.id
+        elif obj_type == "purchase":
+            obj = db.scalar(select(PurchaseOrder).where(PurchaseOrder.id == obj_id, PurchaseOrder.org_id == context.org_id))
+            if obj is None:
+                obj = db.scalar(select(PurchaseOrder).where(PurchaseOrder.doc_no == obj_id, PurchaseOrder.org_id == context.org_id))
+            if obj is not None and obj.status not in {"completed", "cancelled"}:
+                obj.status = "cancelled"
+        db.flush()
+    except Exception as exc:  # noqa: BLE001 - impact status must still be recorded
+        LOGGER.warning("工程变更影响落地失败 object_type=%s object_id=%s: %s", obj_type, obj_id, exc)
 
 
 def list_rfqs(db, context, status=None):

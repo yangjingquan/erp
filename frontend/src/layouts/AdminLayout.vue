@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
+  Bell,
   Box,
   Collection,
   Connection,
@@ -121,6 +122,7 @@ onMounted(loadOrganizations);
         unique-opened
         router
       >
+        <el-menu-item v-if="canPage('/workflow/tasks')" index="/workflow/tasks"><el-icon><Bell /></el-icon><span>我的待办</span></el-menu-item>
         <el-sub-menu v-if="canAny(['/dashboard', '/analytics/reports', '/platform/metrics'])" index="insights">
           <template #title><el-icon><DataAnalysis /></el-icon><span>经营分析</span></template>
           <el-menu-item v-if="canPage('/dashboard')" index="/dashboard">经营看板</el-menu-item>
@@ -190,6 +192,7 @@ onMounted(loadOrganizations);
           <el-menu-item v-if="canPage('/production/work-orders')" index="/production/work-orders">生产工单</el-menu-item>
           <el-menu-item v-if="canPage('/production/resources')" index="/production/resources">工艺与产能</el-menu-item>
           <el-menu-item v-if="canPage('/production/execution')" index="/production/execution">生产执行控制台</el-menu-item>
+          <el-menu-item v-if="canPage('/production/subcontract')" index="/production/subcontract">委外管理</el-menu-item>
           <el-menu-item v-if="canPage('/plm/changes')" index="/plm/changes">PLM 工程变更</el-menu-item>
         </el-sub-menu>
         <el-sub-menu v-if="canAny(['/cost/allocations', '/cost/period-close', '/projects/cost'])" index="cost">

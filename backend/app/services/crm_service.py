@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
@@ -55,7 +56,41 @@ def transition_opportunity(db, opportunity_id, stage, context):
     row = db.scalar(select(CrmOpportunity).where(CrmOpportunity.id == opportunity_id, CrmOpportunity.org_id == context.org_id))
     if row is None: raise AppError("商机不存在", code=404)
     if stage == "lost" and not row.loss_reason: raise AppError("输单必须填写原因", code=400)
+    if stage == "won" and row.stage != "won":
+        result = _win_opportunity(db, row, context)
+        row.customer_id = result.get("customer_id") or row.customer_id
+        row.won_order_id = result.get("sales_order_id")
     row.stage = stage; db.flush(); return row
+
+
+def _win_opportunity(db, row, context):
+    """赢单落地：未关联客户时自动建档，填写了物料时自动生成销售订单草稿。"""
+    from app.models.master_data import MdWarehouse
+    from app.schemas.sales import SalesOrderCreate, SalesOrderItemCreate
+    from app.services.sales_service import create_sales_order
+
+    customer_id = row.customer_id
+    if not customer_id:
+        customer = db.scalar(select(MdCustomer).where(MdCustomer.org_id == context.org_id, MdCustomer.name == row.name))
+        if customer is None:
+            customer = MdCustomer(org_id=context.org_id, code=f"CRM-{row.id[:8]}", name=row.name, owner_id=context.id)
+            db.add(customer); db.flush()
+        customer_id = customer.id
+    order_id = None
+    if row.material_id:
+        warehouse = db.scalar(select(MdWarehouse.id).where(MdWarehouse.org_id == context.org_id, MdWarehouse.is_deleted.is_(False)).order_by(MdWarehouse.id).limit(1))
+        if warehouse is None:
+            raise AppError("未配置可用仓库，无法生成销售订单", code=422)
+        quantity = row.quantity if row.quantity else Decimal("1")
+        unit_price = row.unit_price if row.unit_price is not None else Decimal("0")
+        order = create_sales_order(db, SalesOrderCreate(
+            customer_id=customer_id,
+            order_date=local_today(),
+            remark=f"由商机 {row.name} 赢单自动生成",
+            items=[SalesOrderItemCreate(material_id=row.material_id, quantity=quantity, unit_price=unit_price, warehouse_id=warehouse)],
+        ), context)
+        order_id = order.id
+    return {"customer_id": customer_id, "sales_order_id": order_id}
 def add_follow_up(db, opportunity_id, payload, context):
     if db.scalar(select(CrmOpportunity).where(CrmOpportunity.id == opportunity_id, CrmOpportunity.org_id == context.org_id)) is None: raise AppError("商机不存在", code=404)
     row = CrmFollowUp(org_id=context.org_id, opportunity_id=opportunity_id, **payload); db.add(row); db.flush(); return row

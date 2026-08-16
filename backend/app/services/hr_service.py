@@ -1,7 +1,8 @@
+import calendar
 from datetime import date
 from decimal import Decimal
 import re
-from sqlalchemy import select
+from sqlalchemy import func, select
 from app.core.exceptions import AppError
 from app.models.hr import HrAttendance,HrEmployee,HrPayroll
 from app.models.system import SysUser
@@ -67,13 +68,39 @@ def record_attendance(db,employee_id,payload,context):
  if e.status!="active": raise AppError("非在职员工不能考勤",code=400)
  if db.scalar(select(HrAttendance).where(HrAttendance.employee_id==employee_id,HrAttendance.attendance_date==payload["attendance_date"])): raise AppError("当天考勤已存在",code=400)
  row=HrAttendance(org_id=context.org_id,employee_id=employee_id,**payload);db.add(row);db.flush();return row
+def _approved_unpaid_leave_days(db, employee_id, start, end, HrLeaveRequest):
+    """Count approved unpaid-leave days overlapping [start, end]."""
+    rows = db.scalars(select(HrLeaveRequest).where(
+        HrLeaveRequest.employee_id == employee_id,
+        HrLeaveRequest.status == "approved",
+        HrLeaveRequest.leave_type.in_(["personal", "sick"]),
+        HrLeaveRequest.start_date <= end,
+        HrLeaveRequest.end_date >= start,
+    )).all()
+    total = 0
+    for leave in rows:
+        overlap_start = max(leave.start_date, start)
+        overlap_end = min(leave.end_date, end)
+        total += (overlap_end - overlap_start).days + 1
+    return total
+
+
 def calculate_payroll(db,period,context):
  if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", period): raise AppError("薪资期间必须为 YYYY-MM",code=400)
  row=db.scalar(select(HrPayroll).where(HrPayroll.org_id==context.org_id,HrPayroll.period==period))
  if row and row.status in {"approved","paid"}: raise AppError("已审批薪资不能重算",code=400)
+ from app.models.phase2_extensions import HrLeaveRequest
+ year=int(period[:4]);month=int(period[5:7]);start=date(year,month,1);end=date(year,month,calendar.monthrange(year,month)[1]);days_in_month=calendar.monthrange(year,month)[1]
  employees=db.scalars(select(HrEmployee).where(HrEmployee.org_id==context.org_id,HrEmployee.status=="active")).all();items=[];total=Decimal("0")
  for e in employees:
-  amount=(e.base_salary+e.allowance).quantize(Decimal("0.01"));total+=amount;items.append({"employee_id":e.id,"amount":str(amount)})
+  base=(e.base_salary+e.allowance).quantize(Decimal("0.01"))
+  daily=(base/Decimal(days_in_month)).quantize(Decimal("0.01"))
+  absent=db.scalar(select(func.count()).select_from(HrAttendance).where(HrAttendance.employee_id==e.id,HrAttendance.attendance_date>=start,HrAttendance.attendance_date<=end,HrAttendance.status=="absent")) or 0
+  late=db.scalar(select(func.count()).select_from(HrAttendance).where(HrAttendance.employee_id==e.id,HrAttendance.attendance_date>=start,HrAttendance.attendance_date<=end,HrAttendance.status=="late")) or 0
+  leave_days=_approved_unpaid_leave_days(db,e.id,start,end,HrLeaveRequest)
+  deduction=(daily*Decimal(absent+leave_days)+daily*Decimal("0.5")*Decimal(late)).quantize(Decimal("0.01"))
+  amount=(base-deduction).quantize(Decimal("0.01"));amount=amount if amount>0 else Decimal("0")
+  total+=amount;items.append({"employee_id":e.id,"employee_no":e.employee_no,"name":e.name,"base_amount":str(base),"deduction":str(deduction),"absent_days":absent,"late_days":late,"leave_days":leave_days,"amount":str(amount)})
  if row is None: row=HrPayroll(org_id=context.org_id,period=period)
  row.total_amount=total;row.items_json=items;row.status="calculated";db.add(row);db.flush();return row
 def approve_payroll(db,payroll_id,context):

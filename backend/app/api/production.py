@@ -57,6 +57,7 @@ from app.services.production_service import (
     create_subcontract_order,
     issue_material,
     issue_subcontract_material,
+    list_subcontract_orders,
     release_work_order,
     release_subcontract_order,
     receive_subcontract_order,
@@ -366,6 +367,11 @@ def create_work_order_api(payload: WorkOrderCreate, context: UserContext = Depen
     row = create_work_order(db, payload, context)
     db.commit()
     return ok(serialize_work_order(row))
+
+
+@router.get("/subcontract-orders")
+def list_subcontract_orders_api(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(list_subcontract_orders(db, context))
 
 
 @router.post("/subcontract-orders")

@@ -13,6 +13,7 @@ from app.services.inventory_service import (
     create_count,
     delete_count,
     create_transfer,
+    delete_transfer,
     list_counts,
     list_safety_warnings,
     list_stock,
@@ -21,6 +22,7 @@ from app.services.inventory_service import (
     serialize_count,
     serialize_transfer,
     update_count,
+    update_transfer,
 )
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
@@ -62,6 +64,26 @@ def create_transfer_api(payload: TransferCreate, context: UserContext = Depends(
     )
     db.commit()
     return ok(serialize_transfer(transfer))
+
+
+@router.put("/transfers/{transfer_id}")
+def update_transfer_api(transfer_id: str, payload: TransferCreate, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    transfer = update_transfer(
+        db,
+        transfer_id,
+        context,
+        from_warehouse_id=payload.from_warehouse_id,
+        to_warehouse_id=payload.to_warehouse_id,
+        items=[item.model_dump() for item in payload.items],
+    )
+    db.commit()
+    return ok(serialize_transfer(transfer))
+
+
+@router.delete("/transfers/{transfer_id}")
+def delete_transfer_api(transfer_id: str, context: UserContext = Depends(require_permission("inventory:manage")), db: Session = Depends(get_db)):
+    delete_transfer(db, transfer_id, context)
+    return ok(msg="调拨单已删除")
 
 
 @router.post("/transfers/{transfer_id}/approve")

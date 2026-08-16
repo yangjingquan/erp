@@ -1,13 +1,155 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { createAsset, createAssetWorkOrder, createServiceCase, listAssetWorkOrders, listAssets, listServiceCases } from "../../api/phase2";
+import { createAsset, createAssetWorkOrder, createServiceCase, listAssetWorkOrders, listAssets, listServiceCases, transitionAssetWorkOrder, transitionServiceCase } from "../../api/phase2";
 import { useClientPagination } from "../../composables/useClientPagination";
-type Row=Record<string,any>; const assets=ref<Row[]>([]); const workOrders=ref<Row[]>([]); const cases=ref<Row[]>([]); const loading=ref(false); const dialog=ref<"asset"|"work"|"case"|"">(""); const form=reactive({asset_code:"",asset_name:"",serial_no:"",location:"",next_maintenance_date:"",asset_id:"",service_type:"repair",description:"",customer_id:"",title:"",priority:"normal",due_date:""});
+
+type Row = Record<string, any>;
+const assets = ref<Row[]>([]);
+const workOrders = ref<Row[]>([]);
+const cases = ref<Row[]>([]);
+const loading = ref(false);
+const actionLoading = ref<string | null>(null);
+const dialog = ref<"asset" | "work" | "case" | "">("");
+const form = reactive({ asset_code: "", asset_name: "", serial_no: "", location: "", next_maintenance_date: "", asset_id: "", service_type: "repair", description: "", customer_id: "", title: "", priority: "normal", due_date: "" });
 const { pagedRows: assetRows, page: assetPage, pageSize: assetPageSize, total: assetTotal, updatePageSize: updateAssetPageSize } = useClientPagination(assets);
 const { pagedRows: workOrderRows, page: workOrderPage, pageSize: workOrderPageSize, total: workOrderTotal, updatePageSize: updateWorkOrderPageSize } = useClientPagination(workOrders);
 const { pagedRows: caseRows, page: casePage, pageSize: casePageSize, total: caseTotal, updatePageSize: updateCasePageSize } = useClientPagination(cases);
-function unwrap(r:any){if(r?.data?.code!==0)throw new Error(r?.data?.msg||"接口返回失败");return r.data.data} async function load(){loading.value=true;try{[assets.value,workOrders.value,cases.value]=await Promise.all([listAssets().then(unwrap),listAssetWorkOrders().then(unwrap),listServiceCases().then(unwrap)])}catch(e){ElMessage.error(e instanceof Error?e.message:"资产服务加载失败")}finally{loading.value=false}} function open(kind:"asset"|"work"|"case"){dialog.value=kind;Object.assign(form,{asset_code:"",asset_name:"",serial_no:"",location:"",next_maintenance_date:"",asset_id:assets.value[0]?.id||"",service_type:"repair",description:"",customer_id:"",title:"",priority:"normal",due_date:""})} async function save(){try{if(dialog.value==="asset"){if(!form.asset_code||!form.asset_name)throw new Error("请填写资产编码和名称");await createAsset({...form})}else if(dialog.value==="work"){if(!form.asset_id||!form.description)throw new Error("请选择资产并填写维修描述");await createAssetWorkOrder({asset_id:form.asset_id,service_type:form.service_type,description:form.description,due_date:form.due_date})}else{if(!form.customer_id||!form.title)throw new Error("请填写客户和服务问题");await createServiceCase({customer_id:form.customer_id,title:form.title,priority:form.priority,due_date:form.due_date})}ElMessage.success("保存成功");dialog.value="";await load()}catch(e){ElMessage.error(e instanceof Error?e.message:"保存失败")}} onMounted(load);
+
+const statusLabels: Record<string, string> = { open: "待分派", assigned: "已分派", in_progress: "处理中", resolved: "已解决", closed: "已关闭", cancelled: "已取消" };
+function statusTag(status: string) { return ({ open: "warning", assigned: "primary", in_progress: "primary", resolved: "success", closed: "info", cancelled: "danger" } as Record<string, string>)[status] || "info"; }
+// 与后端状态机保持一致：open→assigned→in_progress→resolved→closed，且各阶段可取消。
+const TRANSITIONS: Record<string, Array<{ to: string; label: string; type: string }>> = {
+  open: [{ to: "assigned", label: "分派", type: "primary" }, { to: "cancelled", label: "取消", type: "danger" }],
+  assigned: [{ to: "in_progress", label: "开始", type: "primary" }, { to: "cancelled", label: "取消", type: "danger" }],
+  in_progress: [{ to: "resolved", label: "解决", type: "success" }, { to: "cancelled", label: "取消", type: "danger" }],
+  resolved: [{ to: "closed", label: "关闭", type: "info" }],
+};
+function transitionsFor(status: string) { return TRANSITIONS[status] || []; }
+
+function unwrap(r: any) { if (r?.data?.code !== 0) throw new Error(r?.data?.msg || "接口返回失败"); return r.data.data; }
+async function load() {
+  loading.value = true;
+  try {
+    [assets.value, workOrders.value, cases.value] = await Promise.all([listAssets().then(unwrap), listAssetWorkOrders().then(unwrap), listServiceCases().then(unwrap)]);
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "资产服务加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+function open(kind: "asset" | "work" | "case") {
+  dialog.value = kind;
+  Object.assign(form, { asset_code: "", asset_name: "", serial_no: "", location: "", next_maintenance_date: "", asset_id: assets.value[0]?.id || "", service_type: "repair", description: "", customer_id: "", title: "", priority: "normal", due_date: "" });
+}
+async function save() {
+  try {
+    if (dialog.value === "asset") {
+      if (!form.asset_code || !form.asset_name) throw new Error("请填写资产编码和名称");
+      await createAsset({ ...form });
+    } else if (dialog.value === "work") {
+      if (!form.asset_id || !form.description) throw new Error("请选择资产并填写维修描述");
+      await createAssetWorkOrder({ asset_id: form.asset_id, service_type: form.service_type, description: form.description, due_date: form.due_date });
+    } else {
+      if (!form.customer_id || !form.title) throw new Error("请填写客户和服务问题");
+      await createServiceCase({ customer_id: form.customer_id, title: form.title, priority: form.priority, due_date: form.due_date });
+    }
+    ElMessage.success("保存成功");
+    dialog.value = "";
+    await load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "保存失败");
+  }
+}
+async function transition(row: Row, kind: "work" | "case", status: string) {
+  const id = String(row.id);
+  actionLoading.value = id;
+  try {
+    if (kind === "work") unwrap(await transitionAssetWorkOrder(id, status));
+    else unwrap(await transitionServiceCase(id, status));
+    ElMessage.success(`已${statusLabels[status] || status}`);
+    await load();
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : "状态流转失败");
+  } finally {
+    actionLoading.value = null;
+  }
+}
+onMounted(load);
 </script>
-<template><section class="page-stack"><header class="page-heading"><div><small>EAM / AFTER-SALES SERVICE</small><h1>资产与售后服务中心</h1><p>资产台账、保养维修、服务合同、服务工单和现场访问共用责任人、期限与状态闭环。</p></div><el-space><el-button type="primary" @click="open('asset')">新增资产</el-button><el-button @click="open('work')">新建维修工单</el-button><el-button @click="open('case')">新建服务工单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space></header><el-tabs type="border-card"><el-tab-pane label="资产台账"><el-table :data="assetRows" stripe><el-table-column prop="asset_code" label="资产编码"/><el-table-column prop="asset_name" label="名称"/><el-table-column prop="serial_no" label="序列号"/><el-table-column prop="location" label="位置"/><el-table-column prop="next_maintenance_date" label="下次保养"/><el-table-column prop="status" label="状态"/></el-table><ClientPagination v-model:page="assetPage" v-model:page-size="assetPageSize" :total="assetTotal" @update:page-size="updateAssetPageSize" /></el-tab-pane><el-tab-pane label="维修工单"><el-table :data="workOrderRows" stripe><el-table-column prop="work_order_no" label="工单号"/><el-table-column prop="asset_id" label="资产"/><el-table-column prop="service_type" label="类型"/><el-table-column prop="description" label="描述"/><el-table-column prop="status" label="状态"/><el-table-column prop="due_date" label="期限"/></el-table><ClientPagination v-model:page="workOrderPage" v-model:page-size="workOrderPageSize" :total="workOrderTotal" @update:page-size="updateWorkOrderPageSize" /></el-tab-pane><el-tab-pane label="服务工单"><el-table :data="caseRows" stripe><el-table-column prop="case_no" label="服务单号"/><el-table-column prop="customer_id" label="客户"/><el-table-column prop="title" label="问题"/><el-table-column prop="priority" label="优先级"/><el-table-column prop="status" label="状态"/><el-table-column prop="due_date" label="期限"/></el-table><ClientPagination v-model:page="casePage" v-model:page-size="casePageSize" :total="caseTotal" @update:page-size="updateCasePageSize" /></el-tab-pane></el-tabs><el-dialog :model-value="Boolean(dialog)" :title="dialog==='asset'?'新增资产':dialog==='work'?'新建维修工单':'新建服务工单'" width="560px" @update:model-value="(v:boolean)=>{if(!v)dialog=''}"><el-form label-width="90px"><template v-if="dialog==='asset'"><el-form-item label="资产编码" required><el-input v-model="form.asset_code"/></el-form-item><el-form-item label="资产名称" required><el-input v-model="form.asset_name"/></el-form-item><el-form-item label="序列号"><el-input v-model="form.serial_no"/></el-form-item><el-form-item label="位置"><el-input v-model="form.location"/></el-form-item><el-form-item label="下次保养"><el-date-picker v-model="form.next_maintenance_date" value-format="YYYY-MM-DD"/></el-form-item></template><template v-else-if="dialog==='work'"><el-form-item label="资产" required><el-select v-model="form.asset_id"><el-option v-for="item in assets" :key="item.id" :label="`${item.asset_code} · ${item.asset_name}`" :value="item.id"/></el-select></el-form-item><el-form-item label="类型"><el-select v-model="form.service_type"><el-option label="维修" value="repair"/><el-option label="保养" value="maintenance"/><el-option label="点检" value="inspection"/></el-select></el-form-item><el-form-item label="描述" required><el-input v-model="form.description" type="textarea"/></el-form-item></template><template v-else><el-form-item label="客户 ID" required><el-input v-model="form.customer_id"/></el-form-item><el-form-item label="问题标题" required><el-input v-model="form.title"/></el-form-item><el-form-item label="优先级"><el-select v-model="form.priority"><el-option v-for="item in ['low','normal','high','urgent']" :key="item" :label="item" :value="item"/></el-select></el-form-item></template></el-form><template #footer><el-button @click="dialog=''">取消</el-button><el-button type="primary" @click="save">保存</el-button></template></el-dialog></section></template>
-<style scoped>.page-stack{display:flex;flex-direction:column;gap:16px}.page-heading{display:flex;justify-content:space-between;align-items:flex-end}.page-heading small{color:var(--erp-muted-text);letter-spacing:.08em}.page-heading h1{margin:4px 0}.page-heading p{margin:0;color:var(--erp-muted-text)}</style>
+
+<template>
+  <section class="page-stack">
+    <header class="page-heading">
+      <div><small>EAM / AFTER-SALES SERVICE</small><h1>资产与售后服务中心</h1><p>资产台账、保养维修、服务工单共用责任人、期限与状态闭环。</p></div>
+      <el-space><el-button type="primary" @click="open('asset')">新增资产</el-button><el-button @click="open('work')">新建维修工单</el-button><el-button @click="open('case')">新建服务工单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
+    </header>
+    <el-tabs type="border-card">
+      <el-tab-pane label="资产台账">
+        <el-table :data="assetRows" stripe>
+          <el-table-column prop="asset_code" label="资产编码" />
+          <el-table-column prop="asset_name" label="名称" />
+          <el-table-column prop="serial_no" label="序列号" />
+          <el-table-column prop="location" label="位置" />
+          <el-table-column prop="next_maintenance_date" label="下次保养" />
+          <el-table-column label="状态"><template #default="scope"><el-tag :type="statusTag(scope.row.status)" effect="light">{{ statusLabels[scope.row.status] || scope.row.status }}</el-tag></template></el-table-column>
+        </el-table>
+        <ClientPagination v-model:page="assetPage" v-model:page-size="assetPageSize" :total="assetTotal" @update:page-size="updateAssetPageSize" />
+      </el-tab-pane>
+      <el-tab-pane label="维修工单">
+        <el-table :data="workOrderRows" stripe>
+          <el-table-column prop="work_order_no" label="工单号" />
+          <el-table-column prop="asset_id" label="资产" />
+          <el-table-column prop="service_type" label="类型" />
+          <el-table-column prop="description" label="描述" />
+          <el-table-column label="状态"><template #default="scope"><el-tag :type="statusTag(scope.row.status)" effect="light">{{ statusLabels[scope.row.status] || scope.row.status }}</el-tag></template></el-table-column>
+          <el-table-column prop="due_date" label="期限" />
+          <el-table-column label="操作" min-width="200"><template #default="scope"><el-button v-for="t in transitionsFor(scope.row.status)" :key="t.to" link :type="t.type" :loading="actionLoading === scope.row.id" @click="transition(scope.row, 'work', t.to)">{{ t.label }}</el-button></template></el-table-column>
+        </el-table>
+        <ClientPagination v-model:page="workOrderPage" v-model:page-size="workOrderPageSize" :total="workOrderTotal" @update:page-size="updateWorkOrderPageSize" />
+      </el-tab-pane>
+      <el-tab-pane label="服务工单">
+        <el-table :data="caseRows" stripe>
+          <el-table-column prop="case_no" label="服务单号" />
+          <el-table-column prop="customer_id" label="客户" />
+          <el-table-column prop="title" label="问题" />
+          <el-table-column prop="priority" label="优先级" />
+          <el-table-column label="状态"><template #default="scope"><el-tag :type="statusTag(scope.row.status)" effect="light">{{ statusLabels[scope.row.status] || scope.row.status }}</el-tag></template></el-table-column>
+          <el-table-column prop="due_date" label="期限" />
+          <el-table-column label="操作" min-width="200"><template #default="scope"><el-button v-for="t in transitionsFor(scope.row.status)" :key="t.to" link :type="t.type" :loading="actionLoading === scope.row.id" @click="transition(scope.row, 'case', t.to)">{{ t.label }}</el-button></template></el-table-column>
+        </el-table>
+        <ClientPagination v-model:page="casePage" v-model:page-size="casePageSize" :total="caseTotal" @update:page-size="updateCasePageSize" />
+      </el-tab-pane>
+    </el-tabs>
+    <el-dialog :model-value="Boolean(dialog)" :title="dialog === 'asset' ? '新增资产' : dialog === 'work' ? '新建维修工单' : '新建服务工单'" width="560px" @update:model-value="(v: boolean) => { if (!v) dialog = ''; }">
+      <el-form label-width="90px">
+        <template v-if="dialog === 'asset'">
+          <el-form-item label="资产编码" required><el-input v-model="form.asset_code" /></el-form-item>
+          <el-form-item label="资产名称" required><el-input v-model="form.asset_name" /></el-form-item>
+          <el-form-item label="序列号"><el-input v-model="form.serial_no" /></el-form-item>
+          <el-form-item label="位置"><el-input v-model="form.location" /></el-form-item>
+          <el-form-item label="下次保养"><el-date-picker v-model="form.next_maintenance_date" value-format="YYYY-MM-DD" /></el-form-item>
+        </template>
+        <template v-else-if="dialog === 'work'">
+          <el-form-item label="资产" required><el-select v-model="form.asset_id"><el-option v-for="item in assets" :key="item.id" :label="`${item.asset_code} · ${item.asset_name}`" :value="item.id" /></el-select></el-form-item>
+          <el-form-item label="类型"><el-select v-model="form.service_type"><el-option label="维修" value="repair" /><el-option label="保养" value="maintenance" /><el-option label="点检" value="inspection" /></el-select></el-form-item>
+          <el-form-item label="描述" required><el-input v-model="form.description" type="textarea" /></el-form-item>
+        </template>
+        <template v-else>
+          <el-form-item label="客户 ID" required><el-input v-model="form.customer_id" /></el-form-item>
+          <el-form-item label="问题标题" required><el-input v-model="form.title" /></el-form-item>
+          <el-form-item label="优先级"><el-select v-model="form.priority"><el-option v-for="item in ['low', 'normal', 'high', 'urgent']" :key="item" :label="item" :value="item" /></el-select></el-form-item>
+        </template>
+      </el-form>
+      <template #footer><el-button @click="dialog = ''">取消</el-button><el-button type="primary" @click="save">保存</el-button></template>
+    </el-dialog>
+  </section>
+</template>
+
+<style scoped>
+.page-stack { display: flex; flex-direction: column; gap: 16px; }
+.page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
+.page-heading small { color: var(--erp-muted-text); letter-spacing: .08em; }
+.page-heading h1 { margin: 4px 0; }
+.page-heading p { margin: 0; color: var(--erp-muted-text); }
+</style>

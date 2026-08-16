@@ -60,7 +60,19 @@ def create_candidate(db, payload, context):
 def update_candidate(db, candidate_id, payload, context):
     row = db.scalar(select(HrRecruitmentCandidate).where(HrRecruitmentCandidate.id == candidate_id, HrRecruitmentCandidate.org_id == context.org_id, HrRecruitmentCandidate.is_deleted.is_(False)))
     if row is None: raise AppError("候选人不存在", code=404)
-    row.status = payload.status; row.note = payload.note; db.flush(); return row
+    if payload.status == "hired" and row.status != "hired":
+        # 录用即入职：自动生成员工档案，避免招聘与人事重复录入。
+        existing = db.scalar(select(HrEmployee).where(HrEmployee.org_id == context.org_id, HrEmployee.name == row.name, HrEmployee.is_deleted.is_(False)))
+        if existing is None:
+            employee_no = f"EMP-{local_now().strftime('%Y%m%d')}-{uuid4().hex[:6].upper()}"
+            db.add(HrEmployee(org_id=context.org_id, employee_no=employee_no, name=row.name, department_id=context.department_id, status="active", base_salary=Decimal("0"), allowance=Decimal("0")))
+            db.flush()
+            row.note = row.note or f"已录用并创建员工档案 {employee_no}"
+    row.status = payload.status
+    if payload.note is not None:
+        row.note = payload.note
+    db.flush()
+    return row
 
 
 def list_lifecycle(db, context, employee_id=None):

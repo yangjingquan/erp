@@ -33,6 +33,14 @@ export function createSalesOrder(payload: SalesOrderPayload) {
   return http.post("/sales/orders", payload);
 }
 
+export function updateSalesOrder(orderId: string, payload: SalesOrderPayload) {
+  return http.put(`/sales/orders/${orderId}`, payload);
+}
+
+export function deleteSalesOrder(orderId: string) {
+  return http.delete(`/sales/orders/${orderId}`);
+}
+
 export function submitSalesOrder(orderId: string) {
   return http.post(`/sales/orders/${orderId}/submit`);
 }
@@ -55,7 +63,10 @@ export function createSalesQuote(payload: SalesQuotePayload) {
   });
 }
 export function quoteAction(id: string, action: "submit" | "approve" | "reject") { return http.post(`/sales/quotes/${id}/${action}`); }
+export function convertQuoteToOrder(id: string, warehouseId: string) { return http.post(`/sales/quotes/${id}/convert`, { warehouse_id: warehouseId }); }
 export function listSalesReturns() { return http.get("/sales/returns"); }
 export function createSalesReturn(payload: Record<string, unknown>) { return http.post("/sales/returns", payload); }
+export function updateSalesReturn(id: string, payload: Record<string, unknown>) { return http.put(`/sales/returns/${id}`, payload); }
+export function deleteSalesReturn(id: string) { return http.delete(`/sales/returns/${id}`); }
 export function submitSalesReturn(id: string) { return http.post(`/sales/returns/${id}/submit`); }
 export function completeSalesReturn(id: string) { return http.post(`/sales/returns/${id}/complete`); }

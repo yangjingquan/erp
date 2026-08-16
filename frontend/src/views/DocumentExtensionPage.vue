@@ -2,8 +2,10 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { completeSalesReturn, createSalesQuote, createSalesReturn, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn } from "../api/sales";
+import { completeSalesReturn, convertQuoteToOrder, createSalesQuote, createSalesReturn, deleteSalesReturn, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn, updateSalesReturn } from "../api/sales";
 import {
+  completePurchaseReturn,
+  convertRequestToOrder,
   createPurchaseRequest,
   createPurchaseReturn,
   deletePurchaseRequest,
@@ -11,7 +13,6 @@ import {
   listPurchaseRequests,
   listPurchaseReturns,
   requestAction,
-  completePurchaseReturn,
   submitPurchaseReturn,
   updatePurchaseReturn,
   updatePurchaseRequest,
@@ -28,6 +29,9 @@ const rows = ref<any[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 const dialogVisible = ref(false);
+const convertVisible = ref(false);
+const convertTarget = ref<any>(null);
+const convertWarehouseId = ref("");
 const actionLoading = ref("");
 const filters = reactive({ quote_keyword: "", procurement_keyword: "", doc_no: "", customer_id: "", supplier_id: "", material_id: "", status: "" });
 const editingId = ref("");
@@ -151,12 +155,17 @@ function openEdit(row: any) {
   reset();
   editingId.value = String(row.id);
   form.supplier_id = row.supplier_id || "";
+  form.customer_id = row.customer_id || "";
   if (isRequest()) {
     form.request_date = row.request_date || form.request_date;
     form.remark = row.remark || "";
   } else if (isPurchaseReturn()) {
     form.warehouse_id = row.warehouse_id || "";
     form.source_receipt_id = row.source_receipt_id || "";
+    form.return_date = row.return_date || form.return_date;
+  } else if (isSalesReturn()) {
+    form.warehouse_id = row.warehouse_id || "";
+    form.source_delivery_id = row.source_delivery_id || "";
     form.return_date = row.return_date || form.return_date;
   }
   form.items = itemRows(row).length
@@ -224,7 +233,7 @@ async function save() {
     } else if (isRequest()) {
       response = editing ? await updatePurchaseRequest(editingId.value, purchaseRequestPayload()) : await createPurchaseRequest(purchaseRequestPayload());
     } else if (isSalesReturn()) {
-      response = await createSalesReturn({ ...form });
+      response = editing ? await updateSalesReturn(editingId.value, { ...form }) : await createSalesReturn({ ...form });
     } else if (isPurchaseReturn()) {
       response = editing ? await updatePurchaseReturn(editingId.value, purchaseReturnPayload()) : await createPurchaseReturn(purchaseReturnPayload());
     } else {
@@ -266,6 +275,48 @@ async function removeRequest(row: any) {
     const response = await deletePurchaseRequest(row.id);
     if (response.data.code !== 0) throw new Error(response.data.msg);
     ElMessage.success("采购申请已删除");
+    await load();
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "删除失败");
+  } finally {
+    actionLoading.value = "";
+  }
+}
+
+function openConvert(row: any) {
+  convertTarget.value = row;
+  convertWarehouseId.value = warehouses.value[0]?.value || "";
+  convertVisible.value = true;
+}
+
+async function doConvert() {
+  if (!convertWarehouseId.value) {
+    ElMessage.warning("请选择目标仓库");
+    return;
+  }
+  saving.value = true;
+  try {
+    const response = isQuote()
+      ? await convertQuoteToOrder(String(convertTarget.value.id), convertWarehouseId.value)
+      : await convertRequestToOrder(String(convertTarget.value.id), convertWarehouseId.value);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success(isQuote() ? "报价单已转为销售订单" : "采购申请已转为采购订单");
+    convertVisible.value = false;
+    await load();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "转换失败");
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function removeSalesReturn(row: any) {
+  try {
+    await ElMessageBox.confirm(`确认删除销售退货单“${row.doc_no}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
+    actionLoading.value = `delete:${row.id}`;
+    const response = await deleteSalesReturn(row.id);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success("销售退货单已删除");
     await load();
   } catch (error) {
     if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "删除失败");
@@ -351,6 +402,7 @@ onMounted(async () => {
             <el-button v-if="scope.row.status === 'draft'" link :loading="actionLoading === scope.row.id" @click="action(scope.row, 'submit')">提交</el-button>
             <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button>
             <el-button v-if="scope.row.status === 'submitted'" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'reject')">驳回</el-button>
+            <el-button v-if="scope.row.status === 'approved'" link type="warning" @click="openConvert(scope.row)">转订单</el-button>
           </template>
         </el-table-column>
       </template>
@@ -411,6 +463,9 @@ onMounted(async () => {
               <el-button v-if="isQuote() && scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button>
               <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="success" @click="action(scope.row, 'approve')">审核</el-button>
               <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="danger" @click="action(scope.row, 'reject')">驳回</el-button>
+              <el-button v-if="isQuote() && scope.row.status === 'approved'" link type="warning" @click="openConvert(scope.row)">转订单</el-button>
+              <el-button v-if="isSalesReturn() && scope.row.status === 'draft'" link @click="openEdit(scope.row)">修改</el-button>
+              <el-button v-if="isSalesReturn() && scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removeSalesReturn(scope.row)">删除</el-button>
               <el-button v-if="isSalesReturn() && scope.row.status === 'draft'" link type="primary" @click="returnAction(scope.row, 'submit')">提交</el-button>
               <el-button v-if="isSalesReturn() && scope.row.status === 'submitted'" link type="success" @click="returnAction(scope.row, 'complete')">完成</el-button>
             </template>
@@ -467,6 +522,20 @@ onMounted(async () => {
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="convertVisible" :title="isQuote() ? '报价单转销售订单' : '采购申请转采购订单'" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="目标仓库" required>
+          <el-select v-model="convertWarehouseId" filterable style="width: 100%">
+            <el-option v-for="option in warehouses" :key="option.value" v-bind="option" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="convertVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="doConvert">转换</el-button>
       </template>
     </el-dialog>
   </section>

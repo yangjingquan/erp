@@ -106,3 +106,94 @@ def create_print_template(db: Session, payload: dict, context: UserContext) -> d
     db.add(row)
     db.flush()
     return serialize_print_template(row)
+
+
+def update_print_template(db: Session, template_id: str, payload: dict, context: UserContext) -> dict:
+    row = db.get(CfgPrintTemplate, template_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("打印模板不存在", code=404)
+    business_type = str(payload.get("business_type") or row.business_type)
+    name = str(payload.get("name") or row.name)
+    template_html = str(payload.get("template_html") or row.template_html)
+    status = str(payload.get("status") or row.status)
+    if not business_type or not name or not template_html:
+        raise AppError("业务类型、模板名称和模板内容不能为空", code=400)
+    existing = db.scalar(
+        select(CfgPrintTemplate).where(
+            CfgPrintTemplate.org_id == context.org_id,
+            CfgPrintTemplate.business_type == business_type,
+            CfgPrintTemplate.name == name,
+            CfgPrintTemplate.id != template_id,
+        )
+    )
+    if existing:
+        raise AppError("同业务类型下打印模板名称已存在", code=409)
+    row.business_type = business_type
+    row.name = name
+    row.template_html = template_html
+    row.status = status
+    db.flush()
+    return serialize_print_template(row)
+
+
+def delete_print_template(db: Session, template_id: str, context: UserContext) -> None:
+    row = db.get(CfgPrintTemplate, template_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("打印模板不存在", code=404)
+    db.delete(row)
+    db.commit()
+
+
+def render_document_print(
+    db: Session,
+    context: UserContext,
+    *,
+    business_type: str,
+    business_id: str,
+    template_id: str | None = None,
+) -> dict:
+    """Render a print template against a real business document.
+
+    Returns the rendered HTML plus a small context so the caller can open a
+    print preview window.  When ``template_id`` is omitted the latest active
+    template for the business type is used.
+    """
+    from app.services.document_service import TYPE_CONFIG, _snapshot
+
+    config = TYPE_CONFIG.get(business_type)
+    if config is None:
+        raise AppError("不支持打印该业务类型", code=404)
+    row = db.get(config["model"], business_id)
+    if row is None or getattr(row, "org_id", None) != context.org_id:
+        raise AppError("业务单据不存在", code=404)
+    if template_id:
+        template = db.get(CfgPrintTemplate, template_id)
+        if template is None or template.org_id != context.org_id:
+            raise AppError("打印模板不存在", code=404)
+    else:
+        template = db.scalar(
+            select(CfgPrintTemplate)
+            .where(
+                CfgPrintTemplate.org_id == context.org_id,
+                CfgPrintTemplate.business_type == business_type,
+                CfgPrintTemplate.status == "active",
+            )
+            .order_by(CfgPrintTemplate.id.desc())
+            .limit(1)
+        )
+        if template is None:
+            raise AppError("该业务类型未配置有效打印模板", code=404)
+    document = _snapshot(db, business_type, row)
+    model_dict = document.pop("summary_json", None) or {}
+    for key, value in model_dict.items():
+        document.setdefault(key, value)
+    html = render_print_template(db, template.id, document)
+    return {
+        "template_id": template.id,
+        "template_name": template.name,
+        "business_type": business_type,
+        "business_id": business_id,
+        "doc_no": document.get("doc_no"),
+        "title": document.get("title"),
+        "html": html,
+    }

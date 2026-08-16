@@ -410,6 +410,27 @@ def ensure_p1_p2_extension_schema(db: Session) -> None:
         db.commit()
 
 
+def ensure_opportunity_win_columns(db: Session) -> None:
+    """Add optional win-to-order fields for CRM opportunities created earlier."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    if "crm_opportunity" not in inspector.get_table_names():
+        return
+    columns = {item["name"] for item in inspector.get_columns("crm_opportunity")}
+    statements = []
+    if "material_id" not in columns:
+        statements.append("ALTER TABLE crm_opportunity ADD COLUMN material_id CHAR(36) NULL")
+    if "quantity" not in columns:
+        statements.append("ALTER TABLE crm_opportunity ADD COLUMN quantity DECIMAL(18,6) NULL")
+    if "unit_price" not in columns:
+        statements.append("ALTER TABLE crm_opportunity ADD COLUMN unit_price DECIMAL(18,6) NULL")
+    for statement in statements:
+        db.execute(text(statement))
+    if statements:
+        db.commit()
+
+
 def ensure_wms_closure_schema(db: Session) -> None:
     """Add WMS serial-number storage to installations created before closure support."""
     if db.bind.dialect.name != "mysql":

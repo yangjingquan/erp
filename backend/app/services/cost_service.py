@@ -78,6 +78,8 @@ def post_allocation(db: Session, allocation_id: str, context: UserContext) -> Co
         ))
     row.status = "posted"
     db.flush()
+    from app.services.finance_service import auto_generate_voucher
+    auto_generate_voucher(db, "allocation", row.id, context)
     return row
 
 

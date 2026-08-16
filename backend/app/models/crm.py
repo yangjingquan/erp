@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import DateTime, JSON, String, UniqueConstraint
+from decimal import Decimal
+from sqlalchemy import DateTime, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import AuditMixin, UUIDModel
 
@@ -27,6 +28,9 @@ class CrmOpportunity(AuditMixin, UUIDModel):
     owner_id: Mapped[str | None] = mapped_column(String(36))
     stage: Mapped[str] = mapped_column(String(32), default="new", nullable=False)
     loss_reason: Mapped[str | None] = mapped_column(String(255))
+    material_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    quantity: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
+    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 6), nullable=True)
     __table_args__ = (UniqueConstraint("org_id", "opportunity_no", name="uk_crm_opportunity_org_no"),)
 
 class CrmContact(AuditMixin, UUIDModel):

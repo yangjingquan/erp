@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ArrowLeft, Delete, Download, Link, Paperclip, Refresh, Upload } from "@element-plus/icons-vue";
+import { ArrowLeft, Delete, Download, Link, Paperclip, Printer, Refresh, Upload } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import {
@@ -11,6 +11,7 @@ import {
   runDocumentCommand,
   uploadDocumentAttachment,
 } from "../api/documents";
+import { renderPrintTemplate } from "../api/config";
 import { formatLocalDateTime } from "../utils/time";
 import StatusTag from "./StatusTag.vue";
 
@@ -136,6 +137,20 @@ async function removeAttachment(row: Row) {
   }
 }
 
+async function printDocument() {
+  try {
+    const response = await renderPrintTemplate(currentType.value, currentId.value);
+    const html = response?.data?.data?.html;
+    if (!html) throw new Error(response?.data?.msg || "打印模板渲染结果为空");
+    const win = window.open("", "_blank", "width=900,height=680");
+    if (!win) { ElMessage.warning("浏览器拦截了打印窗口，请允许弹窗后重试"); return; }
+    win.document.write(html);
+    win.document.close();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "打印渲染失败");
+  }
+}
+
 function valueText(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "object") return JSON.stringify(value);
@@ -195,7 +210,7 @@ watch([visible, () => props.businessType, () => props.businessId], ([isVisible])
       </main>
       <aside v-if="workspace" class="action-rail">
         <div class="rail-card"><small>单据编号</small><strong>{{ document.doc_no }}</strong><small>金额</small><b>¥{{ document.amount }}</b><small>业务对象</small><span>{{ document.party_name || '-' }}</span><small>更新时间</small><span>{{ formatLocalDateTime(document.updated_at) }}</span></div>
-        <div class="rail-card"><h3>可执行操作</h3><el-button v-for="action in document.available_actions" :key="action.command" :type="action.type" :loading="actionLoading === action.command" @click="runAction(action)">{{ action.label }}</el-button><el-empty v-if="!document.available_actions?.length" :image-size="48" description="当前无待执行操作" /><el-button :icon="Refresh" @click="load">刷新状态</el-button></div>
+        <div class="rail-card"><h3>可执行操作</h3><el-button v-for="action in document.available_actions" :key="action.command" :type="action.type" :loading="actionLoading === action.command" @click="runAction(action)">{{ action.label }}</el-button><el-empty v-if="!document.available_actions?.length" :image-size="48" description="当前无待执行操作" /><el-button :icon="Printer" @click="printDocument">打印</el-button><el-button :icon="Refresh" @click="load">刷新状态</el-button></div>
       </aside>
     </div>
   </el-drawer>

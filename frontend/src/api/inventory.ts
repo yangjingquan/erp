@@ -35,6 +35,14 @@ export function createInventoryTransfer(payload: InventoryTransferPayload) {
   return http.post("/inventory/transfers", payload);
 }
 
+export function updateInventoryTransfer(transferId: string, payload: InventoryTransferPayload) {
+  return http.put(`/inventory/transfers/${transferId}`, payload);
+}
+
+export function deleteInventoryTransfer(transferId: string) {
+  return http.delete(`/inventory/transfers/${transferId}`);
+}
+
 export function approveInventoryTransfer(transferId: string) {
   return http.post(`/inventory/transfers/${transferId}/approve`);
 }

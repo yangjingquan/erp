@@ -35,6 +35,7 @@ DEFAULT_ACCOUNTS = (
     ("2211", "应付职工薪酬", "liability", "credit"),
     ("4101", "制造费用", "cost", "credit"),
     ("5001", "生产成本", "cost", "debit"),
+    ("6001", "主营业务收入", "revenue", "credit"),
     ("6602", "管理费用", "expense", "debit"),
 )
 

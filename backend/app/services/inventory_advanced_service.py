@@ -487,7 +487,14 @@ def transition_warehouse_task(db: Session, task_id: str, payload, context: UserC
         if delivery is not None:
             check_statuses = db.scalars(select(InvWarehouseTask.status).where(InvWarehouseTask.source_type == row.source_type, InvWarehouseTask.source_id == row.source_id, InvWarehouseTask.task_type == "check", InvWarehouseTask.is_deleted.is_(False))).all()
             if check_statuses and all(status == "completed" for status in check_statuses):
-                delivery.status = "completed"
+                # Unify WMS completion semantics with the document workbench:
+                # completing the check task must also post the stock-out and
+                # create the receivable (and its accounting voucher).
+                from app.services.inventory_service import complete_sales_delivery
+                from app.services.finance_service import create_receivable_from_sales_delivery
+                if delivery.status == "draft":
+                    complete_sales_delivery(db, delivery.id, context)
+                    create_receivable_from_sales_delivery(db, delivery.id, context)
     db.flush()
     write_operation_log(db, user=context.user, action="transition", resource="inv_warehouse_task", target_id=row.id)
     return row
