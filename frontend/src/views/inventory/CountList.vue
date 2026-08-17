@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { completeInventoryCount, createInventoryCount, deleteInventoryCount, listInventoryCounts, updateInventoryCount, type InventoryCountPayload } from "../../api/inventory";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
+import { statusLabel } from "../../utils/labels";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
@@ -22,8 +23,6 @@ const editingId = ref<string | null>(null);
 const form = reactive<InventoryCountPayload>({ warehouse_id: "", items: [{ material_id: "", actual_quantity: 0 }] });
 const { warehouses, materials, loadOptions } = useMasterOptions();
 
-const statusLabels: Record<string, string> = { draft: "草稿", completed: "已完成" };
-function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
 function statusTagType(status: string) { return status === "completed" ? "success" : "warning"; }
 function warehouseLabel(id: unknown) { const value = String(id || ""); return warehouses.value.find((option) => option.value === value)?.label || value || "-"; }
 function materialLabel(id: unknown) { const value = String(id || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }

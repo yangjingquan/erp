@@ -253,13 +253,13 @@ def list_transfers(db: Session, context: UserContext) -> list[dict]:
     statement = select(InvTransfer).where(InvTransfer.org_id == context.org_id)
     statement = _apply_warehouse_scope(statement, InvTransfer.from_warehouse_id, context)
     statement = _apply_warehouse_scope(statement, InvTransfer.to_warehouse_id, context)
-    statement = statement.order_by(InvTransfer.transfer_date.desc())
+    statement = statement.order_by(InvTransfer.created_at.desc(), InvTransfer.id.desc())
     return [serialize_transfer(row) for row in db.scalars(statement).all()]
 
 
 def list_counts(db: Session, context: UserContext) -> list[dict]:
     statement = _apply_warehouse_scope(
-        select(InvCount).where(InvCount.org_id == context.org_id).order_by(InvCount.count_date.desc()),
+        select(InvCount).where(InvCount.org_id == context.org_id).order_by(InvCount.created_at.desc(), InvCount.id.desc()),
         InvCount.warehouse_id,
         context,
     )

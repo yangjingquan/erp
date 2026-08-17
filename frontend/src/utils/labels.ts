@@ -33,6 +33,8 @@ export const dimensionTypeLabels: Record<string, string> = {
 export const stageLabels: Record<string, string> = { lead: "线索", qualification: "资格审查", proposal: "方案报价", negotiation: "商务谈判", won: "赢单", lost: "输单" };
 export const changeTypeLabels: Record<string, string> = { engineering: "工程变更", quality: "质量变更", supplier: "供应商变更", production: "生产变更" };
 export const allocationBasisLabels: Record<string, string> = { headcount: "人数", hours: "工时", amount: "金额", quantity: "数量", manual: "手工" };
+export const reconciliationStatusLabels: Record<string, string> = { open: "未核销", partial: "部分核销", settled: "已核销" };
+export const reconciliationRecordStatusLabels: Record<string, string> = { draft: "草稿", confirmed: "已确认", partial: "部分核销", settled: "已核销" };
 
 export function labelOf(map: Record<string, string>, value: unknown, fallback = "-") {
   const key = String(value ?? "");

@@ -3,6 +3,8 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 import { listAdmin } from "../../api/admin";
+import { listPurchaseOrders, listPurchaseReceipts } from "../../api/purchase";
+import { listWorkOrders } from "../../api/production";
 import {
   closeNonconformance,
   completeCapaAction,
@@ -43,6 +45,7 @@ const investigationVisible = ref(false);
 const actionVisible = ref(false);
 const completionVisible = ref(false);
 const closeVisible = ref(false);
+const sourceDocumentNames = ref<Record<string, string>>({});
 
 const investigationForm = reactive<QualityInvestigationPayload>({
   severity: "major",
@@ -64,7 +67,7 @@ const statusLabels: Record<string, string> = { open: "待调查", investigating:
 const severityLabels: Record<string, string> = { minor: "一般", major: "重大", critical: "严重" };
 const dispositionLabels: Record<string, string> = { rework: "返工", accept: "让步接收", scrap: "报废", return_to_supplier: "退回供应商" };
 const actionTypeLabels: Record<string, string> = { corrective: "纠正措施", preventive: "预防措施" };
-const inspectionTypeLabels: Record<string, string> = { incoming: "来料检验", process: "过程检验", finished: "成品检验" };
+const inspectionTypeLabels: Record<string, string> = { incoming: "来料检验", process: "过程检验", finished: "成品检验", final: "成品检验" };
 
 function statusTagType(status: string) {
   return ({ open: "danger", investigating: "warning", closed: "success" } as Record<string, string>)[status] || "info";
@@ -76,6 +79,41 @@ function severityTagType(severity: string) {
 
 function ownerName(ownerId?: string | null) {
   return users.value.find((option) => option.value === ownerId)?.label || ownerId || "待分配";
+}
+
+function sourceDocumentKey(sourceType: unknown, sourceId: unknown) {
+  return `${String(sourceType || "")}:${String(sourceId || "")}`;
+}
+
+function sourceDocumentLabel(row: QualityNonconformance) {
+  return sourceDocumentNames.value[sourceDocumentKey(row.source_type, row.source_id)] || row.source_id || "-";
+}
+
+async function loadSourceNames() {
+  try {
+    const [purchaseOrderResponse, purchaseReceiptResponse, workOrderResponse] = await Promise.all([
+      listPurchaseOrders(),
+      listPurchaseReceipts(),
+      listWorkOrders(),
+    ]);
+    const map: Record<string, string> = {};
+    const responses = [
+      { response: purchaseOrderResponse, sourceTypes: ["purchase_order"] },
+      { response: purchaseReceiptResponse, sourceTypes: ["purchase_receipt"] },
+      { response: workOrderResponse, sourceTypes: ["mfg_work_order", "work_order"] },
+    ];
+    for (const { response, sourceTypes } of responses) {
+      if (response.data.code !== 0) throw new Error(response.data.msg || "来源单据加载失败");
+      for (const row of (response.data.data || []) as Array<Record<string, unknown>>) {
+        const title = String(row.doc_no || row.order_no || row.id || "");
+        for (const sourceType of sourceTypes) map[sourceDocumentKey(sourceType, row.id)] = title;
+      }
+    }
+    sourceDocumentNames.value = map;
+  } catch (error) {
+    sourceDocumentNames.value = {};
+    ElMessage.warning(error instanceof Error ? error.message : "来源单据名称加载失败，将显示单据 ID");
+  }
 }
 
 async function load() {
@@ -213,7 +251,9 @@ async function saveClose() {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  await Promise.all([load(), loadSourceNames()]);
+});
 </script>
 
 <template>
@@ -247,7 +287,7 @@ onMounted(load);
         </template>
       </el-table-column>
       <el-table-column label="检验类型" width="110"><template #default="scope">{{ inspectionTypeLabels[scope.row.inspection_type] || scope.row.inspection_type || "-" }}</template></el-table-column>
-      <el-table-column prop="source_id" label="来源单据" min-width="170" />
+      <el-table-column label="来源单据" min-width="170"><template #default="scope">{{ sourceDocumentLabel(scope.row) }}</template></el-table-column>
       <el-table-column label="严重度" width="100"><template #default="scope"><el-tag :type="severityTagType(scope.row.severity)">{{ severityLabels[scope.row.severity] }}</el-tag></template></el-table-column>
       <el-table-column label="责任人" width="170"><template #default="scope">{{ ownerName(scope.row.owner_id) }}</template></el-table-column>
       <el-table-column label="整改期限" width="120"><template #default="scope"><span :class="{ overdue: scope.row.overdue }">{{ scope.row.due_date || "待设定" }}</span></template></el-table-column>

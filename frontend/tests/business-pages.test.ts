@@ -65,7 +65,10 @@ describe("一期业务页面加载契约", () => {
     expect(payable).toContain(":header-cell-style=\"{ textAlign: 'center' }\"");
     expect(payable).toContain(":cell-style=\"{ textAlign: 'center' }\"");
     expect(payable).toContain("reconciledLabel");
-    expect(payable).toContain("statusLabel");
+    expect(payable).toContain("labelOf");
+    expect(payable).toContain("reconciliationStatusLabels");
+    expect(payable).toContain("reconciliationRecordStatusLabels");
+    expect(payable).not.toContain("function statusLabel");
     expect(payable).toContain("该供应商暂无可核销的应付账款");
     expect(payable).not.toContain("该客户暂无可核销的应收账款");
   });
@@ -77,7 +80,10 @@ describe("一期业务页面加载契约", () => {
     expect(receivable).toContain(":header-cell-style=\"{ textAlign: 'center' }\"");
     expect(receivable).toContain(":cell-style=\"{ textAlign: 'center' }\"");
     expect(receivable).toContain("reconciledLabel");
-    expect(receivable).toContain("statusLabel");
+    expect(receivable).toContain("labelOf");
+    expect(receivable).toContain("reconciliationStatusLabels");
+    expect(receivable).toContain("reconciliationRecordStatusLabels");
+    expect(receivable).not.toContain("function statusLabel");
     expect(receivable).toContain("该客户暂无可核销的应收账款");
   });
 
@@ -121,6 +127,53 @@ describe("一期业务页面加载契约", () => {
     expect(mrp).toContain("已确认");
     expect(workOrder).toContain("进行中");
     expect(workOrder).toContain("已完成");
+  });
+
+  it("renders production resource versions and execution references as readable labels", () => {
+    const resources = pageSources["../src/views/production/ProductionResources.vue"];
+    const execution = pageSources["../src/views/production/ExecutionControl.vue"];
+
+    expect(resources).toContain('prop="routing_version" label="版本" width="150" class-name="nowrap-column"');
+    expect(resources).toContain("white-space: nowrap");
+    expect(resources).toContain("statusTagType");
+    expect(resources).toContain("<el-tag :type=\"statusTagType(scope.row.status)\"");
+    expect(execution).toContain('loadOptions(["materials"])');
+    expect(execution).toContain("workOrderLabel(item)");
+    expect(execution).toContain("orderOperations");
+    expect(execution).toContain("changeOperation");
+    expect(execution).toContain("materialLabel(scope.row.material_id)");
+    expect(execution).toContain("centerLabel(scope.row.work_center_id)");
+    expect(execution).toContain("statusLabel(scope.row.status)");
+  });
+
+  it("renders PLM request, impact, and material references as readable labels", () => {
+    const plm = import.meta.glob("../src/views/plm/PlmChangeCenter.vue", { eager: true, import: "default", query: "?raw" })["../src/views/plm/PlmChangeCenter.vue"] as string;
+
+    expect(plm).toContain('prop="change_no" label="申请号" width="190" class-name="nowrap-column"');
+    expect(plm).toContain("white-space: nowrap");
+    expect(plm).toContain("impactTypeLabels");
+    expect(plm).toContain("impactObjectLabel");
+    expect(plm).toContain("listBoms");
+    expect(plm).toContain("listRoutings");
+    expect(plm).toContain("listPurchaseOrders");
+    expect(plm).toContain("listWorkOrders");
+    expect(plm).toContain('label="对象" min-width="220"');
+    expect(plm).toContain("impactTypeLabel(scope.row.object_type)");
+    expect(plm).toContain("materialLabel(scope.row.material_id)");
+    expect(plm).toContain('v-model="revisionForm.material_id" filterable clearable');
+    expect(plm).toContain('loadOptions(["materials"])');
+  });
+
+  it("renders inventory count statuses with the shared label helper", () => {
+    const count = pageSources["../src/views/inventory/CountList.vue"];
+    const transfer = pageSources["../src/views/inventory/TransferList.vue"];
+
+    for (const page of [count, transfer]) {
+      expect(page).toContain('import { statusLabel } from "../../utils/labels";');
+      expect(page).toContain("statusLabel(scope.row.status)");
+      expect(page).not.toContain("const statusLabels");
+      expect(page).not.toContain("function statusLabel");
+    }
   });
 
   it("shows period reopening only with its dedicated permission", () => {

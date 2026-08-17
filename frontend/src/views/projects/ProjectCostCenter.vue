@@ -14,6 +14,7 @@ const entry = reactive({ project_id: "", wbs_id: "", entry_date: "", category: "
 const wbsForm = reactive({ code: "", name: "", planned_amount: 0 }); const milestoneForm = reactive({ name: "", due_date: "", wbs_id: "" });
 function unwrap(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "接口返回失败"); return response.data.data; }
 const categoryLabels: Record<string, string> = { purchase: "采购", labor: "人工", inventory: "库存", revenue: "收入", expense: "费用" };
+const categoryOptions = Object.entries(categoryLabels).map(([value, label]) => ({ value, label }));
 function categoryLabel(value: unknown) { return categoryLabels[String(value)] || String(value || "-"); }
 async function load() { loading.value = true; try { rows.value = (unwrap(await listProjects()) || []).map((item: Row) => ({ ...item, status: statusLabel(item.status) })); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "项目加载失败"); } finally { loading.value = false; } }
 function openCreate() { Object.assign(form, { project_code: "", name: "", customer_id: "", budget_amount: 0, start_date: "", end_date: "" }); visible.value = true; }
@@ -33,9 +34,9 @@ onMounted(load);
     <el-drawer v-model="entryVisible" title="项目成本驾驶舱" size="900px">
       <el-alert v-if="dashboard" :title="`收入 ${dashboard.revenue || 0} · 成本 ${dashboard.cost || 0} · 利润 ${dashboard.profit || 0} · 利润率 ${dashboard.margin || 0}%`" type="info" show-icon />
       <el-tabs>
-        <el-tab-pane label="成本明细"><el-table :data="entries" stripe><el-table-column prop="entry_date" label="日期" /><el-table-column prop="category" label="类别" /><el-table-column prop="source_type" label="来源" /><el-table-column prop="source_id" label="来源单据" /><el-table-column prop="amount" label="金额" /></el-table><el-divider /><el-form label-width="80px"><el-form-item label="归集日期"><el-date-picker v-model="entry.entry_date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="类别"><el-select v-model="entry.category"><el-option v-for="item in ['purchase', 'labor', 'inventory', 'revenue', 'expense']" :key="item" :value="item" :label="item" /></el-select></el-form-item><el-form-item label="来源单据"><el-input v-model="entry.source_id" /></el-form-item><el-form-item label="金额"><el-input-number v-model="entry.amount" :min="0.01" /></el-form-item><el-button type="primary" @click="saveEntry">归集成本</el-button></el-form></el-tab-pane>
-        <el-tab-pane label="WBS"><el-form inline><el-form-item label="编码"><el-input v-model="wbsForm.code" /></el-form-item><el-form-item label="名称"><el-input v-model="wbsForm.name" /></el-form-item><el-form-item label="计划金额"><el-input-number v-model="wbsForm.planned_amount" :min="0" /></el-form-item><el-button type="primary" @click="saveWbs">新增 WBS</el-button></el-form><el-table :data="wbs" stripe><el-table-column prop="code" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="planned_amount" label="计划金额" /><el-table-column prop="actual_amount" label="实际金额" /></el-table></el-tab-pane>
-        <el-tab-pane label="里程碑"><el-form inline><el-form-item label="名称"><el-input v-model="milestoneForm.name" /></el-form-item><el-form-item label="截止日期"><el-date-picker v-model="milestoneForm.due_date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="WBS"><el-input v-model="milestoneForm.wbs_id" placeholder="可选" /></el-form-item><el-button type="primary" @click="saveMilestone">新增里程碑</el-button></el-form><el-table :data="milestones" stripe><el-table-column prop="name" label="里程碑" /><el-table-column prop="due_date" label="截止日期" /><el-table-column prop="status" label="状态" /><el-table-column prop="completion_rate" label="完成率" /></el-table></el-tab-pane>
+        <el-tab-pane label="成本明细"><el-table :data="entries" stripe><el-table-column prop="entry_date" label="日期" /><el-table-column prop="category" label="类别" /><el-table-column prop="source_type" label="来源" /><el-table-column prop="source_id" label="来源单据" /><el-table-column prop="amount" label="金额" /></el-table><el-divider /><el-form label-width="80px"><el-form-item label="归集日期"><el-date-picker v-model="entry.entry_date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="类别"><el-select v-model="entry.category"><el-option v-for="item in categoryOptions" :key="item.value" :value="item.value" :label="item.label" /></el-select></el-form-item><el-form-item label="来源单据"><el-input v-model="entry.source_id" /></el-form-item><el-form-item label="金额"><el-input-number v-model="entry.amount" :min="0.01" /></el-form-item><el-button type="primary" @click="saveEntry">归集成本</el-button></el-form></el-tab-pane>
+        <el-tab-pane label="WBS"><el-form inline class="cockpit-form wbs-form"><el-form-item label="编码"><el-input v-model="wbsForm.code" /></el-form-item><el-form-item label="名称"><el-input v-model="wbsForm.name" /></el-form-item><el-form-item label="计划金额"><el-input-number v-model="wbsForm.planned_amount" :min="0" /></el-form-item><el-button type="primary" @click="saveWbs">新增 WBS</el-button></el-form><el-table :data="wbs" stripe><el-table-column prop="code" label="编码" /><el-table-column prop="name" label="名称" /><el-table-column prop="planned_amount" label="计划金额" /><el-table-column prop="actual_amount" label="实际金额" /></el-table></el-tab-pane>
+        <el-tab-pane label="里程碑"><el-form inline class="cockpit-form milestone-form"><el-form-item label="名称"><el-input v-model="milestoneForm.name" /></el-form-item><el-form-item label="截止日期"><el-date-picker v-model="milestoneForm.due_date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="WBS"><el-input v-model="milestoneForm.wbs_id" placeholder="可选" /></el-form-item><el-button type="primary" @click="saveMilestone">新增里程碑</el-button></el-form><el-table :data="milestones" stripe><el-table-column prop="name" label="里程碑" /><el-table-column prop="due_date" label="截止日期" /><el-table-column prop="status" label="状态" /><el-table-column prop="completion_rate" label="完成率" /></el-table></el-tab-pane>
       </el-tabs>
     </el-drawer>
   </section>
@@ -47,4 +48,12 @@ onMounted(load);
 .page-heading small { color: var(--erp-muted-text); letter-spacing: .08em; }
 .page-heading h1 { margin: 4px 0; }
 .page-heading p { margin: 0; color: var(--erp-muted-text); }
+.cockpit-form { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.cockpit-form :deep(.el-form-item) { margin: 0; }
+.wbs-form { flex-wrap: nowrap; }
+.wbs-form :deep(.el-form-item) { flex: 1 1 0; min-width: 0; }
+.wbs-form :deep(.el-form-item__content) { min-width: 0; }
+.wbs-form :deep(.el-input), .wbs-form :deep(.el-input-number) { width: 100%; }
+.wbs-form :deep(.el-button) { flex: 0 0 auto; }
+.milestone-form { margin-bottom: 16px; }
 </style>

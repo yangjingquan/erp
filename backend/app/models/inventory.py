@@ -64,6 +64,11 @@ class InvTransfer(UUIDModel):
     to_warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     transfer_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=local_now,
+        nullable=False,
+    )
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     items: Mapped[list["InvTransferItem"]] = relationship(
         back_populates="transfer", cascade="all, delete-orphan"
@@ -88,6 +93,11 @@ class InvCount(UUIDModel):
     warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     count_date: Mapped[date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        default=local_now,
+        nullable=False,
+    )
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     items: Mapped[list["InvCountItem"]] = relationship(
         back_populates="count", cascade="all, delete-orphan"

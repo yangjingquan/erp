@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { approveInventoryTransfer, completeInventoryTransfer, createInventoryTransfer, deleteInventoryTransfer, listInventoryTransfers, updateInventoryTransfer, type InventoryTransferPayload } from "../../api/inventory";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
+import { statusLabel } from "../../utils/labels";
 
 type Row = Record<string, any>;
 const rows = ref<Row[]>([]);
@@ -19,9 +20,7 @@ const editingId = ref("");
 const form = reactive<InventoryTransferPayload>({ from_warehouse_id: "", to_warehouse_id: "", items: [{ material_id: "", quantity: 1, unit_cost: 0 }] });
 const { warehouses, materials, loadOptions } = useMasterOptions();
 
-const statusLabels: Record<string, string> = { draft: "草稿", approved: "已审核", completed: "已完成" };
 function warehouseLabel(id: unknown) { const value = String(id || ""); return warehouses.value.find((option) => option.value === value)?.label || value || "-"; }
-function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
 function statusTagType(status: string) { return ({ draft: "info", approved: "warning", completed: "success" } as Record<string, string>)[status] || "info"; }
 
 function listFrom(response: any): Row[] { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "库存调拨接口返回失败"); const data = response?.data?.data; return Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []; }
