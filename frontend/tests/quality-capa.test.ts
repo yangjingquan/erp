@@ -19,5 +19,7 @@ describe("quality NCR/CAPA page", () => {
     expect(source).toContain("预防措施");
     expect(source).toContain("完成证据");
     expect(source).toContain("quality:manage");
+    expect(source).toContain("source_document_name");
+    expect(source).not.toContain("|| sourceId || \"-\"");
   });
 });

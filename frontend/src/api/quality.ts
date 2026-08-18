@@ -19,6 +19,7 @@ export interface QualityNonconformance {
   inspection_type?: string | null;
   source_type?: string | null;
   source_id?: string | null;
+  source_document_name?: string | null;
   description: string;
   status: "open" | "investigating" | "closed";
   severity: "minor" | "major" | "critical";

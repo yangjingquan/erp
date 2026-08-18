@@ -69,6 +69,34 @@ class QaSpcRecord(AuditMixin, UUIDModel):
     usl: Mapped[Decimal | None] = mapped_column(Numeric(18, 6))
     cpk: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
     status: Mapped[str] = mapped_column(String(32), default="in_control")
+    parent_record_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    exception_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+
+
+class QaSpcException(AuditMixin, UUIDModel):
+    """The workflow aggregate for an out-of-control SPC sample.
+
+    ``control_status`` is the immutable result of the sample evaluation.  The
+    separate ``status`` field is the operational workflow state and may move
+    through review, containment, CAPA, retest and closure.
+    """
+
+    __tablename__ = "qa_spc_exception"
+    org_id: Mapped[str] = mapped_column(String(36), index=True)
+    spc_record_id: Mapped[str] = mapped_column(String(36), index=True)
+    nonconformance_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    material_id: Mapped[str] = mapped_column(String(36), index=True)
+    metric: Mapped[str] = mapped_column(String(128))
+    control_status: Mapped[str] = mapped_column(String(32), default="out_of_control")
+    status: Mapped[str] = mapped_column(String(32), default="pending_review", index=True)
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    containment_action: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    root_cause: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    closure_evidence: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    retest_record_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closed_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
 
 class QaSupplierQuality(AuditMixin, UUIDModel):

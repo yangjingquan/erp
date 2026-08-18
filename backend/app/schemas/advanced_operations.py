@@ -52,6 +52,40 @@ class SpcCreate(BaseModel):
     cpk: Decimal | None = Field(default=None, ge=0)
 
 
+class SpcExceptionInvestigation(BaseModel):
+    severity: str = Field(default="major", min_length=1, max_length=32)
+    disposition: str = Field(default="rework", min_length=1, max_length=32)
+    owner_id: str = Field(min_length=1, max_length=36)
+    due_date: date
+
+
+class SpcExceptionContainment(BaseModel):
+    containment_action: str = Field(min_length=2, max_length=1000)
+
+
+class SpcExceptionRootCause(BaseModel):
+    root_cause: str = Field(min_length=2, max_length=1000)
+
+
+class SpcRetestCreate(BaseModel):
+    sample_value: Decimal
+
+
+class SpcExceptionClose(BaseModel):
+    closure_evidence: str = Field(min_length=2, max_length=1000)
+
+
+class SpcActionCreate(BaseModel):
+    action_type: str = Field(min_length=1, max_length=32)
+    description: str = Field(min_length=2, max_length=500)
+    owner_id: str = Field(min_length=1, max_length=36)
+    due_date: date
+
+
+class SpcActionComplete(BaseModel):
+    completion_evidence: str = Field(min_length=2, max_length=1000)
+
+
 class SupplierQualityCreate(BaseModel):
     supplier_id: str = Field(min_length=1, max_length=36)
     period: str = Field(min_length=7, max_length=7)

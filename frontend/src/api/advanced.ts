@@ -12,6 +12,16 @@ export const createBenefit = (payload: unknown) => http.post("/advanced/hr/benef
 
 export const listSpc = (materialId?: string) => http.get("/advanced/quality/spc", { params: materialId ? { material_id: materialId } : undefined });
 export const createSpc = (payload: unknown) => http.post("/advanced/quality/spc", payload);
+export const listSpcExceptions = (status?: string) => http.get("/advanced/quality/spc/exceptions", { params: status ? { status } : undefined });
+export const getSpcException = (id: string) => http.get(`/advanced/quality/spc/exceptions/${id}`);
+export const confirmSpcException = (id: string, payload: unknown) => http.put(`/advanced/quality/spc/exceptions/${id}/confirm`, payload);
+export const saveSpcContainment = (id: string, payload: unknown) => http.put(`/advanced/quality/spc/exceptions/${id}/containment`, payload);
+export const saveSpcRootCause = (id: string, payload: unknown) => http.put(`/advanced/quality/spc/exceptions/${id}/root-cause`, payload);
+export const resumeSpcException = (id: string) => http.post(`/advanced/quality/spc/exceptions/${id}/resume`);
+export const createSpcAction = (id: string, payload: unknown) => http.post(`/advanced/quality/spc/exceptions/${id}/actions`, payload);
+export const completeSpcAction = (exceptionId: string, actionId: string, payload: unknown) => http.post(`/advanced/quality/spc/exceptions/${exceptionId}/actions/${actionId}/complete`, payload);
+export const retestSpcException = (id: string, payload: unknown) => http.post(`/advanced/quality/spc/exceptions/${id}/retest`, payload);
+export const closeSpcException = (id: string, payload: unknown) => http.post(`/advanced/quality/spc/exceptions/${id}/close`, payload);
 export const listSupplierQuality = (supplierId?: string) => http.get("/advanced/quality/supplier", { params: supplierId ? { supplier_id: supplierId } : undefined });
 export const saveSupplierQuality = (payload: unknown) => http.post("/advanced/quality/supplier", payload);
 export const listQualityCosts = (period?: string) => http.get("/advanced/quality/cost", { params: period ? { period } : undefined });

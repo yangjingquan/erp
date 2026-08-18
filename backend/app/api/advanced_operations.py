@@ -7,7 +7,9 @@ from app.core.response import ok
 from app.schemas.advanced_operations import (
     BenefitCreate, CandidateCreate, CandidateUpdate, CustomerClaimCreate, CustomerClaimUpdate,
     LifecycleCreate, OcrCreate, PerformanceCreate, QualityCostCreate, ShipmentCreate,
-    ShipmentTransition, SpcCreate, SupplierQualityCreate,
+    ShipmentTransition, SpcActionComplete, SpcActionCreate, SpcCreate, SpcExceptionClose,
+    SpcExceptionContainment, SpcExceptionInvestigation, SpcExceptionRootCause, SpcRetestCreate,
+    SupplierQualityCreate,
 )
 from app.services import advanced_operations_service as service
 from app.services.auth_service import UserContext
@@ -67,7 +69,57 @@ def spc(material_id: str | None = None, context: UserContext = Depends(get_curre
 
 @router.post("/quality/spc")
 def create_spc(payload: SpcCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
-    row = service.create_spc(db, payload, context); db.commit(); return ok(service._row(row, ["inspection_id", "material_id", "metric", "sample_value", "lsl", "usl", "cpk", "status"]))
+    row = service.create_spc(db, payload, context); db.commit(); return ok(service.serialize_spc_record(db, row, context))
+
+
+@router.get("/quality/spc/exceptions")
+def spc_exceptions(status: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.list_spc_exceptions(db, context, status))
+
+
+@router.get("/quality/spc/exceptions/{exception_id}")
+def spc_exception(exception_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.get_spc_exception(db, exception_id, context))
+
+
+@router.put("/quality/spc/exceptions/{exception_id}/confirm")
+def confirm_spc_exception(exception_id: str, payload: SpcExceptionInvestigation, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.confirm_spc_exception(db, exception_id, payload.model_dump(), context); db.commit(); return ok(service.serialize_spc_exception(db, row, context))
+
+
+@router.put("/quality/spc/exceptions/{exception_id}/containment")
+def save_spc_containment(exception_id: str, payload: SpcExceptionContainment, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.save_spc_containment(db, exception_id, payload.model_dump(), context); db.commit(); return ok(service.serialize_spc_exception(db, row, context))
+
+
+@router.put("/quality/spc/exceptions/{exception_id}/root-cause")
+def save_spc_root_cause(exception_id: str, payload: SpcExceptionRootCause, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.save_spc_root_cause(db, exception_id, payload.model_dump(), context); db.commit(); return ok(service.serialize_spc_exception(db, row, context))
+
+
+@router.post("/quality/spc/exceptions/{exception_id}/resume")
+def resume_spc_exception(exception_id: str, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.resume_spc_exception(db, exception_id, context); db.commit(); return ok(service.serialize_spc_exception(db, row, context))
+
+
+@router.post("/quality/spc/exceptions/{exception_id}/actions")
+def create_spc_action(exception_id: str, payload: SpcActionCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.create_spc_action(db, exception_id, payload.model_dump(), context); db.commit(); return ok(service._row(row, ["action_type", "description", "owner_id", "due_date", "status", "completion_evidence", "completed_at", "completed_by"]))
+
+
+@router.post("/quality/spc/exceptions/{exception_id}/actions/{action_id}/complete")
+def complete_spc_action(exception_id: str, action_id: str, payload: SpcActionComplete, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.complete_spc_action(db, exception_id, action_id, payload.completion_evidence, context); db.commit(); return ok(service._row(row, ["action_type", "description", "owner_id", "due_date", "status", "completion_evidence", "completed_at", "completed_by"]))
+
+
+@router.post("/quality/spc/exceptions/{exception_id}/retest")
+def retest_spc_exception(exception_id: str, payload: SpcRetestCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.retest_spc_exception(db, exception_id, payload.model_dump(), context); db.commit(); return ok(service.serialize_spc_record(db, row, context))
+
+
+@router.post("/quality/spc/exceptions/{exception_id}/close")
+def close_spc_exception(exception_id: str, payload: SpcExceptionClose, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.close_spc_exception(db, exception_id, payload.closure_evidence, context); db.commit(); return ok(service.serialize_spc_exception(db, row, context))
 
 
 @router.get("/quality/supplier")

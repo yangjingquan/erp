@@ -67,7 +67,13 @@ const statusLabels: Record<string, string> = { open: "待调查", investigating:
 const severityLabels: Record<string, string> = { minor: "一般", major: "重大", critical: "严重" };
 const dispositionLabels: Record<string, string> = { rework: "返工", accept: "让步接收", scrap: "报废", return_to_supplier: "退回供应商" };
 const actionTypeLabels: Record<string, string> = { corrective: "纠正措施", preventive: "预防措施" };
-const inspectionTypeLabels: Record<string, string> = { incoming: "来料检验", process: "过程检验", finished: "成品检验", final: "成品检验" };
+const inspectionTypeLabels: Record<string, string> = {
+  incoming: "来料检验",
+  process: "过程检验",
+  finished: "成品检验",
+  final: "成品检验",
+  active: "启用",
+};
 
 function statusTagType(status: string) {
   return ({ open: "danger", investigating: "warning", closed: "success" } as Record<string, string>)[status] || "info";
@@ -86,7 +92,11 @@ function sourceDocumentKey(sourceType: unknown, sourceId: unknown) {
 }
 
 function sourceDocumentLabel(row: QualityNonconformance) {
-  return sourceDocumentNames.value[sourceDocumentKey(row.source_type, row.source_id)] || row.source_id || "-";
+  const sourceId = String(row.source_id || "");
+  return row.source_document_name
+    || sourceDocumentNames.value[sourceDocumentKey(row.source_type, sourceId)]
+    || sourceDocumentNames.value[sourceId]
+    || "-";
 }
 
 async function loadSourceNames() {
@@ -105,14 +115,19 @@ async function loadSourceNames() {
     for (const { response, sourceTypes } of responses) {
       if (response.data.code !== 0) throw new Error(response.data.msg || "来源单据加载失败");
       for (const row of (response.data.data || []) as Array<Record<string, unknown>>) {
-        const title = String(row.doc_no || row.order_no || row.id || "");
+        const title = String(row.doc_no || row.order_no || "");
+        if (!title) continue;
         for (const sourceType of sourceTypes) map[sourceDocumentKey(sourceType, row.id)] = title;
+        // Some historical records carry an outdated or generic source_type.
+        // Keep an ID-only index so the document number can still be resolved.
+        if (row.id) map[String(row.id)] = title;
+        if (row.doc_no) map[String(row.doc_no)] = title;
       }
     }
     sourceDocumentNames.value = map;
   } catch (error) {
     sourceDocumentNames.value = {};
-    ElMessage.warning(error instanceof Error ? error.message : "来源单据名称加载失败，将显示单据 ID");
+    ElMessage.warning(error instanceof Error ? error.message : "来源单据名称加载失败");
   }
 }
 

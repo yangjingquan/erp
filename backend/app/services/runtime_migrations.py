@@ -401,12 +401,38 @@ def ensure_p1_p2_extension_schema(db: Session) -> None:
         "svc_case", "svc_visit", "tax_code", "tax_invoice", "org_intercompany_transaction",
         "low_code_definition", "metric_definition", "ai_exception_alert", "hr_leave_request",
         "hr_recruitment_candidate", "hr_employee_lifecycle", "hr_performance_review", "hr_benefit_record",
-        "qa_spc_record", "qa_supplier_quality", "qa_quality_cost", "qa_customer_claim",
+        "qa_spc_record", "qa_spc_exception", "qa_supplier_quality", "qa_quality_cost", "qa_customer_claim",
         "tms_shipment", "tms_shipment_event", "ocr_document",
     }
     missing = [table for table in Base.metadata.sorted_tables if table.name in table_names and table.name not in inspect(db.bind).get_table_names()]
     if missing:
         Base.metadata.create_all(bind=db.bind, tables=missing, checkfirst=True)
+        db.commit()
+
+
+def ensure_spc_closed_loop_schema(db: Session) -> None:
+    """Install the SPC exception workflow on existing deployments."""
+    from app.core.database import Base
+    from app.models import advanced_operations  # noqa: F401
+
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    if "qa_spc_exception" not in tables:
+        table = Base.metadata.tables.get("qa_spc_exception")
+        if table is not None:
+            Base.metadata.create_all(bind=db.bind, tables=[table], checkfirst=True)
+            db.commit()
+    if "qa_spc_record" not in tables:
+        return
+    columns = {item["name"] for item in inspect(db.bind).get_columns("qa_spc_record")}
+    statements = []
+    if "parent_record_id" not in columns:
+        statements.append("ALTER TABLE qa_spc_record ADD COLUMN parent_record_id VARCHAR(36) NULL")
+    if "exception_id" not in columns:
+        statements.append("ALTER TABLE qa_spc_record ADD COLUMN exception_id VARCHAR(36) NULL")
+    for statement in statements:
+        db.execute(text(statement))
+    if statements:
         db.commit()
 
 

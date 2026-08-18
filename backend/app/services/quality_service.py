@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.core.time import local_now, local_today
 from app.models.quality import QaCapaAction, QaDefectCatalog, QaInspection, QaNonconformity, QaPlan
+from app.models.production import MfgWorkOrder
+from app.models.purchase import PurchaseOrder, PurchaseReceipt
 from app.models.system import SysUser
 from app.services.audit_service import write_operation_log
 from app.services.auth_service import UserContext
@@ -251,6 +253,7 @@ def _serialize_nonconformance(
     row: QaNonconformity,
     inspection: QaInspection | None,
     actions: list[QaCapaAction],
+    source_document_name: str | None = None,
 ) -> dict:
     return {
         "id": row.id,
@@ -258,6 +261,7 @@ def _serialize_nonconformance(
         "inspection_type": inspection.inspection_type if inspection else None,
         "source_type": inspection.source_type if inspection else None,
         "source_id": inspection.source_id if inspection else None,
+        "source_document_name": source_document_name,
         "description": row.description,
         "status": row.status,
         "severity": row.severity,
@@ -271,6 +275,39 @@ def _serialize_nonconformance(
         "overdue": row.status != "closed" and row.due_date is not None and row.due_date < local_today(),
         "actions": [_serialize_action(action) for action in actions],
     }
+
+
+def _source_document_names(
+    db: Session,
+    inspections: dict[str, QaInspection],
+    context: UserContext,
+) -> dict[tuple[str, str], str]:
+    """Resolve source IDs to document numbers without leaking cross-org data."""
+    source_models = {
+        "purchase_order": PurchaseOrder,
+        "purchase_receipt": PurchaseReceipt,
+        "mfg_work_order": MfgWorkOrder,
+        "work_order": MfgWorkOrder,
+    }
+    names: dict[tuple[str, str], str] = {}
+    for source_type, model in source_models.items():
+        source_ids = {
+            inspection.source_id
+            for inspection in inspections.values()
+            if inspection.source_type == source_type and inspection.source_id
+        }
+        if not source_ids:
+            continue
+        documents = db.scalars(
+            select(model).where(
+                model.org_id == context.org_id,
+                model.id.in_(source_ids),
+                model.is_deleted.is_(False),
+            )
+        ).all()
+        for document in documents:
+            names[(source_type, document.id)] = document.doc_no
+    return names
 
 
 def list_nonconformances(db: Session, context: UserContext) -> list[dict]:
@@ -296,6 +333,7 @@ def list_nonconformances(db: Session, context: UserContext) -> list[dict]:
             )
         ).all()
     }
+    source_document_names = _source_document_names(db, inspections, context)
     actions_by_nonconformance: dict[str, list[QaCapaAction]] = defaultdict(list)
     for action in db.scalars(
         select(QaCapaAction)
@@ -309,7 +347,17 @@ def list_nonconformances(db: Session, context: UserContext) -> list[dict]:
         actions_by_nonconformance[action.nonconformance_id].append(action)
     return [
         _serialize_nonconformance(
-            row, inspections.get(row.inspection_id), actions_by_nonconformance[row.id]
+            row,
+            inspections.get(row.inspection_id),
+            actions_by_nonconformance[row.id],
+            source_document_names.get(
+                (
+                    inspections[row.inspection_id].source_type,
+                    inspections[row.inspection_id].source_id,
+                )
+            )
+            if row.inspection_id in inspections
+            else None,
         )
         for row in rows
     ]

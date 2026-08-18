@@ -25,6 +25,7 @@ from app.models.collaboration import (  # noqa: F401,E402
 from app.models.cost import CostAllocation, CostPeriodClose, CostProjectEntry  # noqa: F401,E402
 from app.models.crm import CrmContact, CrmFollowUp, CrmLead, CrmOpportunity  # noqa: F401,E402
 from app.models.quality import QaCapaAction, QaDefectCatalog, QaInspection, QaNonconformity, QaPlan  # noqa: F401,E402
+from app.models.advanced_operations import QaSpcException, QaSpcRecord  # noqa: F401,E402
 from app.models.hr import HrAttendance, HrEmployee, HrPayroll  # noqa: F401,E402
 from app.models.finance import (  # noqa: F401,E402
     FinAccount,
