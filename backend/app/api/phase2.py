@@ -7,10 +7,10 @@ from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.response import ok
 from app.schemas.phase2 import (
-    AlertResolve, AssetCreate, AssetWorkOrderCreate, ChangeRequestCreate, ChangeTransition, MaintenancePlanCreate, MilestoneCreate,
+    AlertResolve, AssetCreate, AssetUpdate, AssetWorkOrderCreate, AssetWorkOrderTransition, AssetWorkOrderUpdate, ChangeRequestCreate, ChangeTransition, MaintenancePlanCreate, MilestoneCreate,
     IntercompanyCreate, InvoiceCreate, LeaveRequestCreate, LowCodeCreate, MembershipCreate, MembershipUpdate, MetricCreate, ProductRevisionCreate,
-    ProjectCreate, ProjectEntryCreate, RfqCreate, RfqQuoteUpdate, ServiceCaseCreate,
-    ServiceContractCreate, VisitCreate, WbsCreate, RevisionTransition, SupplierScoreCreate,
+    ProjectCreate, ProjectEntryCreate, RfqCreate, RfqQuoteUpdate, ServiceCaseCreate, ServiceCaseTransition, ServiceCaseUpdate,
+    ServiceContractCreate, VisitCreate, VisitUpdate, WbsCreate, RevisionTransition, SupplierScoreCreate,
 )
 from app.services.auth_service import UserContext
 from app.services import phase2_service as service
@@ -143,9 +143,19 @@ def assets(status: str | None = None, context: UserContext = Depends(get_current
     return ok(service.list_assets(db, context, status))
 
 
+@router.get("/eam/assignees")
+def eam_assignees(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.list_assignees(db, context))
+
+
 @router.post("/eam/assets")
 def create_asset(payload: AssetCreate, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
     row = service.create_asset(db, payload, context); db.commit(); return ok(service._row(row, ["asset_code", "asset_name", "serial_no", "location", "status", "next_maintenance_date"]))
+
+
+@router.put("/eam/assets/{asset_id}")
+def update_asset(asset_id: str, payload: AssetUpdate, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
+    row = service.update_asset(db, asset_id, payload, context); db.commit(); return ok(service._row(row, ["asset_code", "asset_name", "serial_no", "location", "status", "next_maintenance_date", "retired_at", "retirement_reason"]))
 
 
 @router.get("/eam/work-orders")
@@ -155,7 +165,12 @@ def asset_work_orders(context: UserContext = Depends(get_current_user), db: Sess
 
 @router.post("/eam/work-orders")
 def create_asset_work_order(payload: AssetWorkOrderCreate, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
-    row = service.create_asset_work_order(db, payload, context); db.commit(); return ok(service._row(row, ["work_order_no", "asset_id", "service_type", "description", "status", "owner_id", "due_date"]))
+    row = service.create_asset_work_order(db, payload, context); db.commit(); return ok(service._row(row, ["work_order_no", "asset_id", "service_type", "description", "status", "owner_id", "due_date", "maintenance_plan_id"]))
+
+
+@router.put("/eam/work-orders/{work_order_id}")
+def update_asset_work_order(work_order_id: str, payload: AssetWorkOrderUpdate, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
+    row = service.update_asset_work_order(db, work_order_id, payload, context); db.commit(); return ok(service._row(row, ["work_order_no", "status", "owner_id", "due_date", "resolution", "actual_hours", "parts_cost", "labor_cost"]))
 
 
 @router.get("/eam/maintenance-plans")
@@ -168,14 +183,24 @@ def create_maintenance_plan(payload: MaintenancePlanCreate, context: UserContext
     row = service.create_maintenance_plan(db, payload, context); db.commit(); return ok(service._row(row, ["asset_id", "name", "interval_days", "next_due", "status"]))
 
 
+@router.post("/eam/maintenance-plans/{plan_id}/generate-work-order")
+def generate_maintenance_work_order(plan_id: str, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
+    row = service.generate_maintenance_work_order(db, plan_id, context); db.commit(); return ok(service._row(row, ["work_order_no", "asset_id", "service_type", "description", "status", "due_date", "maintenance_plan_id"]))
+
+
 @router.post("/eam/work-orders/{work_order_id}/transition/{status}")
-def transition_asset_work_order(work_order_id: str, status: str, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
-    row = service.transition_asset_work_order(db, work_order_id, status, context); db.commit(); return ok(service._row(row, ["work_order_no", "status", "resolution"]))
+def transition_asset_work_order(work_order_id: str, status: str, payload: AssetWorkOrderTransition | None = None, context: UserContext = Depends(require_permission("production:view")), db: Session = Depends(get_db)):
+    row = service.transition_asset_work_order(db, work_order_id, status, context, payload); db.commit(); return ok(service._row(row, ["work_order_no", "status", "resolution", "actual_hours", "parts_cost", "labor_cost", "closed_at"]))
 
 
 @router.get("/service/cases")
 def service_cases(status: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(service.list_service_cases(db, context, status))
+
+
+@router.get("/service/contracts")
+def service_contracts(customer_id: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.list_service_contracts(db, context, customer_id))
 
 
 @router.post("/service/contracts")
@@ -185,12 +210,17 @@ def create_contract(payload: ServiceContractCreate, context: UserContext = Depen
 
 @router.post("/service/cases")
 def create_case(payload: ServiceCaseCreate, context: UserContext = Depends(require_permission("crm:manage")), db: Session = Depends(get_db)):
-    row = service.create_service_case(db, payload, context); db.commit(); return ok(service._row(row, ["case_no", "customer_id", "contract_id", "title", "priority", "status", "owner_id", "due_date"]))
+    row = service.create_service_case(db, payload, context); db.commit(); return ok(service._row(row, ["case_no", "customer_id", "contract_id", "title", "priority", "status", "owner_id", "due_date", "sla_hours"]))
+
+
+@router.put("/service/cases/{case_id}")
+def update_case(case_id: str, payload: ServiceCaseUpdate, context: UserContext = Depends(require_permission("crm:manage")), db: Session = Depends(get_db)):
+    row = service.update_service_case(db, case_id, payload, context); db.commit(); return ok(service._row(row, ["case_no", "title", "priority", "status", "owner_id", "due_date", "resolution", "customer_feedback", "satisfaction_score"]))
 
 
 @router.post("/service/cases/{case_id}/transition/{status}")
-def transition_case(case_id: str, status: str, context: UserContext = Depends(require_permission("crm:manage")), db: Session = Depends(get_db)):
-    row = service.transition_service_case(db, case_id, status, context); db.commit(); return ok(service._row(row, ["case_no", "title", "priority", "status", "owner_id", "due_date", "resolution"]))
+def transition_case(case_id: str, status: str, payload: ServiceCaseTransition | None = None, context: UserContext = Depends(require_permission("crm:manage")), db: Session = Depends(get_db)):
+    row = service.transition_service_case(db, case_id, status, context, payload); db.commit(); return ok(service._row(row, ["case_no", "title", "priority", "status", "owner_id", "due_date", "resolution", "customer_feedback", "satisfaction_score", "closed_at"]))
 
 
 @router.post("/service/visits")
@@ -201,6 +231,11 @@ def create_visit(payload: VisitCreate, context: UserContext = Depends(require_pe
 @router.get("/service/visits")
 def visits(case_id: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(service.list_visits(db, context, case_id))
+
+
+@router.put("/service/visits/{visit_id}")
+def update_visit(visit_id: str, payload: VisitUpdate, context: UserContext = Depends(require_permission("crm:manage")), db: Session = Depends(get_db)):
+    row = service.update_visit(db, visit_id, payload, context); db.commit(); return ok(service._row(row, ["case_id", "scheduled_at", "technician_id", "status", "notes", "outcome", "completed_at", "feedback_score"]))
 
 
 @router.get("/crm/customers/{customer_id}/360")

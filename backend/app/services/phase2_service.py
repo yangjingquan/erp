@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -270,75 +270,267 @@ def list_project_entries(db, project_id, context):
     return [_row(row, ["project_id", "wbs_id", "entry_date", "category", "source_type", "source_id", "amount"]) for row in db.scalars(select(ProjectEntry).where(ProjectEntry.org_id == context.org_id, ProjectEntry.project_id == project_id, ProjectEntry.is_deleted.is_(False)).order_by(ProjectEntry.entry_date.desc())).all()]
 
 
+def _get_asset(db, asset_id: str, context):
+    row = db.scalar(select(EamAsset).where(EamAsset.id == asset_id, EamAsset.org_id == context.org_id, EamAsset.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("资产不存在", code=404)
+    return row
+
+
+def _get_assignee(db, user_id: str | None, context):
+    if not user_id:
+        return None
+    row = db.scalar(select(SysUser).where(SysUser.id == user_id, SysUser.org_id == context.org_id, SysUser.status == "active", SysUser.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("责任人不存在或已停用", code=422)
+    return row
+
+
+def list_assignees(db, context):
+    rows = db.scalars(select(SysUser).where(SysUser.org_id == context.org_id, SysUser.status == "active", SysUser.is_deleted.is_(False)).order_by(SysUser.display_name, SysUser.username)).all()
+    return [{"id": row.id, "display_name": row.display_name or row.username, "username": row.username} for row in rows]
+
+
+def _refresh_asset_next_maintenance(db, asset: EamAsset, context) -> None:
+    plans = db.scalars(select(EamMaintenancePlan).where(EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.asset_id == asset.id, EamMaintenancePlan.status == "active", EamMaintenancePlan.is_deleted.is_(False))).all()
+    asset.next_maintenance_date = min((plan.next_due for plan in plans), default=None)
+
+
 def list_assets(db, context, status=None):
-    return [_row(row, ["asset_code", "asset_name", "serial_no", "location", "status", "next_maintenance_date"]) for row in _list(db, EamAsset, context, status=status)]
+    rows = _list(db, EamAsset, context, status=status)
+    plans = db.scalars(select(EamMaintenancePlan).where(EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False))).all()
+    work_orders = db.scalars(select(EamWorkOrder).where(EamWorkOrder.org_id == context.org_id, EamWorkOrder.is_deleted.is_(False))).all()
+    plan_counts = defaultdict(int)
+    open_counts = defaultdict(int)
+    total_counts = defaultdict(int)
+    for plan in plans:
+        plan_counts[plan.asset_id] += 1
+    for work_order in work_orders:
+        total_counts[work_order.asset_id] += 1
+        if work_order.status not in {"closed", "cancelled"}:
+            open_counts[work_order.asset_id] += 1
+    return [_row(row, ["asset_code", "asset_name", "serial_no", "location", "status", "next_maintenance_date", "retired_at", "retirement_reason"]) | {"maintenance_plan_count": plan_counts[row.id], "work_order_count": total_counts[row.id], "open_work_order_count": open_counts[row.id]} for row in rows]
 
 
 def create_asset(db, payload, context):
-    if db.scalar(select(EamAsset.id).where(EamAsset.org_id == context.org_id, EamAsset.asset_code == payload.asset_code, EamAsset.is_deleted.is_(False))): raise AppError("资产编码已存在", code=409)
-    row = EamAsset(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+    if db.scalar(select(EamAsset.id).where(EamAsset.org_id == context.org_id, EamAsset.asset_code == payload.asset_code, EamAsset.is_deleted.is_(False))):
+        raise AppError("资产编码已存在", code=409)
+    row = EamAsset(org_id=context.org_id, **payload.model_dump())
+    db.add(row); db.flush(); return row
+
+
+def update_asset(db, asset_id, payload, context):
+    row = _get_asset(db, asset_id, context)
+    values = payload.model_dump(exclude_unset=True)
+    if values.get("status") == "retired":
+        active_work_order = db.scalar(select(EamWorkOrder.id).where(EamWorkOrder.asset_id == row.id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.status.not_in({"closed", "cancelled"}), EamWorkOrder.is_deleted.is_(False)))
+        if active_work_order:
+            raise AppError("存在未关闭的资产工单，不能报废资产", code=409)
+        row.retired_at = row.retired_at or local_now()
+    elif values.get("status") == "active":
+        row.retired_at = None
+        row.retirement_reason = None
+    for field, value in values.items():
+        setattr(row, field, value)
+    db.flush(); return row
 
 
 def create_asset_work_order(db, payload, context):
-    if db.scalar(select(EamAsset.id).where(EamAsset.id == payload.asset_id, EamAsset.org_id == context.org_id, EamAsset.is_deleted.is_(False))) is None: raise AppError("资产不存在", code=404)
-    row = EamWorkOrder(org_id=context.org_id, work_order_no=_doc_no(db, "eam_work_order", context.org_id), owner_id=context.id, **payload.model_dump()); db.add(row); db.flush(); return row
+    asset = _get_asset(db, payload.asset_id, context)
+    if asset.status == "retired":
+        raise AppError("已报废资产不能新建工单", code=409)
+    _get_assignee(db, payload.owner_id, context)
+    plan = None
+    if payload.maintenance_plan_id:
+        plan = db.scalar(select(EamMaintenancePlan).where(EamMaintenancePlan.id == payload.maintenance_plan_id, EamMaintenancePlan.asset_id == asset.id, EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False)))
+        if plan is None:
+            raise AppError("保养计划不存在或不属于当前资产", code=422)
+    values = payload.model_dump()
+    row = EamWorkOrder(org_id=context.org_id, work_order_no=_doc_no(db, "eam_work_order", context.org_id), **values)
+    db.add(row); db.flush()
+    return row
 
 
 def list_maintenance_plans(db, context, asset_id=None):
     conditions = [EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False)]
     if asset_id: conditions.append(EamMaintenancePlan.asset_id == asset_id)
     rows = db.scalars(select(EamMaintenancePlan).where(*conditions).order_by(EamMaintenancePlan.next_due)).all()
-    return [_row(item, ["asset_id", "name", "interval_days", "next_due", "status"]) for item in rows]
+    return [_row(item, ["asset_id", "name", "interval_days", "next_due", "status", "last_work_order_id", "last_completed_at"]) for item in rows]
 
 
 def create_maintenance_plan(db, payload, context):
-    if db.scalar(select(EamAsset.id).where(EamAsset.id == payload.asset_id, EamAsset.org_id == context.org_id, EamAsset.is_deleted.is_(False))) is None: raise AppError("资产不存在", code=404)
-    row = EamMaintenancePlan(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+    asset = _get_asset(db, payload.asset_id, context)
+    if asset.status == "retired":
+        raise AppError("已报废资产不能建立保养计划", code=409)
+    row = EamMaintenancePlan(org_id=context.org_id, **payload.model_dump())
+    db.add(row); db.flush()
+    _refresh_asset_next_maintenance(db, asset, context)
+    return row
 
 
-def transition_asset_work_order(db, work_order_id, status, context):
+def generate_maintenance_work_order(db, plan_id, context):
+    plan = db.scalar(select(EamMaintenancePlan).where(EamMaintenancePlan.id == plan_id, EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False)))
+    if plan is None:
+        raise AppError("保养计划不存在", code=404)
+    if plan.status != "active":
+        raise AppError("当前保养计划不可生成工单", code=409)
+    existing = db.scalar(select(EamWorkOrder).where(EamWorkOrder.maintenance_plan_id == plan.id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.status.not_in({"closed", "cancelled"}), EamWorkOrder.is_deleted.is_(False)))
+    if existing:
+        raise AppError("该保养计划已有未关闭工单", code=409)
+    asset = _get_asset(db, plan.asset_id, context)
+    row = EamWorkOrder(org_id=context.org_id, work_order_no=_doc_no(db, "eam_work_order", context.org_id), asset_id=asset.id, service_type="maintenance", description=f"保养计划：{plan.name}", due_date=plan.next_due, maintenance_plan_id=plan.id, status="open")
+    db.add(row); db.flush()
+    plan.last_work_order_id = row.id
+    return row
+
+
+def update_asset_work_order(db, work_order_id, payload, context):
     row = db.scalar(select(EamWorkOrder).where(EamWorkOrder.id == work_order_id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.is_deleted.is_(False)))
     if row is None: raise AppError("资产工单不存在", code=404)
-    allowed = {"open": {"assigned", "cancelled"}, "assigned": {"in_progress", "cancelled"}, "in_progress": {"resolved", "cancelled"}, "resolved": {"closed"}}
+    if row.status in {"closed", "cancelled"}: raise AppError("已关闭或已取消的工单不能修改", code=409)
+    _get_assignee(db, payload.owner_id, context)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, field, value)
+    db.flush(); return row
+
+
+def transition_asset_work_order(db, work_order_id, status, context, payload=None):
+    row = db.scalar(select(EamWorkOrder).where(EamWorkOrder.id == work_order_id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.is_deleted.is_(False)))
+    if row is None: raise AppError("资产工单不存在", code=404)
+    allowed = {"open": {"assigned", "cancelled"}, "assigned": {"in_progress", "cancelled"}, "in_progress": {"resolved", "cancelled"}, "resolved": {"closed", "reopened"}, "closed": {"reopened"}, "reopened": {"in_progress", "cancelled"}}
     if status not in allowed.get(row.status, set()): raise AppError("资产工单状态流转不合法", code=409)
+    values = payload.model_dump(exclude_unset=True) if payload else {}
+    for field, value in values.items():
+        setattr(row, field, value)
+    now = local_now()
+    if status == "assigned":
+        if not row.owner_id: raise AppError("派工前必须指定责任人", code=422)
+        _get_assignee(db, row.owner_id, context); row.assigned_at = now
+    elif status == "in_progress":
+        row.started_at = row.started_at or now
+        asset = _get_asset(db, row.asset_id, context)
+        if asset.status != "retired": asset.status = "maintenance"
+    elif status == "resolved":
+        if not row.resolution or not row.resolution.strip(): raise AppError("解决工单前必须填写处理结果", code=422)
+        row.resolved_at = now
+    elif status == "closed":
+        if not row.resolution or not row.resolution.strip(): raise AppError("关闭工单前必须填写处理结果", code=422)
+        row.closed_at = now; row.closed_by = context.id
+        if row.maintenance_plan_id:
+            plan = db.scalar(select(EamMaintenancePlan).where(EamMaintenancePlan.id == row.maintenance_plan_id, EamMaintenancePlan.org_id == context.org_id, EamMaintenancePlan.is_deleted.is_(False)))
+            if plan:
+                plan.last_completed_at = now
+                plan.next_due = (now.date() + timedelta(days=plan.interval_days))
+        asset = _get_asset(db, row.asset_id, context)
+        active = db.scalar(select(EamWorkOrder.id).where(EamWorkOrder.asset_id == asset.id, EamWorkOrder.org_id == context.org_id, EamWorkOrder.id != row.id, EamWorkOrder.status.not_in({"closed", "cancelled"}), EamWorkOrder.is_deleted.is_(False)))
+        if asset.status != "retired" and not active: asset.status = "active"
+        _refresh_asset_next_maintenance(db, asset, context)
+    elif status == "cancelled":
+        asset = _get_asset(db, row.asset_id, context)
+        active = db.scalar(select(EamWorkOrder.id).where(EamWorkOrder.asset_id == asset.id, EamWorkOrder.id != row.id, EamWorkOrder.status.not_in({"closed", "cancelled"}), EamWorkOrder.is_deleted.is_(False)))
+        if asset.status != "retired" and not active: asset.status = "active"
+    elif status == "reopened":
+        row.resolved_at = None; row.closed_at = None; row.closed_by = None
     row.status = status; db.flush(); return row
 
 
 def list_asset_work_orders(db, context):
-    return [_row(row, ["work_order_no", "asset_id", "service_type", "description", "status", "owner_id", "due_date", "resolution"]) for row in _list(db, EamWorkOrder, context)]
+    return [_row(row, ["work_order_no", "asset_id", "service_type", "description", "status", "owner_id", "due_date", "resolution", "maintenance_plan_id", "actual_hours", "parts_cost", "labor_cost", "assigned_at", "started_at", "resolved_at", "closed_at"]) for row in _list(db, EamWorkOrder, context)]
 
 
 def list_service_cases(db, context, status=None):
-    return [_row(row, ["case_no", "customer_id", "contract_id", "title", "priority", "status", "owner_id", "due_date", "resolution"]) for row in _list(db, SvcCase, context, status=status)]
+    rows = _list(db, SvcCase, context, status=status)
+    visit_counts = defaultdict(int)
+    for case_id in db.scalars(select(SvcVisit.case_id).where(SvcVisit.org_id == context.org_id, SvcVisit.is_deleted.is_(False))).all():
+        visit_counts[case_id] += 1
+    today = local_today()
+    return [_row(row, ["case_no", "customer_id", "contract_id", "title", "priority", "status", "owner_id", "due_date", "resolution", "sla_hours", "first_response_at", "resolved_at", "closed_at", "customer_feedback", "satisfaction_score"]) | {"sla_status": "overdue" if row.due_date and row.due_date < today and row.status not in {"closed", "cancelled"} else "within_sla", "visit_count": visit_counts[row.id]} for row in rows]
+
+
+def list_service_contracts(db, context, customer_id=None):
+    conditions = [SvcContract.org_id == context.org_id, SvcContract.is_deleted.is_(False)]
+    if customer_id: conditions.append(SvcContract.customer_id == customer_id)
+    rows = db.scalars(select(SvcContract).where(*conditions).order_by(SvcContract.end_date.desc())).all()
+    return [_row(row, ["contract_no", "customer_id", "start_date", "end_date", "value", "status"]) for row in rows]
 
 
 def create_service_contract(db, payload, context):
     if payload.end_date < payload.start_date: raise AppError("服务合同结束日期不能早于开始日期", code=422)
+    if db.scalar(select(MdCustomer.id).where(MdCustomer.id == payload.customer_id, MdCustomer.org_id == context.org_id, MdCustomer.is_deleted.is_(False))) is None: raise AppError("客户不存在", code=404)
     row = SvcContract(org_id=context.org_id, contract_no=_doc_no(db, "svc_contract", context.org_id), **payload.model_dump()); db.add(row); db.flush(); return row
 
 
 def create_service_case(db, payload, context):
-    row = SvcCase(org_id=context.org_id, case_no=_doc_no(db, "svc_case", context.org_id), owner_id=context.id, **payload.model_dump()); db.add(row); db.flush(); return row
+    if db.scalar(select(MdCustomer.id).where(MdCustomer.id == payload.customer_id, MdCustomer.org_id == context.org_id, MdCustomer.is_deleted.is_(False))) is None: raise AppError("客户不存在", code=404)
+    if payload.contract_id and db.scalar(select(SvcContract.id).where(SvcContract.id == payload.contract_id, SvcContract.customer_id == payload.customer_id, SvcContract.org_id == context.org_id, SvcContract.is_deleted.is_(False))) is None: raise AppError("服务合同不存在或不属于该客户", code=422)
+    _get_assignee(db, payload.owner_id, context)
+    row = SvcCase(org_id=context.org_id, case_no=_doc_no(db, "svc_case", context.org_id), **payload.model_dump())
+    if row.due_date is None:
+        row.due_date = (local_now() + timedelta(hours=row.sla_hours or 48)).date()
+    db.add(row); db.flush(); return row
 
 
-def transition_service_case(db, case_id, status, context):
+def update_service_case(db, case_id, payload, context):
     row = db.scalar(select(SvcCase).where(SvcCase.id == case_id, SvcCase.org_id == context.org_id, SvcCase.is_deleted.is_(False)))
     if row is None: raise AppError("服务工单不存在", code=404)
-    allowed = {"open": {"assigned", "cancelled"}, "assigned": {"in_progress", "cancelled"}, "in_progress": {"resolved", "cancelled"}, "resolved": {"closed"}, "closed": set(), "cancelled": set()}
+    if row.status in {"closed", "cancelled"}: raise AppError("已关闭或已取消的服务工单不能修改", code=409)
+    _get_assignee(db, payload.owner_id, context)
+    for field, value in payload.model_dump(exclude_unset=True).items(): setattr(row, field, value)
+    db.flush(); return row
+
+
+def transition_service_case(db, case_id, status, context, payload=None):
+    row = db.scalar(select(SvcCase).where(SvcCase.id == case_id, SvcCase.org_id == context.org_id, SvcCase.is_deleted.is_(False)))
+    if row is None: raise AppError("服务工单不存在", code=404)
+    allowed = {"open": {"assigned", "cancelled"}, "assigned": {"in_progress", "cancelled"}, "in_progress": {"resolved", "cancelled"}, "resolved": {"closed", "reopened"}, "closed": {"reopened"}, "reopened": {"in_progress", "cancelled"}, "cancelled": set()}
     if status not in allowed.get(row.status, set()): raise AppError("服务工单状态流转不合法", code=409)
+    values = payload.model_dump(exclude_unset=True) if payload else {}
+    for field, value in values.items(): setattr(row, field, value)
+    now = local_now()
+    if status == "assigned":
+        if not row.owner_id: raise AppError("派工前必须指定责任人", code=422)
+        _get_assignee(db, row.owner_id, context); row.first_response_at = row.first_response_at or now
+    elif status == "in_progress":
+        row.first_response_at = row.first_response_at or now
+    elif status == "resolved":
+        if not row.resolution or not row.resolution.strip(): raise AppError("解决服务工单前必须填写解决方案", code=422)
+        row.resolved_at = now
+    elif status == "closed":
+        if not row.resolution or not row.resolution.strip(): raise AppError("关闭服务工单前必须填写解决方案", code=422)
+        row.closed_at = now
+    elif status == "reopened":
+        row.resolved_at = None; row.closed_at = None
     row.status = status; db.flush(); return row
 
 
 def create_visit(db, payload, context):
-    if db.scalar(select(SvcCase.id).where(SvcCase.id == payload.case_id, SvcCase.org_id == context.org_id, SvcCase.is_deleted.is_(False))) is None: raise AppError("服务工单不存在", code=404)
-    row = SvcVisit(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+    case = db.scalar(select(SvcCase).where(SvcCase.id == payload.case_id, SvcCase.org_id == context.org_id, SvcCase.is_deleted.is_(False)))
+    if case is None: raise AppError("服务工单不存在", code=404)
+    _get_assignee(db, payload.technician_id, context)
+    row = SvcVisit(org_id=context.org_id, **payload.model_dump())
+    db.add(row)
+    if payload.technician_id:
+        case.owner_id = payload.technician_id
+        case.first_response_at = case.first_response_at or local_now()
+        if case.status == "open": case.status = "assigned"
+    db.flush(); return row
+
+
+def update_visit(db, visit_id, payload, context):
+    row = db.scalar(select(SvcVisit).where(SvcVisit.id == visit_id, SvcVisit.org_id == context.org_id, SvcVisit.is_deleted.is_(False)))
+    if row is None: raise AppError("服务回访不存在", code=404)
+    values = payload.model_dump(exclude_unset=True)
+    if values.get("status") == "completed" and not (values.get("outcome") or row.outcome): raise AppError("完成回访前必须填写回访结果", code=422)
+    for field, value in values.items(): setattr(row, field, value)
+    if row.status == "completed": row.completed_at = row.completed_at or local_now()
+    db.flush(); return row
 
 
 def list_visits(db, context, case_id=None):
     conditions = [SvcVisit.org_id == context.org_id, SvcVisit.is_deleted.is_(False)]
     if case_id: conditions.append(SvcVisit.case_id == case_id)
     rows = db.scalars(select(SvcVisit).where(*conditions).order_by(SvcVisit.scheduled_at)).all()
-    return [_row(item, ["case_id", "scheduled_at", "technician_id", "status", "notes"]) for item in rows]
+    return [_row(item, ["case_id", "scheduled_at", "technician_id", "status", "notes", "outcome", "completed_at", "feedback_score"]) for item in rows]
 
 
 def customer_360(db, customer_id, context):
@@ -350,6 +542,8 @@ def customer_360(db, customer_id, context):
     orders = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.customer_id == customer_id, SalesOrder.is_deleted.is_(False))).all()
     contracts = db.scalars(select(SvcContract).where(SvcContract.org_id == context.org_id, SvcContract.customer_id == customer_id, SvcContract.is_deleted.is_(False))).all()
     cases = db.scalars(select(SvcCase).where(SvcCase.org_id == context.org_id, SvcCase.customer_id == customer_id, SvcCase.is_deleted.is_(False))).all()
+    case_ids = [item.id for item in cases]
+    visits = db.scalars(select(SvcVisit).where(SvcVisit.org_id == context.org_id, SvcVisit.case_id.in_(case_ids), SvcVisit.is_deleted.is_(False)).order_by(SvcVisit.scheduled_at.desc())).all() if case_ids else []
     opportunity_ids = [item.id for item in opportunities]
     follow_ups = db.scalars(select(CrmFollowUp).where(CrmFollowUp.org_id == context.org_id, CrmFollowUp.opportunity_id.in_(opportunity_ids), CrmFollowUp.is_deleted.is_(False)).order_by(CrmFollowUp.occurred_at.desc())).all() if opportunity_ids else []
     receipts = db.scalars(select(FinReceipt).where(FinReceipt.org_id == context.org_id, FinReceipt.customer_id == customer_id).order_by(FinReceipt.receipt_date.desc())).all()
@@ -360,7 +554,8 @@ def customer_360(db, customer_id, context):
         "opportunities": [_row(item, ["opportunity_no", "name", "stage", "estimated_amount", "expected_close_date"]) for item in opportunities],
         "orders": [_row(item, ["doc_no", "status", "order_date", "expected_date", "total_amount"]) for item in orders],
         "contracts": [_row(item, ["contract_no", "start_date", "end_date", "value", "status"]) for item in contracts],
-        "service_cases": [_row(item, ["case_no", "title", "priority", "status", "due_date"]) for item in cases],
+        "service_cases": [_row(item, ["case_no", "title", "priority", "status", "due_date", "owner_id", "resolution", "customer_feedback", "satisfaction_score"]) for item in cases],
+        "service_visits": [_row(item, ["case_id", "scheduled_at", "technician_id", "status", "notes", "outcome", "completed_at", "feedback_score"]) for item in visits],
         "follow_ups": [_row(item, ["opportunity_id", "content", "occurred_at", "due_date", "status"]) for item in follow_ups],
         "receipts": [_row(item, ["doc_no", "amount", "receipt_date", "status"]) for item in receipts],
         "summary": {
@@ -369,6 +564,7 @@ def customer_360(db, customer_id, context):
             "opportunity_count": len(opportunities),
             "order_count": len(orders),
             "open_case_count": len([item for item in cases if item.status not in {"closed", "cancelled"}]),
+            "visit_count": len(visits),
             "receipt_amount": _serialize(sum((item.amount for item in receipts), Decimal("0"))),
         },
     }

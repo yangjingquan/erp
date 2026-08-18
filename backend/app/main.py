@@ -46,9 +46,13 @@ from app.services.runtime_migrations import (
     ensure_p0_wms_schema,
     ensure_p0_completion_schema,
     ensure_p1_p2_extension_schema,
+    ensure_eam_service_closed_loop_schema,
     ensure_wms_closure_schema,
     ensure_opportunity_win_columns,
     ensure_spc_closed_loop_schema,
+    ensure_supplier_quality_closed_loop_schema,
+    ensure_quality_cost_closed_loop_schema,
+    ensure_customer_claim_closed_loop_schema,
 )
 from app.services.permission_service import ensure_permission_catalog
 
@@ -70,9 +74,13 @@ async def lifespan(application: FastAPI):
             ensure_p0_wms_schema(db)
             ensure_p0_completion_schema(db)
             ensure_p1_p2_extension_schema(db)
+            ensure_eam_service_closed_loop_schema(db)
             ensure_wms_closure_schema(db)
             ensure_opportunity_win_columns(db)
             ensure_spc_closed_loop_schema(db)
+            ensure_supplier_quality_closed_loop_schema(db)
+            ensure_quality_cost_closed_loop_schema(db)
+            ensure_customer_claim_closed_loop_schema(db)
             ensure_permission_catalog(db)
             # Permission catalog upgrades may insert page/function rows. Keep
             # the startup transaction short so SQLite/dev environments and

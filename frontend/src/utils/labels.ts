@@ -1,7 +1,7 @@
 export type TagType = "primary" | "success" | "warning" | "danger" | "info";
 
 export const statusLabels: Record<string, string> = {
-  active: "启用", inactive: "停用", draft: "草稿", submitted: "待审核", approved: "已审核",
+  active: "启用", inactive: "停用", draft: "草稿", submitted: "待审核", pending_review: "待审核", investigating: "调查中", approved: "已审核",
   rejected: "已驳回", cancelled: "已取消", completed: "已完成", open: "待处理", partial: "部分完成",
   settled: "已结清", confirmed: "已确认", posted: "已过账", pending: "待处理", in_progress: "进行中",
   released: "已发布", effective: "已生效", obsolete: "已作废", quoted: "已报价", accepted: "已接受", reversed: "已冲销",
@@ -45,7 +45,7 @@ export function statusLabel(value: unknown, fallback = "-") { return labelOf(sta
 export function tagTypeOf(value: unknown): TagType {
   const key = String(value ?? "");
   if (["active", "approved", "completed", "settled", "posted", "effective", "won", "converted", "resolved", "passed"].includes(key)) return "success";
-  if (["submitted", "open", "pending", "in_progress", "assigned", "proposal", "partial", "quoted"].includes(key)) return "warning";
+  if (["submitted", "pending_review", "open", "investigating", "pending", "in_progress", "assigned", "proposal", "partial", "quoted"].includes(key)) return "warning";
   if (["rejected", "cancelled", "failed", "lost", "obsolete", "closed"].includes(key)) return "danger";
   return "info";
 }

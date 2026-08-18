@@ -410,6 +410,60 @@ def ensure_p1_p2_extension_schema(db: Session) -> None:
         db.commit()
 
 
+def ensure_eam_service_closed_loop_schema(db: Session) -> None:
+    """Upgrade EAM and after-sales tables with dispatch and closure evidence."""
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    definitions = {
+        "eam_asset": {
+            "retired_at": "DATETIME NULL",
+            "retirement_reason": "VARCHAR(500) NULL",
+        },
+        "eam_maintenance_plan": {
+            "last_work_order_id": "VARCHAR(36) NULL",
+            "last_completed_at": "DATETIME NULL",
+        },
+        "eam_work_order": {
+            "maintenance_plan_id": "VARCHAR(36) NULL",
+            "actual_hours": "DECIMAL(12,2) NOT NULL DEFAULT 0",
+            "parts_cost": "DECIMAL(18,2) NOT NULL DEFAULT 0",
+            "labor_cost": "DECIMAL(18,2) NOT NULL DEFAULT 0",
+            "assigned_at": "DATETIME NULL",
+            "started_at": "DATETIME NULL",
+            "resolved_at": "DATETIME NULL",
+            "closed_at": "DATETIME NULL",
+            "closed_by": "VARCHAR(36) NULL",
+        },
+        "svc_case": {
+            "sla_hours": "INTEGER NULL DEFAULT 48",
+            "first_response_at": "DATETIME NULL",
+            "resolved_at": "DATETIME NULL",
+            "closed_at": "DATETIME NULL",
+            "customer_feedback": "VARCHAR(1000) NULL",
+            "satisfaction_score": "INTEGER NULL",
+        },
+        "svc_visit": {
+            "outcome": "VARCHAR(1000) NULL",
+            "completed_at": "DATETIME NULL",
+            "feedback_score": "INTEGER NULL",
+        },
+    }
+    statements: list[str] = []
+    for table, columns in definitions.items():
+        if table not in tables:
+            continue
+        existing = {item["name"] for item in inspect(db.bind).get_columns(table)}
+        for name, definition in columns.items():
+            if name not in existing:
+                statements.append(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+    for statement in statements:
+        db.execute(text(statement))
+    if "svc_case" in tables:
+        db.execute(text("UPDATE svc_case SET sla_hours = 48 WHERE sla_hours IS NULL"))
+    if statements or "svc_case" in tables:
+        db.commit()
+
+
 def ensure_spc_closed_loop_schema(db: Session) -> None:
     """Install the SPC exception workflow on existing deployments."""
     from app.core.database import Base
@@ -434,6 +488,102 @@ def ensure_spc_closed_loop_schema(db: Session) -> None:
         db.execute(text(statement))
     if statements:
         db.commit()
+
+
+def ensure_supplier_quality_closed_loop_schema(db: Session) -> None:
+    """Upgrade supplier-quality and NCR tables for the automated quality loop."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    if "qa_supplier_quality" not in tables or "qa_nonconformance" not in tables:
+        return
+
+    supplier_columns = {item["name"] for item in inspector.get_columns("qa_supplier_quality")}
+    supplier_statements = {
+        "aggregation_source": "ALTER TABLE qa_supplier_quality ADD COLUMN aggregation_source VARCHAR(32) NOT NULL DEFAULT 'purchase_inspection'",
+        "review_comment": "ALTER TABLE qa_supplier_quality ADD COLUMN review_comment VARCHAR(500) NULL",
+        "reviewed_by": "ALTER TABLE qa_supplier_quality ADD COLUMN reviewed_by CHAR(36) NULL",
+        "reviewed_at": "ALTER TABLE qa_supplier_quality ADD COLUMN reviewed_at DATETIME(6) NULL",
+        "capa_required": "ALTER TABLE qa_supplier_quality ADD COLUMN capa_required TINYINT(1) NOT NULL DEFAULT 0",
+        "capa_status": "ALTER TABLE qa_supplier_quality ADD COLUMN capa_status VARCHAR(32) NOT NULL DEFAULT 'not_required'",
+        "capa_nonconformance_id": "ALTER TABLE qa_supplier_quality ADD COLUMN capa_nonconformance_id CHAR(36) NULL",
+        "capa_trigger_reason": "ALTER TABLE qa_supplier_quality ADD COLUMN capa_trigger_reason VARCHAR(500) NULL",
+        "source_snapshot_json": "ALTER TABLE qa_supplier_quality ADD COLUMN source_snapshot_json JSON NULL",
+    }
+    for name, statement in supplier_statements.items():
+        if name not in supplier_columns:
+            db.execute(text(statement))
+
+    ncr_columns = {item["name"] for item in inspector.get_columns("qa_nonconformance")}
+    ncr_statements = {
+        "supplier_quality_id": "ALTER TABLE qa_nonconformance ADD COLUMN supplier_quality_id CHAR(36) NULL",
+        "supplier_id": "ALTER TABLE qa_nonconformance ADD COLUMN supplier_id CHAR(36) NULL",
+        "supplier_period": "ALTER TABLE qa_nonconformance ADD COLUMN supplier_period VARCHAR(7) NULL",
+    }
+    for name, statement in ncr_statements.items():
+        if name not in ncr_columns:
+            db.execute(text(statement))
+    inspection_column = next(item for item in inspector.get_columns("qa_nonconformance") if item["name"] == "inspection_id")
+    if not inspection_column.get("nullable", True):
+        db.execute(text("ALTER TABLE qa_nonconformance MODIFY COLUMN inspection_id CHAR(36) NULL"))
+    db.commit()
+
+
+def ensure_quality_cost_closed_loop_schema(db: Session) -> None:
+    """Add traceability fields for quality-cost records created by quality events."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    if "qa_quality_cost" not in inspector.get_table_names():
+        return
+    columns = {item["name"] for item in inspector.get_columns("qa_quality_cost")}
+    statements = {
+        "source_type": "ALTER TABLE qa_quality_cost ADD COLUMN source_type VARCHAR(64) NULL",
+        "status": "ALTER TABLE qa_quality_cost ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'estimated'",
+        "auto_generated": "ALTER TABLE qa_quality_cost ADD COLUMN auto_generated TINYINT(1) NOT NULL DEFAULT 0",
+    }
+    for name, statement in statements.items():
+        if name not in columns:
+            db.execute(text(statement))
+    db.execute(text("UPDATE qa_quality_cost SET status = 'confirmed' WHERE auto_generated = 0 AND status = 'estimated'"))
+    db.commit()
+
+
+def ensure_customer_claim_closed_loop_schema(db: Session) -> None:
+    """Add customer-claim workflow and finance-source fields on rolling upgrades."""
+    if db.bind.dialect.name != "mysql":
+        return
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    if "qa_customer_claim" not in tables:
+        return
+    claim_columns = {item["name"] for item in inspector.get_columns("qa_customer_claim")}
+    claim_statements = {
+        "approved_amount": "ALTER TABLE qa_customer_claim ADD COLUMN approved_amount DECIMAL(18,2) NULL",
+        "owner_id": "ALTER TABLE qa_customer_claim ADD COLUMN owner_id CHAR(36) NULL",
+        "due_date": "ALTER TABLE qa_customer_claim ADD COLUMN due_date DATE NULL",
+        "review_evidence": "ALTER TABLE qa_customer_claim ADD COLUMN review_evidence VARCHAR(1000) NULL",
+        "review_comment": "ALTER TABLE qa_customer_claim ADD COLUMN review_comment VARCHAR(500) NULL",
+        "reviewed_by": "ALTER TABLE qa_customer_claim ADD COLUMN reviewed_by CHAR(36) NULL",
+        "reviewed_at": "ALTER TABLE qa_customer_claim ADD COLUMN reviewed_at DATETIME(6) NULL",
+        "closure_evidence": "ALTER TABLE qa_customer_claim ADD COLUMN closure_evidence VARCHAR(1000) NULL",
+        "nonconformance_id": "ALTER TABLE qa_customer_claim ADD COLUMN nonconformance_id CHAR(36) NULL",
+        "financial_expense_id": "ALTER TABLE qa_customer_claim ADD COLUMN financial_expense_id CHAR(36) NULL",
+        "closed_by": "ALTER TABLE qa_customer_claim ADD COLUMN closed_by CHAR(36) NULL",
+    }
+    for name, statement in claim_statements.items():
+        if name not in claim_columns:
+            db.execute(text(statement))
+    if "fin_expense" in tables:
+        expense_columns = {item["name"] for item in inspector.get_columns("fin_expense")}
+        for name, statement in {
+            "source_type": "ALTER TABLE fin_expense ADD COLUMN source_type VARCHAR(64) NULL",
+            "source_id": "ALTER TABLE fin_expense ADD COLUMN source_id CHAR(36) NULL",
+        }.items():
+            if name not in expense_columns:
+                db.execute(text(statement))
+    db.commit()
 
 
 def ensure_opportunity_win_columns(db: Session) -> None:

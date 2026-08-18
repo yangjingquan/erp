@@ -15,7 +15,10 @@ export interface QualityCapaAction {
 
 export interface QualityNonconformance {
   id: string;
-  inspection_id: string;
+  inspection_id?: string | null;
+  supplier_quality_id?: string | null;
+  supplier_id?: string | null;
+  supplier_period?: string | null;
   inspection_type?: string | null;
   source_type?: string | null;
   source_id?: string | null;

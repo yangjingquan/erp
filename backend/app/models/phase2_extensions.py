@@ -148,6 +148,8 @@ class EamAsset(AuditMixin, UUIDModel):
     location: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(32), default="active")
     next_maintenance_date: Mapped[date | None] = mapped_column(Date)
+    retired_at: Mapped[datetime | None] = mapped_column(DateTime)
+    retirement_reason: Mapped[str | None] = mapped_column(String(500))
     __table_args__ = (UniqueConstraint("org_id", "asset_code", name="uk_eam_asset_code"),)
 
 
@@ -159,6 +161,8 @@ class EamMaintenancePlan(AuditMixin, UUIDModel):
     interval_days: Mapped[int] = mapped_column(default=30)
     next_due: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(32), default="active")
+    last_work_order_id: Mapped[str | None] = mapped_column(String(36))
+    last_completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class EamWorkOrder(AuditMixin, UUIDModel):
@@ -172,6 +176,15 @@ class EamWorkOrder(AuditMixin, UUIDModel):
     owner_id: Mapped[str | None] = mapped_column(String(36))
     due_date: Mapped[date | None] = mapped_column(Date)
     resolution: Mapped[str | None] = mapped_column(String(1000))
+    maintenance_plan_id: Mapped[str | None] = mapped_column(String(36), index=True)
+    actual_hours: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    parts_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    labor_cost: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_by: Mapped[str | None] = mapped_column(String(36))
     __table_args__ = (UniqueConstraint("org_id", "work_order_no", name="uk_eam_work_order_no"),)
 
 
@@ -199,6 +212,12 @@ class SvcCase(AuditMixin, UUIDModel):
     owner_id: Mapped[str | None] = mapped_column(String(36))
     due_date: Mapped[date | None] = mapped_column(Date)
     resolution: Mapped[str | None] = mapped_column(String(1000))
+    sla_hours: Mapped[int | None] = mapped_column(default=48)
+    first_response_at: Mapped[datetime | None] = mapped_column(DateTime)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    customer_feedback: Mapped[str | None] = mapped_column(String(1000))
+    satisfaction_score: Mapped[int | None] = mapped_column()
     __table_args__ = (UniqueConstraint("org_id", "case_no", name="uk_svc_case_no"),)
 
 
@@ -210,6 +229,9 @@ class SvcVisit(AuditMixin, UUIDModel):
     technician_id: Mapped[str | None] = mapped_column(String(36))
     status: Mapped[str] = mapped_column(String(32), default="scheduled")
     notes: Mapped[str | None] = mapped_column(String(1000))
+    outcome: Mapped[str | None] = mapped_column(String(1000))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    feedback_score: Mapped[int | None] = mapped_column()
 
 
 class TaxCode(AuditMixin, UUIDModel):

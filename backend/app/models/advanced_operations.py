@@ -109,8 +109,19 @@ class QaSupplierQuality(AuditMixin, UUIDModel):
     defect_count: Mapped[int] = mapped_column(default=0)
     defect_rate: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=0)
     score: Mapped[Decimal] = mapped_column(Numeric(8, 2), default=0)
-    status: Mapped[str] = mapped_column(String(32), default="draft")
+    status: Mapped[str] = mapped_column(String(32), default="submitted")
     note: Mapped[str | None] = mapped_column(String(500))
+    aggregation_source: Mapped[str] = mapped_column(String(32), default="purchase_inspection")
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    capa_required: Mapped[bool] = mapped_column(default=False)
+    capa_status: Mapped[str] = mapped_column(String(32), default="not_required")
+    capa_nonconformance_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    capa_trigger_reason: Mapped[str | None] = mapped_column(String(500))
+    # Keep the source rows used for an automatic aggregation stable even when
+    # the underlying inspection later moves from submitted to closed.
+    source_snapshot_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class QaQualityCost(AuditMixin, UUIDModel):
@@ -119,7 +130,10 @@ class QaQualityCost(AuditMixin, UUIDModel):
     period: Mapped[str] = mapped_column(String(7), index=True)
     cost_type: Mapped[str] = mapped_column(String(32))
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    source_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     source_id: Mapped[str | None] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(32), default="estimated")
+    auto_generated: Mapped[bool] = mapped_column(default=False)
     note: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -133,10 +147,21 @@ class QaCustomerClaim(AuditMixin, UUIDModel):
     source_id: Mapped[str | None] = mapped_column(String(36))
     title: Mapped[str] = mapped_column(String(255))
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), default=0)
+    approved_amount: Mapped[Decimal | None] = mapped_column(Numeric(18, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="open")
+    owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     root_cause: Mapped[str | None] = mapped_column(String(1000))
     resolution: Mapped[str | None] = mapped_column(String(1000))
+    review_evidence: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    review_comment: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    closure_evidence: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    nonconformance_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    financial_expense_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    closed_by: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
 
 class TmsShipment(AuditMixin, UUIDModel):

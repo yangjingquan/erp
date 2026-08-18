@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -88,33 +89,58 @@ class SpcActionComplete(BaseModel):
 
 class SupplierQualityCreate(BaseModel):
     supplier_id: str = Field(min_length=1, max_length=36)
-    period: str = Field(min_length=7, max_length=7)
-    inspection_count: int = Field(ge=0)
-    defect_count: int = Field(ge=0)
-    score: Decimal = Field(ge=0, le=100)
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    inspection_count: int | None = Field(default=None, ge=0)
+    defect_count: int | None = Field(default=None, ge=0)
+    score: Decimal | None = Field(default=None, ge=0, le=100)
     note: str | None = Field(default=None, max_length=500)
 
 
+class SupplierQualityReview(BaseModel):
+    comment: str = Field(default="", max_length=500)
+
+
+class SupplierQualityReject(BaseModel):
+    comment: str = Field(min_length=2, max_length=500)
+
+
 class QualityCostCreate(BaseModel):
-    period: str = Field(min_length=7, max_length=7)
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
     cost_type: str = Field(min_length=1, max_length=32)
     amount: Decimal = Field(ge=0)
+    source_type: str | None = Field(default=None, max_length=64)
     source_id: str | None = Field(default=None, max_length=36)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class QualityCostConfirm(BaseModel):
+    amount: Decimal | None = Field(default=None, ge=0)
     note: str | None = Field(default=None, max_length=500)
 
 
 class CustomerClaimCreate(BaseModel):
     customer_id: str = Field(min_length=1, max_length=36)
-    source_type: str | None = Field(default=None, max_length=64)
-    source_id: str | None = Field(default=None, max_length=36)
+    source_type: Literal["sales_delivery", "sales_return", "inspection", "ncr"]
+    source_id: str = Field(min_length=1, max_length=36)
     title: str = Field(min_length=1, max_length=255)
     amount: Decimal = Field(ge=0)
 
 
 class CustomerClaimUpdate(BaseModel):
     status: str = Field(min_length=1, max_length=32)
+    owner_id: str | None = Field(default=None, max_length=36)
+    due_date: date | None = None
     root_cause: str | None = Field(default=None, max_length=1000)
     resolution: str | None = Field(default=None, max_length=1000)
+    review_evidence: str | None = Field(default=None, max_length=1000)
+    review_comment: str | None = Field(default=None, max_length=500)
+    closure_evidence: str | None = Field(default=None, max_length=1000)
+    approved_amount: Decimal | None = Field(default=None, ge=0)
+
+
+class CustomerClaimSourceQuery(BaseModel):
+    source_type: Literal["sales_delivery", "sales_return", "inspection", "ncr"] | None = None
+    customer_id: str | None = Field(default=None, max_length=36)
 
 
 class ShipmentCreate(BaseModel):

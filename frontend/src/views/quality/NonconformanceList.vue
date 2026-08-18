@@ -18,6 +18,7 @@ import {
 } from "../../api/quality";
 import { usePermissionStore } from "../../stores/permission";
 import { useClientPagination } from "../../composables/useClientPagination";
+import { useMasterOptions } from "../../composables/useMasterOptions";
 import { localDateString } from "../../utils/time";
 
 interface UserOption {
@@ -46,6 +47,7 @@ const actionVisible = ref(false);
 const completionVisible = ref(false);
 const closeVisible = ref(false);
 const sourceDocumentNames = ref<Record<string, string>>({});
+const { suppliers, loadOptions } = useMasterOptions();
 
 const investigationForm = reactive<QualityInvestigationPayload>({
   severity: "major",
@@ -92,11 +94,16 @@ function sourceDocumentKey(sourceType: unknown, sourceId: unknown) {
 }
 
 function sourceDocumentLabel(row: QualityNonconformance) {
+  if (row.supplier_quality_id) return `供应商质量：${supplierLabel(row.supplier_id)}${row.supplier_period ? ` · ${row.supplier_period}` : ""}`;
   const sourceId = String(row.source_id || "");
   return row.source_document_name
     || sourceDocumentNames.value[sourceDocumentKey(row.source_type, sourceId)]
     || sourceDocumentNames.value[sourceId]
     || "-";
+}
+
+function supplierLabel(supplierId?: string | null) {
+  return suppliers.value.find((option) => option.value === supplierId)?.label?.replace(/（[^（）]*）$/, "") || supplierId || "-";
 }
 
 async function loadSourceNames() {
@@ -252,7 +259,7 @@ async function saveClose() {
     return;
   }
   try {
-    await ElMessageBox.confirm("关闭后将同步关闭对应检验单，确认继续吗？", "关闭 NCR", { type: "warning" });
+    await ElMessageBox.confirm("关闭后将同步关闭对应检验单或供应商质量 CAPA，确认继续吗？", "关闭 NCR", { type: "warning" });
     saving.value = true;
     const response = await closeNonconformance(selected.value.id, closeForm.closure_evidence.trim());
     if (response.data.code !== 0) throw new Error(response.data.msg);
@@ -267,7 +274,7 @@ async function saveClose() {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadSourceNames()]);
+  await Promise.all([load(), loadSourceNames(), loadOptions(["suppliers"])]);
 });
 </script>
 
@@ -278,7 +285,7 @@ onMounted(async () => {
       <div><strong>质量整改闭环</strong><span>不合格调查 → 根因分析 → 纠正/预防措施 → 证据验证 → 关闭</span></div>
       <el-button :loading="loading" @click="load">刷新</el-button>
     </div>
-    <el-alert title="不合格检验会自动生成 NCR；必须同时完成纠正和预防措施并留存证据，才能关闭检验单。" type="info" show-icon />
+    <el-alert title="不合格检验会自动生成 NCR；供应商质量低于阈值时会自动触发期间级 CAPA，必须同时完成纠正和预防措施并留存证据才能关闭。" type="info" show-icon />
 
     <el-table v-loading="loading" :data="pagedRows" row-key="id" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column type="expand" width="48">

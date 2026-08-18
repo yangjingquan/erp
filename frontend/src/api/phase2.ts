@@ -27,19 +27,26 @@ export const getProjectDashboard = (id: string) => http.get(`/phase2/projects/${
 export const createProjectEntry = (payload: unknown) => http.post("/phase2/projects/entries", payload);
 export const listProjectEntries = (id: string) => http.get(`/phase2/projects/${id}/entries`);
 
-export const listAssets = () => http.get("/phase2/eam/assets");
+export const listAssets = (status?: string) => http.get("/phase2/eam/assets", { params: status ? { status } : undefined });
+export const listEamAssignees = () => http.get("/phase2/eam/assignees");
 export const createAsset = (payload: unknown) => http.post("/phase2/eam/assets", payload);
+export const updateAsset = (id: string, payload: unknown) => http.put(`/phase2/eam/assets/${id}`, payload);
 export const listAssetWorkOrders = () => http.get("/phase2/eam/work-orders");
 export const createAssetWorkOrder = (payload: unknown) => http.post("/phase2/eam/work-orders", payload);
+export const updateAssetWorkOrder = (id: string, payload: unknown) => http.put(`/phase2/eam/work-orders/${id}`, payload);
 export const listMaintenancePlans = (assetId?: string) => http.get("/phase2/eam/maintenance-plans", { params: assetId ? { asset_id: assetId } : undefined });
 export const createMaintenancePlan = (payload: unknown) => http.post("/phase2/eam/maintenance-plans", payload);
-export const transitionAssetWorkOrder = (id: string, status: string) => http.post(`/phase2/eam/work-orders/${id}/transition/${status}`);
+export const generateMaintenanceWorkOrder = (id: string) => http.post(`/phase2/eam/maintenance-plans/${id}/generate-work-order`);
+export const transitionAssetWorkOrder = (id: string, status: string, payload: unknown = {}) => http.post(`/phase2/eam/work-orders/${id}/transition/${status}`, payload);
 export const listServiceCases = () => http.get("/phase2/service/cases");
+export const listServiceContracts = (customerId?: string) => http.get("/phase2/service/contracts", { params: customerId ? { customer_id: customerId } : undefined });
 export const createServiceContract = (payload: unknown) => http.post("/phase2/service/contracts", payload);
 export const createServiceCase = (payload: unknown) => http.post("/phase2/service/cases", payload);
-export const transitionServiceCase = (id: string, status: string) => http.post(`/phase2/service/cases/${id}/transition/${status}`);
+export const updateServiceCase = (id: string, payload: unknown) => http.put(`/phase2/service/cases/${id}`, payload);
+export const transitionServiceCase = (id: string, status: string, payload: unknown = {}) => http.post(`/phase2/service/cases/${id}/transition/${status}`, payload);
 export const createServiceVisit = (payload: unknown) => http.post("/phase2/service/visits", payload);
 export const listServiceVisits = (caseId?: string) => http.get("/phase2/service/visits", { params: caseId ? { case_id: caseId } : undefined });
+export const updateServiceVisit = (id: string, payload: unknown) => http.put(`/phase2/service/visits/${id}`, payload);
 
 export const listLeaveRequests = () => http.get("/phase2/hr/leave-requests");
 export const listAttendance = (attendanceDate?: string) => http.get("/phase2/hr/attendance", { params: attendanceDate ? { attendance_date: attendanceDate } : undefined });

@@ -174,6 +174,11 @@ def submit_inspection(
             )
             db.add(nonconformance)
     db.flush()
+    from app.services.supplier_quality_service import sync_supplier_quality_for_inspection
+    sync_supplier_quality_for_inspection(db, row, context)
+    from app.services.quality_cost_service import record_inspection_appraisal_cost
+    record_inspection_appraisal_cost(db, row, context)
+    db.flush()
     return row
 
 
@@ -258,6 +263,9 @@ def _serialize_nonconformance(
     return {
         "id": row.id,
         "inspection_id": row.inspection_id,
+        "supplier_quality_id": row.supplier_quality_id,
+        "supplier_id": row.supplier_id,
+        "supplier_period": row.supplier_period,
         "inspection_type": inspection.inspection_type if inspection else None,
         "source_type": inspection.source_type if inspection else None,
         "source_id": inspection.source_id if inspection else None,
@@ -387,6 +395,9 @@ def update_nonconformance_investigation(
         detail={"owner_id": row.owner_id, "due_date": str(row.due_date)},
     )
     db.flush()
+    from app.services.supplier_quality_service import sync_supplier_quality_for_nonconformance
+    sync_supplier_quality_for_nonconformance(db, row, context)
+    db.flush()
     return row
 
 
@@ -481,16 +492,26 @@ def close_nonconformance(
     row.closure_evidence = closure_evidence
     row.closed_at = local_now()
     row.closed_by = context.id
-    inspection = _get_inspection(db, row.inspection_id, context)
-    inspection.status = "closed"
-    inspection.disposition = row.disposition
+    inspection = _get_inspection(db, row.inspection_id, context) if row.inspection_id else None
+    if inspection is not None:
+        inspection.status = "closed"
+        inspection.disposition = row.disposition
+    if row.supplier_quality_id:
+        from app.models.advanced_operations import QaSupplierQuality
+        supplier_quality = db.scalar(select(QaSupplierQuality).where(QaSupplierQuality.id == row.supplier_quality_id, QaSupplierQuality.org_id == context.org_id, QaSupplierQuality.is_deleted.is_(False)))
+        if supplier_quality is not None:
+            supplier_quality.capa_status = "closed"
+    from app.services.quality_cost_service import record_nonconformance_failure_cost, record_nonconformance_prevention_cost
+    record_nonconformance_failure_cost(db, row, context)
+    if not row.supplier_quality_id:
+        record_nonconformance_prevention_cost(db, row, context)
     write_operation_log(
         db,
         user=context.user,
         action="close",
         resource="qa_nonconformance",
         target_id=row.id,
-        detail={"inspection_id": inspection.id, "disposition": row.disposition},
+        detail={"inspection_id": inspection.id if inspection else None, "supplier_quality_id": row.supplier_quality_id, "disposition": row.disposition},
     )
     db.flush()
     return row

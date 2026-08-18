@@ -710,6 +710,8 @@ CREATE TABLE IF NOT EXISTS fin_expense (
   expense_type VARCHAR(64) NOT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'draft',
   description VARCHAR(500) NULL,
+  source_type VARCHAR(64) NULL,
+  source_id CHAR(36) NULL,
   created_by CHAR(36) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_fin_expense_doc_no (org_id, doc_no)

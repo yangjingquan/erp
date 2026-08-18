@@ -48,7 +48,10 @@ class QaNonconformity(AuditMixin, UUIDModel):
     __tablename__ = "qa_nonconformance"
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    inspection_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    inspection_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    supplier_quality_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    supplier_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    supplier_period: Mapped[str | None] = mapped_column(String(7), nullable=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="open", nullable=False)
     severity: Mapped[str] = mapped_column(String(32), default="major", nullable=False)

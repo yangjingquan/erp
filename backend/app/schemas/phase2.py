@@ -94,11 +94,38 @@ class AssetCreate(BaseModel):
     next_maintenance_date: date | None = None
 
 
+class AssetUpdate(BaseModel):
+    asset_name: str | None = Field(default=None, min_length=2, max_length=255)
+    serial_no: str | None = None
+    location: str | None = None
+    status: Literal["active", "maintenance", "retired"] | None = None
+    retirement_reason: str | None = Field(default=None, max_length=500)
+    next_maintenance_date: date | None = None
+
+
 class AssetWorkOrderCreate(BaseModel):
     asset_id: str = Field(min_length=1, max_length=36)
     service_type: Literal["repair", "maintenance", "inspection"] = "repair"
     description: str = Field(min_length=2, max_length=1000)
     due_date: date | None = None
+    owner_id: str | None = Field(default=None, max_length=36)
+    maintenance_plan_id: str | None = Field(default=None, max_length=36)
+
+
+class AssetWorkOrderUpdate(BaseModel):
+    owner_id: str | None = Field(default=None, max_length=36)
+    due_date: date | None = None
+    resolution: str | None = Field(default=None, max_length=1000)
+    actual_hours: Decimal = Field(default=0, ge=0)
+    parts_cost: Decimal = Field(default=0, ge=0)
+    labor_cost: Decimal = Field(default=0, ge=0)
+
+
+class AssetWorkOrderTransition(BaseModel):
+    resolution: str | None = Field(default=None, max_length=1000)
+    actual_hours: Decimal | None = Field(default=None, ge=0)
+    parts_cost: Decimal | None = Field(default=None, ge=0)
+    labor_cost: Decimal | None = Field(default=None, ge=0)
 
 
 class MaintenancePlanCreate(BaseModel):
@@ -121,6 +148,22 @@ class ServiceCaseCreate(BaseModel):
     title: str = Field(min_length=2, max_length=255)
     priority: Literal["low", "normal", "high", "urgent"] = "normal"
     due_date: date | None = None
+    owner_id: str | None = Field(default=None, max_length=36)
+    sla_hours: int | None = Field(default=48, ge=1, le=8760)
+
+
+class ServiceCaseUpdate(BaseModel):
+    owner_id: str | None = Field(default=None, max_length=36)
+    due_date: date | None = None
+    resolution: str | None = Field(default=None, max_length=1000)
+    customer_feedback: str | None = Field(default=None, max_length=1000)
+    satisfaction_score: int | None = Field(default=None, ge=1, le=5)
+
+
+class ServiceCaseTransition(BaseModel):
+    resolution: str | None = Field(default=None, max_length=1000)
+    customer_feedback: str | None = Field(default=None, max_length=1000)
+    satisfaction_score: int | None = Field(default=None, ge=1, le=5)
 
 
 class InvoiceCreate(BaseModel):
@@ -187,3 +230,9 @@ class VisitCreate(BaseModel):
     scheduled_at: datetime
     technician_id: str | None = None
     notes: str = Field(default="", max_length=1000)
+
+
+class VisitUpdate(BaseModel):
+    status: Literal["scheduled", "in_progress", "completed", "cancelled"]
+    outcome: str | None = Field(default=None, max_length=1000)
+    feedback_score: int | None = Field(default=None, ge=1, le=5)

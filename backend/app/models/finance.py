@@ -278,6 +278,8 @@ class FinExpense(UUIDModel):
     expense_type: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    source_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    source_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
 
 
 class FinAsset(UUIDModel):

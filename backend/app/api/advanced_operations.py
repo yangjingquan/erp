@@ -6,10 +6,10 @@ from app.core.database import get_db
 from app.core.response import ok
 from app.schemas.advanced_operations import (
     BenefitCreate, CandidateCreate, CandidateUpdate, CustomerClaimCreate, CustomerClaimUpdate,
-    LifecycleCreate, OcrCreate, PerformanceCreate, QualityCostCreate, ShipmentCreate,
+    LifecycleCreate, OcrCreate, PerformanceCreate, QualityCostConfirm, QualityCostCreate, ShipmentCreate,
     ShipmentTransition, SpcActionComplete, SpcActionCreate, SpcCreate, SpcExceptionClose,
     SpcExceptionContainment, SpcExceptionInvestigation, SpcExceptionRootCause, SpcRetestCreate,
-    SupplierQualityCreate,
+    SupplierQualityCreate, SupplierQualityReject, SupplierQualityReview,
 )
 from app.services import advanced_operations_service as service
 from app.services.auth_service import UserContext
@@ -129,7 +129,22 @@ def supplier_quality(supplier_id: str | None = None, context: UserContext = Depe
 
 @router.post("/quality/supplier")
 def save_supplier_quality(payload: SupplierQualityCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
-    row = service.upsert_supplier_quality(db, payload, context); db.commit(); return ok(service._row(row, ["supplier_id", "period", "inspection_count", "defect_count", "defect_rate", "score", "status", "note"]))
+    row = service.upsert_supplier_quality(db, payload, context); db.commit(); return ok(next(item for item in service.list_supplier_quality(db, context, row.supplier_id) if item["id"] == row.id))
+
+
+@router.get("/quality/supplier/{quality_id}/sources")
+def supplier_quality_sources(quality_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.list_supplier_quality_sources(db, quality_id, context))
+
+
+@router.post("/quality/supplier/{quality_id}/approve")
+def approve_supplier_quality(quality_id: str, payload: SupplierQualityReview, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.review_supplier_quality(db, quality_id, "approve", payload.comment, context); db.commit(); return ok(next(item for item in service.list_supplier_quality(db, context, row.supplier_id) if item["id"] == row.id))
+
+
+@router.post("/quality/supplier/{quality_id}/reject")
+def reject_supplier_quality(quality_id: str, payload: SupplierQualityReject, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.review_supplier_quality(db, quality_id, "reject", payload.comment, context); db.commit(); return ok(next(item for item in service.list_supplier_quality(db, context, row.supplier_id) if item["id"] == row.id))
 
 
 @router.get("/quality/cost")
@@ -139,7 +154,12 @@ def quality_cost(period: str | None = None, context: UserContext = Depends(get_c
 
 @router.post("/quality/cost")
 def create_quality_cost(payload: QualityCostCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
-    row = service.create_quality_cost(db, payload, context); db.commit(); return ok(service._row(row, ["period", "cost_type", "amount", "source_id", "note"]))
+    row = service.create_quality_cost(db, payload, context); db.commit(); return ok(service.serialize_quality_cost(db, row, context))
+
+
+@router.post("/quality/cost/{cost_id}/confirm")
+def confirm_quality_cost(cost_id: str, payload: QualityCostConfirm, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
+    row = service.confirm_quality_cost_record(db, cost_id, payload, context); db.commit(); return ok(service.serialize_quality_cost(db, row, context))
 
 
 @router.get("/quality/claims")
@@ -147,14 +167,19 @@ def claims(status: str | None = None, context: UserContext = Depends(get_current
     return ok(service.list_claims(db, context, status))
 
 
+@router.get("/quality/claims/sources")
+def claim_sources(source_type: str | None = None, customer_id: str | None = None, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    return ok(service.list_claim_sources(db, context, source_type, customer_id))
+
+
 @router.post("/quality/claims")
 def create_claim(payload: CustomerClaimCreate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
-    row = service.create_claim(db, payload, context); db.commit(); return ok(service._row(row, ["claim_no", "customer_id", "source_type", "source_id", "title", "amount", "status"]))
+    row = service.create_claim(db, payload, context); db.commit(); return ok(service._serialize_claim(db, row, context))
 
 
 @router.put("/quality/claims/{claim_id}")
 def update_claim(claim_id: str, payload: CustomerClaimUpdate, context: UserContext = Depends(require_permission("quality:manage")), db: Session = Depends(get_db)):
-    row = service.update_claim(db, claim_id, payload, context); db.commit(); return ok(service._row(row, ["claim_no", "customer_id", "title", "amount", "status", "root_cause", "resolution", "closed_at"]))
+    row = service.update_claim(db, claim_id, payload, context); db.commit(); return ok(service._serialize_claim(db, row, context))
 
 
 @router.get("/transport/shipments")

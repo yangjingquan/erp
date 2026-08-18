@@ -24,11 +24,17 @@ export const retestSpcException = (id: string, payload: unknown) => http.post(`/
 export const closeSpcException = (id: string, payload: unknown) => http.post(`/advanced/quality/spc/exceptions/${id}/close`, payload);
 export const listSupplierQuality = (supplierId?: string) => http.get("/advanced/quality/supplier", { params: supplierId ? { supplier_id: supplierId } : undefined });
 export const saveSupplierQuality = (payload: unknown) => http.post("/advanced/quality/supplier", payload);
+export const listSupplierQualitySources = (qualityId: string) => http.get(`/advanced/quality/supplier/${qualityId}/sources`);
+export const approveSupplierQuality = (qualityId: string, comment = "") => http.post(`/advanced/quality/supplier/${qualityId}/approve`, { comment });
+export const rejectSupplierQuality = (qualityId: string, comment: string) => http.post(`/advanced/quality/supplier/${qualityId}/reject`, { comment });
 export const listQualityCosts = (period?: string) => http.get("/advanced/quality/cost", { params: period ? { period } : undefined });
 export const createQualityCost = (payload: unknown) => http.post("/advanced/quality/cost", payload);
+export const confirmQualityCost = (id: string, payload: unknown = {}) => http.post(`/advanced/quality/cost/${id}/confirm`, payload);
 export const listCustomerClaims = (status?: string) => http.get("/advanced/quality/claims", { params: status ? { status } : undefined });
+export const listCustomerClaimSources = (sourceType?: string, customerId?: string) => http.get("/advanced/quality/claims/sources", { params: { source_type: sourceType || undefined, customer_id: customerId || undefined } });
 export const createCustomerClaim = (payload: unknown) => http.post("/advanced/quality/claims", payload);
 export const updateCustomerClaim = (id: string, payload: unknown) => http.put(`/advanced/quality/claims/${id}`, payload);
+export const transitionCustomerClaim = (id: string, payload: unknown) => http.put(`/advanced/quality/claims/${id}`, payload);
 
 export const listShipments = (status?: string) => http.get("/advanced/transport/shipments", { params: status ? { status } : undefined });
 export const createShipment = (payload: unknown) => http.post("/advanced/transport/shipments", payload);

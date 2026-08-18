@@ -26,7 +26,23 @@ from app.models.quality import QaCapaAction, QaInspection, QaNonconformity
 from app.services.audit_service import write_operation_log
 from app.services.quality_service import complete_capa_action, create_capa_action, close_nonconformance, _serialize_action
 from app.models.hr import HrEmployee
+from app.models.finance import FinExpense
+from app.models.master_data import MdCustomer
+from app.models.sales import SalesDelivery, SalesReturn
+from app.services.finance_service import create_customer_claim_expense
 from app.services.auth_service import UserContext
+from app.services.supplier_quality_service import (
+    _metrics as supplier_quality_metrics,
+    approve_supplier_quality,
+    refresh_supplier_quality,
+    reject_supplier_quality,
+)
+from app.services.quality_cost_service import (
+    confirm_quality_cost,
+    create_quality_cost as create_quality_cost_record,
+    record_customer_claim_failure_cost,
+    serialize_quality_cost,
+)
 
 
 def _serialize(value):
@@ -421,47 +437,263 @@ def close_spc_exception(db, exception_id, closure_evidence, context):
 def list_supplier_quality(db, context, supplier_id=None):
     rows = _list(db, QaSupplierQuality, context)
     if supplier_id: rows = [row for row in rows if row.supplier_id == supplier_id]
-    return [_row(row, ["supplier_id", "period", "inspection_count", "defect_count", "defect_rate", "score", "status", "note"]) for row in rows]
+    result = []
+    for row in rows:
+        metrics = supplier_quality_metrics(db, context, row.supplier_id, row.period)
+        source_available = row.aggregation_source == "purchase_inspection" and bool(row.source_snapshot_json or metrics["sources"])
+        result.append(_row(row, ["supplier_id", "period", "inspection_count", "defect_count", "defect_rate", "score", "status", "note", "aggregation_source", "source_snapshot_json", "review_comment", "reviewed_by", "reviewed_at", "capa_required", "capa_status", "capa_nonconformance_id", "capa_trigger_reason"]) | {
+            "source_inspection_count": metrics["inspection_count"],
+            "source_defect_count": metrics["defect_count"],
+            "source_available": source_available,
+            "critical_count": metrics["critical_count"],
+            "major_count": metrics["major_count"],
+            "minor_count": metrics["minor_count"],
+            "open_nonconformance_count": metrics["open_nonconformance_count"],
+        })
+    return result
 
 
 def upsert_supplier_quality(db, payload, context):
-    rate = (Decimal(payload.defect_count) / Decimal(payload.inspection_count)).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP) if payload.inspection_count else Decimal("0")
-    row = db.scalar(select(QaSupplierQuality).where(QaSupplierQuality.org_id == context.org_id, QaSupplierQuality.supplier_id == payload.supplier_id, QaSupplierQuality.period == payload.period, QaSupplierQuality.is_deleted.is_(False)))
-    values = {"inspection_count": payload.inspection_count, "defect_count": payload.defect_count, "defect_rate": rate, "score": payload.score, "note": payload.note, "status": "submitted"}
+    row, _ = refresh_supplier_quality(db, payload.model_dump(), context)
+    return row
+
+
+def get_supplier_quality(db, quality_id, context):
+    row = db.scalar(select(QaSupplierQuality).where(QaSupplierQuality.id == quality_id, QaSupplierQuality.org_id == context.org_id, QaSupplierQuality.is_deleted.is_(False)))
     if row is None:
-        row = QaSupplierQuality(org_id=context.org_id, supplier_id=payload.supplier_id, period=payload.period, **values); db.add(row)
-    else:
-        for key, value in values.items(): setattr(row, key, value)
-    db.flush(); return row
+        raise AppError("供应商质量记录不存在", code=404)
+    return row
+
+
+def review_supplier_quality(db, quality_id, action, comment, context):
+    row = get_supplier_quality(db, quality_id, context)
+    metrics = supplier_quality_metrics(db, context, row.supplier_id, row.period)
+    if action == "approve":
+        return approve_supplier_quality(db, row, metrics, context, comment)
+    return reject_supplier_quality(row, context, comment)
+
+
+def list_supplier_quality_sources(db, quality_id, context):
+    row = get_supplier_quality(db, quality_id, context)
+    if row.aggregation_source != "purchase_inspection":
+        return []
+    # Rows created before source snapshots were introduced fall back to the
+    # live query for backward compatibility. New automatic rows always use
+    # their persisted snapshot.
+    if row.source_snapshot_json is not None:
+        return row.source_snapshot_json
+    return supplier_quality_metrics(db, context, row.supplier_id, row.period)["sources"]
 
 
 def list_quality_costs(db, context, period=None):
     rows = _list(db, QaQualityCost, context)
     if period: rows = [row for row in rows if row.period == period]
-    return [_row(row, ["period", "cost_type", "amount", "source_id", "note"]) for row in rows]
+    return [serialize_quality_cost(db, row, context) for row in rows]
 
 
 def create_quality_cost(db, payload, context):
-    row = QaQualityCost(org_id=context.org_id, **payload.model_dump()); db.add(row); db.flush(); return row
+    return create_quality_cost_record(db, payload, context)
+
+
+def confirm_quality_cost_record(db, cost_id, payload, context):
+    return confirm_quality_cost(db, cost_id, payload, context)
+
+
+CLAIM_SOURCE_TYPES = {"sales_delivery", "sales_return", "inspection", "ncr"}
+CLAIM_STATUS_TRANSITIONS = {
+    "open": {"investigating"},
+    "investigating": {"pending_review"},
+    "pending_review": {"approved", "rejected"},
+    "rejected": {"investigating"},
+    "approved": {"closed"},
+    "closed": set(),
+}
+
+
+def _customer(db, customer_id, context):
+    customer = db.scalar(select(MdCustomer).where(MdCustomer.id == customer_id, MdCustomer.org_id == context.org_id, MdCustomer.is_deleted.is_(False)))
+    if customer is None:
+        raise AppError("客户不存在或已停用", code=404)
+    return customer
+
+
+def _sales_claim_source(db, source_type, source_id, context):
+    model = SalesDelivery if source_type == "sales_delivery" else SalesReturn
+    row = db.scalar(select(model).where(model.id == source_id, model.org_id == context.org_id, model.is_deleted.is_(False)))
+    if row is None:
+        raise AppError("索赔来源销售单据不存在", code=404)
+    return {"customer_id": row.customer_id, "document_no": row.doc_no, "nonconformance_id": None}
+
+
+def _resolve_claim_source(db, source_type, source_id, context):
+    if source_type not in CLAIM_SOURCE_TYPES or not source_id:
+        raise AppError("索赔来源类型或来源单据无效", code=422)
+    if source_type in {"sales_delivery", "sales_return"}:
+        source = _sales_claim_source(db, source_type, source_id, context)
+        return {**source, "source_document_name": source["document_no"]}
+    if source_type == "inspection":
+        inspection = db.scalar(select(QaInspection).where(QaInspection.id == source_id, QaInspection.org_id == context.org_id, QaInspection.is_deleted.is_(False)))
+        if inspection is None:
+            raise AppError("索赔来源检验单不存在", code=404)
+        if inspection.source_type not in {"sales_delivery", "sales_return"}:
+            raise AppError("该检验单无法关联客户销售来源", code=422)
+        origin = _sales_claim_source(db, inspection.source_type, inspection.source_id, context)
+        ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.inspection_id == inspection.id, QaNonconformity.org_id == context.org_id, QaNonconformity.is_deleted.is_(False)))
+        return {**origin, "source_document_name": f"检验单 · {origin['document_no']}", "nonconformance_id": ncr.id if ncr else None}
+    ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.id == source_id, QaNonconformity.org_id == context.org_id, QaNonconformity.is_deleted.is_(False)))
+    if ncr is None:
+        raise AppError("索赔来源 NCR 不存在", code=404)
+    if not ncr.inspection_id:
+        raise AppError("该 NCR 未关联客户检验来源", code=422)
+    inspection = db.scalar(select(QaInspection).where(QaInspection.id == ncr.inspection_id, QaInspection.org_id == context.org_id, QaInspection.is_deleted.is_(False)))
+    if inspection is None or inspection.source_type not in {"sales_delivery", "sales_return"}:
+        raise AppError("该 NCR 无法关联客户销售来源", code=422)
+    origin = _sales_claim_source(db, inspection.source_type, inspection.source_id, context)
+    return {**origin, "source_document_name": f"NCR · {origin['document_no']}", "nonconformance_id": ncr.id}
+
+
+def _claim_source_row(db, source_type, source_id, context):
+    try:
+        resolved = _resolve_claim_source(db, source_type, source_id, context)
+    except AppError:
+        return None
+    return {
+        "source_type": source_type,
+        "source_id": source_id,
+        "customer_id": resolved["customer_id"],
+        "document_no": resolved["document_no"],
+        "label": resolved["source_document_name"],
+        "nonconformance_id": resolved["nonconformance_id"],
+    }
+
+
+def list_claim_sources(db, context, source_type=None, customer_id=None):
+    if source_type and source_type not in CLAIM_SOURCE_TYPES:
+        raise AppError("索赔来源类型不合法", code=422)
+    source_types = [source_type] if source_type else ["sales_delivery", "sales_return", "inspection", "ncr"]
+    rows = []
+    for kind in source_types:
+        if kind in {"sales_delivery", "sales_return"}:
+            model = SalesDelivery if kind == "sales_delivery" else SalesReturn
+            documents = db.scalars(select(model).where(model.org_id == context.org_id, model.is_deleted.is_(False)).order_by(model.created_at.desc()).limit(100)).all()
+            for document in documents:
+                if not customer_id or document.customer_id == customer_id:
+                    rows.append({"source_type": kind, "source_id": document.id, "customer_id": document.customer_id, "document_no": document.doc_no, "label": document.doc_no, "nonconformance_id": None})
+            continue
+        model = QaInspection if kind == "inspection" else QaNonconformity
+        documents = db.scalars(select(model).where(model.org_id == context.org_id, model.is_deleted.is_(False)).order_by(model.created_at.desc()).limit(100)).all()
+        for document in documents:
+            source_id = document.id
+            source = _claim_source_row(db, kind, source_id, context)
+            if source and (not customer_id or source["customer_id"] == customer_id):
+                rows.append(source)
+    return rows
+
+
+def _serialize_claim(db, row, context):
+    customer = db.scalar(select(MdCustomer).where(MdCustomer.id == row.customer_id, MdCustomer.org_id == context.org_id))
+    source = _claim_source_row(db, row.source_type, row.source_id, context) if row.source_type and row.source_id else None
+    expense = db.scalar(select(FinExpense).where(FinExpense.org_id == context.org_id, FinExpense.source_type == "customer_claim", FinExpense.source_id == row.id))
+    ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.id == row.nonconformance_id, QaNonconformity.org_id == context.org_id)) if row.nonconformance_id else None
+    return _row(row, ["claim_no", "customer_id", "source_type", "source_id", "title", "amount", "approved_amount", "status", "owner_id", "due_date", "root_cause", "resolution", "review_evidence", "review_comment", "reviewed_by", "reviewed_at", "closure_evidence", "nonconformance_id", "financial_expense_id", "closed_at", "closed_by"]) | {
+        "customer_name": customer.name if customer else row.customer_id,
+        "source_document_name": source["label"] if source else (row.source_id or "-"),
+        "ncr_status": ncr.status if ncr else None,
+        "finance_expense_status": expense.status if expense else None,
+        "finance_expense_id": expense.id if expense else row.financial_expense_id,
+    }
 
 
 def list_claims(db, context, status=None):
     rows = _list(db, QaCustomerClaim, context)
-    if status: rows = [row for row in rows if row.status == status]
-    return [_row(row, ["claim_no", "customer_id", "source_type", "source_id", "title", "amount", "status", "root_cause", "resolution", "closed_at"]) for row in rows]
+    if status:
+        rows = [row for row in rows if row.status == status]
+    return [_serialize_claim(db, row, context) for row in rows]
 
 
 def create_claim(db, payload, context):
-    row = QaCustomerClaim(org_id=context.org_id, claim_no=f"CLAIM-{local_today():%Y%m%d}-{uuid4().hex[:8].upper()}", status="open", **payload.model_dump()); db.add(row); db.flush(); return row
+    customer = _customer(db, payload.customer_id, context)
+    source = _resolve_claim_source(db, payload.source_type, payload.source_id, context)
+    if source["customer_id"] != customer.id:
+        raise AppError("索赔客户必须与来源销售单据客户一致", code=422)
+    row = QaCustomerClaim(
+        org_id=context.org_id,
+        claim_no=f"CLAIM-{local_today():%Y%m%d}-{uuid4().hex[:8].upper()}",
+        status="open",
+        nonconformance_id=source["nonconformance_id"],
+        **payload.model_dump(),
+    )
+    db.add(row)
+    db.flush()
+    write_operation_log(db, user=context.user, action="create", resource="qa_customer_claim", target_id=row.id, detail={"source_type": row.source_type, "source_id": row.source_id, "customer_id": customer.id})
+    return row
 
 
 def update_claim(db, claim_id, payload, context):
     row = db.scalar(select(QaCustomerClaim).where(QaCustomerClaim.id == claim_id, QaCustomerClaim.org_id == context.org_id, QaCustomerClaim.is_deleted.is_(False)))
-    if row is None: raise AppError("客户质量索赔不存在", code=404)
-    if payload.status not in {"open", "investigating", "approved", "rejected", "closed"}: raise AppError("索赔状态不合法", code=422)
-    row.status = payload.status; row.root_cause = payload.root_cause; row.resolution = payload.resolution
-    if payload.status == "closed": row.closed_at = local_now()
-    db.flush(); return row
+    if row is None:
+        raise AppError("客户质量索赔不存在", code=404)
+    target = payload.status
+    if target not in CLAIM_STATUS_TRANSITIONS and target != "open":
+        raise AppError("索赔状态不合法", code=422)
+    if target == row.status:
+        raise AppError("索赔已处于该状态", code=409)
+    if target not in CLAIM_STATUS_TRANSITIONS.get(row.status, set()):
+        raise AppError(f"索赔不能从“{row.status}”流转到“{target}”", code=409)
+    previous_status = row.status
+    values = payload.model_dump(exclude_unset=True)
+    if target == "investigating":
+        owner_id = values.get("owner_id") or row.owner_id
+        due_date = values.get("due_date") or row.due_date
+        if not owner_id or not due_date:
+            raise AppError("进入调查前必须指定责任人和整改期限", code=409)
+        if due_date < local_today():
+            raise AppError("整改期限不能早于今天", code=422)
+        _require_active_user(db, owner_id, context, field_name="索赔责任人")
+        row.owner_id, row.due_date = owner_id, due_date
+    elif target == "pending_review":
+        for field, label in (("root_cause", "根因分析"), ("resolution", "整改方案"), ("review_evidence", "审核证据")):
+            value = values.get(field) or getattr(row, field)
+            if not value or len(str(value).strip()) < 2:
+                raise AppError(f"提交审核前必须填写{label}", code=409)
+            setattr(row, field, str(value).strip())
+    elif target in {"approved", "rejected"}:
+        if row.status != "pending_review":
+            raise AppError("只有待审核索赔才能审核", code=409)
+        comment = str(values.get("review_comment") or "").strip()
+        if target == "rejected" and len(comment) < 2:
+            raise AppError("驳回时必须填写原因", code=409)
+        if target == "approved":
+            approved_amount = values.get("approved_amount")
+            if approved_amount is None:
+                approved_amount = row.amount
+            if Decimal(str(approved_amount)) <= 0 or Decimal(str(approved_amount)) > Decimal(str(row.amount)):
+                raise AppError("审核金额必须大于 0 且不能超过索赔金额", code=422)
+            row.approved_amount = approved_amount
+            expense = create_customer_claim_expense(db, row, context)
+            row.financial_expense_id = expense.id
+        row.review_comment = comment or None
+        row.reviewed_by = context.id
+        row.reviewed_at = local_now()
+    elif target == "closed":
+        if not values.get("closure_evidence") or len(str(values["closure_evidence"]).strip()) < 2:
+            raise AppError("关闭索赔前必须提交关闭证据", code=409)
+        if not row.root_cause or not row.resolution:
+            raise AppError("关闭索赔前必须完成根因和整改方案", code=409)
+        if row.nonconformance_id:
+            ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.id == row.nonconformance_id, QaNonconformity.org_id == context.org_id, QaNonconformity.is_deleted.is_(False)))
+            if ncr is None:
+                raise AppError("关联 NCR 不存在", code=404)
+            if ncr.status != "closed":
+                raise AppError("关闭索赔前必须先关闭关联 NCR/CAPA", code=409)
+        row.closure_evidence = str(values["closure_evidence"]).strip()
+        row.closed_at = local_now()
+        row.closed_by = context.id
+        record_customer_claim_failure_cost(db, row, context)
+    row.status = target
+    write_operation_log(db, user=context.user, action=f"claim_{target}", resource="qa_customer_claim", target_id=row.id, detail={"from_status": previous_status, "to_status": target, "review_comment": row.review_comment})
+    db.flush()
+    return row
 
 
 def list_shipments(db, context, status=None):

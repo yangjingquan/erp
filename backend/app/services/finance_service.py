@@ -239,6 +239,51 @@ def create_expense(db: Session, context: UserContext, *, amount: Decimal, expens
     return expense
 
 
+def create_customer_claim_expense(db: Session, claim, context: UserContext) -> FinExpense:
+    """Create or refresh a draft finance expense for an approved customer claim.
+
+    The expense remains in the normal finance approval/settlement flow.  It is
+    deliberately not posted as a voucher here, so quality approval does not
+    bypass finance controls.
+    """
+    from app.services.cost_service import assert_period_open
+
+    existing = db.scalar(
+        select(FinExpense).where(
+            FinExpense.org_id == context.org_id,
+            FinExpense.source_type == "customer_claim",
+            FinExpense.source_id == claim.id,
+        )
+    )
+    amount = Decimal(str(claim.approved_amount if claim.approved_amount is not None else claim.amount or 0))
+    if amount <= 0:
+        raise AppError("审核通过的索赔金额必须大于 0，才能生成财务费用单", code=422)
+    assert_period_open(db, context.org_id, local_today())
+    if existing is not None:
+        if existing.status not in {"draft", "approved"}:
+            raise AppError("索赔对应的财务费用单已结算，不可重新覆盖", code=409)
+        existing.amount = amount
+        existing.description = f"客户质量索赔 {claim.claim_no}：{claim.title}"
+        db.flush()
+        return existing
+    expense = FinExpense(
+        org_id=context.org_id,
+        doc_no=_new_finance_doc_no("EX-QA", context),
+        applicant_id=context.id,
+        department_id=context.department_id,
+        amount=amount,
+        expense_date=local_today(),
+        expense_type="客户质量索赔",
+        status="draft",
+        description=f"客户质量索赔 {claim.claim_no}：{claim.title}",
+        source_type="customer_claim",
+        source_id=claim.id,
+    )
+    db.add(expense)
+    db.flush()
+    return expense
+
+
 def approve_expense(db: Session, expense_id: str, context: UserContext) -> FinExpense:
     expense = db.get(FinExpense, expense_id)
     if expense is None or expense.org_id != context.org_id:
@@ -484,6 +529,8 @@ def list_expenses(db: Session, context: UserContext) -> list[dict]:
             "expense_type": row.expense_type,
             "status": row.status,
             "description": row.description,
+            "source_type": row.source_type,
+            "source_id": row.source_id,
             "voucher_generated": row.id in voucher_source_ids,
         }
         for row in rows

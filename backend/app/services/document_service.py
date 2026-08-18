@@ -34,7 +34,7 @@ from app.models.purchase import PurchaseOrder, PurchaseReceipt, PurchaseReturn
 from app.models.quality import QaInspection
 from app.models.sales import SalesDelivery, SalesOrder, SalesReturn
 from app.models.system import SysDepartment, SysUser
-from app.models.phase2_extensions import EamWorkOrder, PlmChangeRequest, Project, SrmRfq, SvcCase, TaxInvoice
+from app.models.phase2_extensions import EamAsset, EamWorkOrder, PlmChangeRequest, Project, SrmRfq, SvcCase, SvcVisit, TaxInvoice
 from app.models.workflow import WfActionLog, WfInstance
 from app.services.auth_service import UserContext, apply_data_scope, data_scope_condition
 
@@ -63,15 +63,17 @@ TYPE_CONFIG: dict[str, dict[str, Any]] = {
     "plm_change": {"model": PlmChangeRequest, "label": "工程变更", "doc": "change_no", "date": "due_date", "amount": None},
     "srm_rfq": {"model": SrmRfq, "label": "供应商询价", "doc": "rfq_no", "date": "due_date", "amount": "quote_amount", "party": ("supplier", "supplier_id")},
     "project": {"model": Project, "label": "项目", "doc": "project_code", "date": "start_date", "amount": "budget_amount", "party": ("customer", "customer_id")},
+    "eam_asset": {"model": EamAsset, "label": "资产", "doc": "asset_code", "date": None, "amount": None},
     "eam_work_order": {"model": EamWorkOrder, "label": "资产工单", "doc": "work_order_no", "date": "due_date", "amount": None},
     "svc_case": {"model": SvcCase, "label": "服务工单", "doc": "case_no", "date": "due_date", "amount": None, "party": ("customer", "customer_id")},
+    "svc_visit": {"model": SvcVisit, "label": "服务回访", "doc": None, "date": "scheduled_at", "amount": None},
     "tax_invoice": {"model": TaxInvoice, "label": "税务发票", "doc": "invoice_no", "date": None, "amount": "amount"},
 }
 
 STATUS_LABELS = {
     "draft": "草稿", "submitted": "待审核", "approved": "已审核", "completed": "已完成",
     "open": "待核销", "partial": "部分核销", "settled": "已结清", "confirmed": "已确认",
-    "posted": "已过账", "rejected": "已驳回", "cancelled": "已取消", "closed": "已关闭",
+    "posted": "已过账", "rejected": "已驳回", "cancelled": "已取消", "closed": "已关闭", "active": "在用", "maintenance": "保养中", "retired": "已报废", "assigned": "已派工", "resolved": "已解决", "reopened": "已重开",
     "released": "已下达", "in_progress": "进行中", "reversed": "已冲销",
 }
 
@@ -105,7 +107,7 @@ TYPE_MODULE = {
     "purchase_order": "purchase", "purchase_receipt": "purchase", "purchase_return": "purchase",
     "mfg_work_order": "production", "qa_inspection": "quality",
     "inv_transfer": "inventory", "inv_count": "inventory", "inventory_transaction": "inventory",
-    "plm_change": "production", "srm_rfq": "purchase", "project": "cost", "eam_work_order": "production", "svc_case": "crm", "tax_invoice": "finance",
+    "plm_change": "production", "srm_rfq": "purchase", "project": "cost", "eam_asset": "production", "eam_work_order": "production", "svc_case": "crm", "svc_visit": "crm", "tax_invoice": "finance",
 }
 
 
@@ -279,6 +281,10 @@ def _relation_values(db: Session, org_id: str) -> list[tuple[str, str, str, str,
         values.append((row.source_type, row.source_id, "inventory_transaction", row.id, "posts_inventory"))
     for row in db.scalars(select(QaInspection).where(QaInspection.org_id == org_id)).all():
         values.append((row.source_type, row.source_id, "qa_inspection", row.id, "inspected_by"))
+    for row in db.scalars(select(EamWorkOrder).where(EamWorkOrder.org_id == org_id)).all():
+        values.append(("eam_asset", row.asset_id, "eam_work_order", row.id, "has_work_order"))
+    for row in db.scalars(select(SvcVisit).where(SvcVisit.org_id == org_id)).all():
+        values.append(("svc_case", row.case_id, "svc_visit", row.id, "has_visit"))
     return [value for value in values if value[0] in TYPE_CONFIG and value[2] in TYPE_CONFIG]
 
 
