@@ -188,7 +188,7 @@ def _spc_actions(db, exception: QaSpcException, context) -> list[QaCapaAction]:
 
 def serialize_spc_record(db, row: QaSpcRecord, context) -> dict:
     exception = _get_spc_exception(db, row.exception_id, context) if row.exception_id else None
-    workflow_status = exception.status if exception else ("normal" if row.status in {"in_control", "active"} else "pending_review")
+    workflow_status = spc_workflow_status(db, exception, context) if exception else ("normal" if row.status in {"in_control", "active"} else "pending_review")
     data = _row(row, ["inspection_id", "material_id", "metric", "sample_value", "lsl", "usl", "cpk", "status", "parent_record_id", "exception_id"])
     data.update({
         "control_status": row.status if row.status in {"in_control", "out_of_control"} else "in_control",
@@ -202,13 +202,23 @@ def serialize_spc_record(db, row: QaSpcRecord, context) -> dict:
 def serialize_spc_exception(db, exception: QaSpcException, context) -> dict:
     actions = _spc_actions(db, exception, context)
     ncr = db.get(QaNonconformity, exception.nonconformance_id) if exception.nonconformance_id else None
+    status = spc_workflow_status(db, exception, context, ncr=ncr)
     return {
-        **_row(exception, ["spc_record_id", "nonconformance_id", "material_id", "metric", "control_status", "status", "owner_id", "due_date", "containment_action", "root_cause", "closure_evidence", "retest_record_id", "closed_at", "closed_by"]),
-        "status_label": SPC_WORKFLOW_LABELS.get(exception.status, exception.status),
+        **(_row(exception, ["spc_record_id", "nonconformance_id", "material_id", "metric", "control_status", "status", "owner_id", "due_date", "containment_action", "root_cause", "closure_evidence", "retest_record_id", "closed_at", "closed_by"]) | {"status": status}),
+        "status_label": SPC_WORKFLOW_LABELS.get(status, status),
         "severity": ncr.severity if ncr else "major",
         "disposition": ncr.disposition if ncr else "rework",
         "actions": [_serialize_action(action) for action in actions],
     }
+
+
+def spc_workflow_status(db, exception: QaSpcException, context, *, ncr=None) -> str:
+    """Return one terminal status for both SPC list rows and exception dialogs."""
+    if ncr is None and exception.nonconformance_id:
+        ncr = db.get(QaNonconformity, exception.nonconformance_id)
+    if exception.status == "closed" or (ncr is not None and ncr.status == "closed"):
+        return "closed"
+    return exception.status
 
 
 def list_spc(db, context, material_id=None):
