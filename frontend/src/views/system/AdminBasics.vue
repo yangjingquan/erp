@@ -250,7 +250,7 @@ onMounted(async () => {
 .permission-hint { margin: 0 0 16px; color: var(--erp-muted-text); font-size: 13px; }
 .scope-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: var(--erp-text); font-size: 13px; font-weight: 700; }
 .scope-tip { color: var(--erp-muted-text); font-weight: 400; }
-.permission-tree { padding: 10px 16px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
+.permission-tree { max-height: 450px; overflow: auto; padding: 10px 16px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
 .function-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-height: 450px; overflow: auto; }
 .function-group { padding: 14px 16px; border: 1px solid var(--erp-border-soft); border-radius: 10px; background: var(--erp-panel-soft); }
 .function-group-title { margin-bottom: 10px; color: var(--erp-text); font-weight: 700; }
