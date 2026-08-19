@@ -65,6 +65,11 @@ button, input, textarea, select { font: inherit; }
 .el-page-header { margin: 0; padding: 2px 0 0; }
 .el-page-header__content { color: var(--erp-text); font-weight: 700; }
 .page-stack > .el-page-header { min-height: 32px; }
+.main-content > section > .el-page-header,
+.main-content .page-stack > .el-page-header { display: none; }
+.main-content .page-heading > :first-child,
+.main-content .dashboard-heading > :first-child { display: none; }
+.main-content .master-page > .page-heading { display: none; }
 .el-button--primary { --el-color-primary: var(--erp-primary); --el-color-primary-light-3: #d78c6e; --el-color-primary-dark-2: #a9583b; }
 .el-input__wrapper, .el-select__wrapper { background: var(--erp-panel-soft); box-shadow: 0 0 0 1px var(--erp-border) inset; }
 .el-input-group__append { background: var(--erp-panel-soft); border-color: var(--erp-border); color: var(--erp-primary-dark); }

@@ -23,7 +23,9 @@ import { useAuthStore } from "../stores/auth";
 import { usePermissionStore } from "../stores/permission";
 import { globalSearch } from "../api/search";
 import { listOrganizations } from "../api/auth";
+import AppPageHeader from "../components/AppPageHeader.vue";
 import NotificationCenter from "../components/NotificationCenter.vue";
+import { pageHeaders } from "../config/pageHeaders";
 
 const app = useAppStore();
 const auth = useAuthStore();
@@ -37,6 +39,7 @@ const switchingOrganization = ref(false);
 const compactViewport = ref(false);
 const sidebarCollapsed = computed(() => app.sidebarCollapsed || compactViewport.value);
 const activeMenu = computed(() => route.path);
+const pageHeader = computed(() => pageHeaders[route.path]);
 const openMenuKeys = computed(() => {
     const currentGroup = route.path.split("/")[1];
   const group = ["dashboard", "analytics"].includes(currentGroup) || route.path === "/platform/metrics" ? "insights" : currentGroup === "settings" || ["group", "compliance", "low-code"].includes(route.path.split("/")[2]) && currentGroup === "platform" ? "config" : ["plm"].includes(currentGroup) ? "production" : currentGroup === "srm" ? "purchase" : currentGroup === "projects" ? "cost" : currentGroup === "eam" ? "asset" : currentGroup;
@@ -282,6 +285,7 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
         </el-dropdown>
       </el-header>
       <el-main class="main-content">
+        <AppPageHeader v-if="pageHeader" v-bind="pageHeader" />
         <router-view />
       </el-main>
     </el-container>
