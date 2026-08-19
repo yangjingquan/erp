@@ -163,10 +163,12 @@ def list_user_organizations(db: Session, user: SysUser) -> list[dict]:
     return result
 
 
-def data_scope_condition(model, user: object, scope_type: str = "department"):
+def data_scope_condition(
+    model, user: object, scope_type: str = "department", *, org_id: str | None = None
+):
     if getattr(user, "is_superuser", False) or scope_type == "all":
         return True
-    conditions = [model.org_id == getattr(user, "org_id")]
+    conditions = [model.org_id == (org_id or getattr(user, "org_id"))]
     if scope_type == "own" and hasattr(model, "owner_id"):
         conditions.append(model.owner_id == getattr(user, "id"))
     elif scope_type == "department" and hasattr(model, "department_id"):
@@ -175,5 +177,10 @@ def data_scope_condition(model, user: object, scope_type: str = "department"):
 
 
 def apply_data_scope(statement: Select, model, context: UserContext, scope_type=None):
-    condition = data_scope_condition(model, context.user, scope_type or context.data_scope_type)
+    condition = data_scope_condition(
+        model,
+        context.user,
+        scope_type or context.data_scope_type,
+        org_id=context.org_id,
+    )
     return statement if condition is True else statement.where(condition)

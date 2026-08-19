@@ -2,6 +2,24 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 
+def deactivate_invalid_tax_rates(db: Session) -> None:
+    """Keep legacy out-of-range tax rates auditable but unavailable for new business."""
+    inspector = inspect(db.bind)
+    if "md_tax_rate" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("md_tax_rate")}
+    if "status" not in columns:
+        db.execute(text(
+            "ALTER TABLE md_tax_rate ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'active' AFTER rate"
+        ))
+        db.commit()
+    db.execute(text(
+        "UPDATE md_tax_rate SET status = 'inactive', version = version + 1 "
+        "WHERE is_deleted = 0 AND (rate < 0 OR rate > 100) AND status <> 'inactive'"
+    ))
+    db.commit()
+
+
 def ensure_employee_account_column(db: Session) -> None:
     """Add the employee-to-user link for databases created before employee accounts."""
     inspector = inspect(db.bind)

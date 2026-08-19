@@ -12,7 +12,7 @@ from app.models.crm import CrmLead, CrmOpportunity
 from app.models.hr import HrPayroll
 from app.models.production import MfgWorkOrder
 from app.models.quality import QaInspection
-from app.models.master_data import MdMaterial
+from app.models.master_data import MdCustomer, MdMaterial
 from app.models.purchase import PurchaseOrder
 from app.models.sales import SalesOrder, SalesDelivery
 from app.core.time import local_now, local_today
@@ -74,6 +74,15 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
             SalesOrder.status.not_in(["cancelled", "draft"]),
         ).order_by(SalesOrder.order_date.desc(), SalesOrder.created_at.desc()).limit(3)
     ).all()
+    customer_ids = {row.customer_id for row in orders}
+    customer_names = {
+        row.id: row.name
+        for row in db.scalars(select(MdCustomer).where(
+            MdCustomer.org_id == context.org_id,
+            MdCustomer.id.in_(customer_ids),
+            MdCustomer.is_deleted.is_(False),
+        )).all()
+    } if customer_ids else {}
     materials = db.scalars(
         select(MdMaterial).where(
             MdMaterial.org_id == context.org_id,
@@ -116,7 +125,7 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
             for row in materials
         ],
         "sales_orders": [
-            {"id": row.id, "doc_no": row.doc_no, "customer_id": row.customer_id, "total_amount": str(row.total_amount), "status": row.status}
+            {"id": row.id, "doc_no": row.doc_no, "customer_id": row.customer_id, "customer_name": customer_names.get(row.customer_id, row.customer_id), "total_amount": str(row.total_amount), "status": row.status}
             for row in orders
         ],
     }

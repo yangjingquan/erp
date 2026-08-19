@@ -69,6 +69,7 @@ def serialize_order(order: PurchaseOrder) -> dict:
                 "quantity": str(item.quantity),
                 "received_quantity": str(item.received_quantity),
                 "unit_price": str(item.unit_price),
+                "tax_rate": str(item.tax_rate),
                 "amount": str(item.amount),
             }
             for item in order.items

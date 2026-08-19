@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import * as echarts from "echarts";
+import { BarChart } from "echarts/charts";
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { init, use, type ECharts } from "echarts/core";
+import { CanvasRenderer } from "echarts/renderers";
 import { Bell, CircleCheck, TopRight, Wallet } from "@element-plus/icons-vue";
 
 import { getDashboardOverview, getReportCenter } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
 import { localMonthString } from "../utils/time";
+import { statusLabel } from "../utils/labels";
 
 const router = useRouter();
 const app = useAppStore();
+use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 const period = ref(localMonthString());
 const loading = ref(false);
 const errorMessage = ref("");
@@ -24,13 +29,13 @@ type DashboardOverview = {
   trend: Array<{ label: string; sales: number | string; purchase: number | string }>;
   tasks: Array<{ key: string; label: string; description: string; count: number; path: string }>;
   materials: Array<{ id: string; code: string; name: string; material_type: string; min_stock: number | string; status: string }>;
-  sales_orders: Array<{ id: string; doc_no: string; customer_id: string; total_amount: number | string; status: string }>;
+  sales_orders: Array<{ id: string; doc_no: string; customer_id: string; customer_name: string; total_amount: number | string; status: string }>;
 };
 function emptyOverview(): DashboardOverview { return { period: period.value, sales_total: 0, purchase_total: 0, receivable_total: 0, inventory_warning_count: 0, sales_change: 0, purchase_change: 0, trend: [], tasks: [], materials: [], sales_orders: [] }; }
 const overview = ref<DashboardOverview>(emptyOverview());
 const report = ref<Record<string, any>>({ metrics: {} });
 const chart = ref<HTMLDivElement>();
-let chartInstance: echarts.ECharts | null = null;
+let chartInstance: ECharts | null = null;
 
 const periodOptions = computed(() => Array.from({ length: 12 }, (_, index) => {
   const dateValue = new Date();
@@ -77,7 +82,7 @@ async function loadOverview() {
 function renderChart() {
   if (!chart.value) return;
   chartInstance?.dispose();
-  chartInstance = echarts.init(chart.value);
+  chartInstance = init(chart.value);
   chartInstance.setOption({
     animationDuration: 500,
     color: ["#c66d4b", "#ead2c5"],
@@ -144,7 +149,7 @@ function handleResize() { chartInstance?.resize(); }
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/sales/orders')">销售订单</button><small>从草稿到出库的工作流</small></div><el-button type="primary" size="small" @click="go('/sales/orders')">新建订单</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ row.status }}</span></td><td><button class="table-link" type="button" @click="go('/sales/orders')">查看</button></td></tr></tbody></table><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_name || row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ statusLabel(row.status) }}</span></td><td><button class="table-link" type="button" @click="go(`/documents/sales_order/${row.id}`)">查看</button></td></tr></tbody></table><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
       </el-card>
     </div>
 

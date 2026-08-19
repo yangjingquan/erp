@@ -201,6 +201,14 @@ def _snapshot(db: Session, business_type: str, row: Any) -> dict[str, Any]:
     source_type, source_id = _source_reference(business_type, row)
     status = str(config.get("fixed_status") or getattr(row, "status", "active"))
     org_id = str(row.org_id)
+    owner_id = getattr(row, "owner_id", None) or getattr(row, "created_by", None)
+    department_id = getattr(row, "department_id", None)
+    if not department_id and owner_id:
+        department_id = db.scalar(select(SysUser.department_id).where(
+            SysUser.id == owner_id,
+            SysUser.org_id == org_id,
+            SysUser.is_deleted.is_(False),
+        ))
     return {
         "org_id": org_id,
         "business_type": business_type,
@@ -209,8 +217,8 @@ def _snapshot(db: Session, business_type: str, row: Any) -> dict[str, Any]:
         "title": f"{config['label']} {doc_no}",
         "status": status,
         "document_date": row_date,
-        "owner_id": getattr(row, "owner_id", None) or getattr(row, "created_by", None),
-        "department_id": getattr(row, "department_id", None),
+        "owner_id": owner_id,
+        "department_id": department_id,
         "party_type": party_type,
         "party_id": party_id,
         "party_name": _party_name(db, party_type, party_id, org_id),
@@ -397,7 +405,12 @@ def list_documents(
         _assert_type_access(context, business_type)
     sync_documents(db, context, business_type)
     base_filters = [BizDocument.org_id == context.org_id, BizDocument.is_deleted.is_(False)]
-    scope_condition = data_scope_condition(BizDocument, context.user, context.data_scope_type)
+    scope_condition = data_scope_condition(
+        BizDocument,
+        context.user,
+        context.data_scope_type,
+        org_id=context.org_id,
+    )
     if scope_condition is not True:
         base_filters.append(scope_condition)
     if business_type:

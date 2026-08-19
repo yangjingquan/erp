@@ -191,8 +191,32 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
       <el-form label-width="92px"><el-form-item label="供应商" required><el-select v-model="form.supplier_id" filterable clearable placeholder="请选择供应商" style="width: 100%"><el-option v-for="option in suppliers" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="订单日期" required><el-date-picker v-model="form.order_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="预计到货"><el-date-picker v-model="form.expected_date" type="date" value-format="YYYY-MM-DD" /></el-form-item><el-form-item label="物料" required><el-select v-model="form.items[0].material_id" filterable clearable placeholder="请选择物料" style="width: 100%"><el-option v-for="option in materials" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="仓库" required><el-select v-model="form.items[0].warehouse_id" filterable clearable placeholder="请选择仓库" style="width: 100%"><el-option v-for="option in warehouses" :key="option.value" v-bind="option" /></el-select></el-form-item><el-form-item label="数量" required><el-input-number v-model="form.items[0].quantity" :min="0.01" /></el-form-item><el-form-item label="含税单价" required><el-input-number v-model="form.items[0].unit_price" :min="0" :precision="2" /></el-form-item></el-form>
       <template #footer><el-button @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存</el-button></template>
     </el-dialog>
-    <el-dialog v-model="detailVisible" title="采购订单详情" width="680px"><el-descriptions v-if="selected" :column="2" border><el-descriptions-item label="订单号">{{ selected.doc_no }}</el-descriptions-item><el-descriptions-item label="状态">{{ selected.status }}</el-descriptions-item><el-descriptions-item label="供应商">{{ selected.supplier_name || selected.supplier_id }}</el-descriptions-item><el-descriptions-item label="金额">{{ selected.total_amount }}</el-descriptions-item></el-descriptions></el-dialog>
+    <el-dialog v-model="detailVisible" title="采购订单详情" width="900px" class="purchase-detail-dialog">
+      <template v-if="selected">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="订单号">{{ selected.doc_no }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ statusLabel(selected.status) }}</el-descriptions-item>
+          <el-descriptions-item label="供应商">{{ supplierLabel(selected.supplier_id) }}</el-descriptions-item>
+          <el-descriptions-item label="含税金额">{{ selected.total_amount }}</el-descriptions-item>
+          <el-descriptions-item label="订单日期">{{ selected.order_date }}</el-descriptions-item>
+          <el-descriptions-item label="预计到货">{{ selected.expected_date || "-" }}</el-descriptions-item>
+        </el-descriptions>
+        <el-table :data="itemRows(selected)" class="detail-items" stripe>
+          <el-table-column label="物料" min-width="180"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column>
+          <el-table-column label="仓库" min-width="160"><template #default="scope">{{ warehouseLabel(scope.row.warehouse_id) }}</template></el-table-column>
+          <el-table-column prop="quantity" label="数量" width="100" />
+          <el-table-column prop="received_quantity" label="已收货" width="100" />
+          <el-table-column prop="unit_price" label="含税单价" width="120" />
+          <el-table-column prop="tax_rate" label="税率(%)" width="100" />
+          <el-table-column prop="amount" label="金额" width="120" />
+        </el-table>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
-<style scoped>.toolbar { margin: 16px 0; }</style>
+<style scoped>
+.toolbar { margin: 16px 0; }
+.detail-items { margin-top: 16px; }
+@media (max-width: 640px) { .toolbar :deep(.el-input) { width: 100% !important; } }
+</style>

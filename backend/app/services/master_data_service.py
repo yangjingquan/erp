@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 from unicodedata import normalize as unicode_normalize
@@ -49,6 +50,17 @@ def get_config(resource: str) -> dict[str, Any]:
     return RESOURCE_CONFIG[resource]
 
 
+def _validate_resource_data(resource: str, data: dict[str, Any]) -> None:
+    if resource != "tax-rates" or "rate" not in data:
+        return
+    try:
+        rate = Decimal(str(data["rate"]))
+    except (InvalidOperation, TypeError, ValueError):
+        raise AppError("税率必须是 0 至 100 之间的数字", code=422)
+    if rate < 0 or rate > 100:
+        raise AppError("税率必须在 0 至 100 之间", code=422)
+
+
 def list_items(db: Session, resource: str, org_id: str, keyword: str | None = None, page: int = 1, page_size: int = 200, code: str | None = None, name: str | None = None, category: str | None = None, material_type: str | None = None, status: str | None = None) -> tuple[list[Any], int, int, int]:
     model = get_config(resource)["model"]
     statement = select(model).where(model.org_id == org_id, model.is_deleted.is_(False))
@@ -69,6 +81,7 @@ def list_items(db: Session, resource: str, org_id: str, keyword: str | None = No
 
 
 def create_item(db: Session, resource: str, org_id: str, data: dict[str, Any], user: object):
+    _validate_resource_data(resource, data)
     model = get_config(resource)["model"]
     existing = list(
         db.scalars(
@@ -99,6 +112,7 @@ def create_item(db: Session, resource: str, org_id: str, data: dict[str, Any], u
 
 
 def update_item(db: Session, resource: str, item_id: str, org_id: str, data: dict[str, Any], user: object):
+    _validate_resource_data(resource, data)
     model = get_config(resource)["model"]
     instance = db.scalar(select(model).where(model.id == item_id, model.org_id == org_id, model.is_deleted.is_(False)))
     if instance is None:
@@ -127,6 +141,8 @@ def set_item_status(db: Session, resource: str, item_id: str, org_id: str, statu
         raise AppError("主数据记录不存在", code=404)
     if not hasattr(instance, "status"):
         raise AppError("该主数据类型不支持状态变更", code=400)
+    if resource == "tax-rates" and status == "active" and not Decimal("0") <= instance.rate <= Decimal("100"):
+        raise AppError("税率超出 0 至 100，修正后才能启用", code=422)
     instance.status = status
     instance.version += 1
     write_operation_log(db, user=user, action="status", resource=resource, target_id=instance.id, detail={"status": status})
@@ -168,6 +184,7 @@ def import_items(db: Session, resource: str, org_id: str, file_obj, user: object
             continue
         data = {key: row.get(key) for key in config["fields"] if row.get(key) is not None}
         try:
+            _validate_resource_data(resource, data)
             instance = model(org_id=org_id, **data)
             db.add(instance)
             db.flush()

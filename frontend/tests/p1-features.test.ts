@@ -12,7 +12,7 @@ describe("P1 库存控制与质量闭环页面", () => {
     const page = source("../src/views/inventory-advanced/ControlCenter.vue");
     const api = source("../src/api/inventory-advanced.ts");
     expect(page).toContain("请填写来源单据、物料、仓库和有效数量");
-    expect(page).toContain("reservationStatus");
+    expect(page).toContain("reservationFilters.status");
     expect(page).toContain("traceFilters");
     expect(page).toContain('class="control-form"');
     expect(page).toContain("align-items: flex-end");

@@ -24,7 +24,13 @@ from app.models.advanced_operations import (
 )
 from app.models.quality import QaCapaAction, QaInspection, QaNonconformity
 from app.services.audit_service import write_operation_log
-from app.services.quality_service import complete_capa_action, create_capa_action, close_nonconformance, _serialize_action
+from app.services.quality_service import (
+    _require_active_user,
+    _serialize_action,
+    close_nonconformance,
+    complete_capa_action,
+    create_capa_action,
+)
 from app.models.hr import HrEmployee
 from app.models.finance import FinExpense
 from app.models.master_data import MdCustomer
@@ -318,7 +324,6 @@ def confirm_spc_exception(db, exception_id, payload, context):
         raise AppError("异常严重程度不合法", code=422)
     if payload.get("disposition") not in {"rework", "accept", "scrap", "return_to_supplier"}:
         raise AppError("异常处置结论不合法", code=422)
-    from app.services.quality_service import _require_active_user
     _require_active_user(db, payload["owner_id"], context)
     if payload["due_date"] < local_today():
         raise AppError("整改期限不能早于今天", code=400)

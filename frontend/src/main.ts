@@ -1,5 +1,6 @@
 import { createApp } from "vue";
 import ElementPlus from "element-plus";
+import zhCn from "element-plus/es/locale/lang/zh-cn";
 import "element-plus/dist/index.css";
 import { createPinia, setActivePinia } from "pinia";
 import { router } from "./router";
@@ -20,7 +21,7 @@ async function bootstrap() {
       auth.logout();
     }
   }
-  createApp(App).use(pinia).use(router).use(ElementPlus).component("ClientPagination", ClientPagination).mount("#app");
+  createApp(App).use(pinia).use(router).use(ElementPlus, { locale: zhCn }).component("ClientPagination", ClientPagination).mount("#app");
 }
 
 void bootstrap();

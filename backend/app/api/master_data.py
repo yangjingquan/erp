@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
@@ -35,6 +37,15 @@ PAYLOAD_MODELS = {
     "units": UnitCreate,
     "tax-rates": TaxRateCreate,
 }
+
+
+def _validate_payload(model_cls, payload: dict) -> dict:
+    try:
+        return model_cls.model_validate(payload).model_dump()
+    except ValidationError as exc:
+        raise RequestValidationError(
+            exc.errors(include_context=False, include_url=False)
+        ) from exc
 
 
 @router.get("/{resource}/export")
@@ -93,7 +104,7 @@ def create_master_data(
     if model_cls is None:
         get_config(resource)
         raise RuntimeError("主数据类型缺少校验模型")
-    data = model_cls.model_validate(payload).model_dump()  # type: ignore[union-attr]
+    data = _validate_payload(model_cls, payload)
     item = create_item(db, resource, context.org_id, data, context.user)
     return ok(serialize_item(item, get_config(resource)["fields"]))
 
@@ -110,7 +121,7 @@ def update_master_data(resource: str, item_id: str, payload: dict, context: User
         raise AppError("主数据记录不存在", code=404)
     merged = {field: getattr(current, field, None) for field in get_config(resource)["fields"]}
     merged.update(payload)
-    data = model_cls.model_validate(merged).model_dump()
+    data = _validate_payload(model_cls, merged)
     return ok(serialize_item(update_item(db, resource, item_id, context.org_id, data, context.user), get_config(resource)["fields"]))
 
 

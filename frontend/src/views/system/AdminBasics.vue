@@ -228,7 +228,7 @@ onMounted(async () => {
           <div class="function-groups">
             <div v-for="group in functionGroups" :key="group.menuId" class="function-group">
               <div class="function-group-title">{{ group.name }}</div>
-              <el-checkbox-group v-model="selectedFunctionIds"><el-checkbox v-for="item in group.items" :key="item.id" :label="item.id">{{ item.name }}</el-checkbox></el-checkbox-group>
+              <el-checkbox-group v-model="selectedFunctionIds"><el-checkbox v-for="item in group.items" :key="item.id" :value="item.id">{{ item.name }}</el-checkbox></el-checkbox-group>
             </div>
           </div>
         </el-tab-pane>

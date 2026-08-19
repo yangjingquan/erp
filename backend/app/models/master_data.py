@@ -22,6 +22,7 @@ class MdTaxRate(AuditMixin, UUIDModel):
     code: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     rate: Mapped[Decimal] = mapped_column(Numeric(8, 4), default=0, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", nullable=False)
 
 
 class MdMaterial(AuditMixin, UUIDModel):

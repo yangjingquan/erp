@@ -17,7 +17,7 @@ import {
 
 export interface MasterColumn { prop: string; label: string; width?: number; labelMap?: Record<string, string>; }
 export interface MasterFilter { prop: string; label: string; placeholder?: string; options?: Array<{ label: string; value: string }>; }
-export interface MasterFormField { prop: string; label: string; type?: "text" | "number" | "textarea" | "select"; required?: boolean; defaultValue?: string | number; options?: Array<{ label: string; value: string }>; }
+export interface MasterFormField { prop: string; label: string; type?: "text" | "number" | "textarea" | "select"; required?: boolean; defaultValue?: string | number; min?: number; max?: number; options?: Array<{ label: string; value: string }>; }
 export interface SummaryMetric { label: string; key: "total" | "active" | "inactive"; tone?: "rust" | "green" | "amber"; }
 
 const props = withDefaults(defineProps<{
@@ -203,7 +203,7 @@ onMounted(load);
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="620px" @close="closeCreate">
       <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" class="master-form">
-        <el-form-item v-for="field in props.fields" :key="field.prop" :label="field.label" :prop="field.prop"><el-select v-if="field.type === 'select'" v-model="form[field.prop]" class="full-width"><el-option v-for="option in field.options ?? []" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-input-number v-else-if="field.type === 'number'" v-model="form[field.prop] as number" :min="0" :controls="false" class="full-width" /><el-input v-else v-model="form[field.prop] as string" :type="field.type === 'textarea' ? 'textarea' : 'text'" :rows="field.type === 'textarea' ? 3 : undefined" /></el-form-item>
+        <el-form-item v-for="field in props.fields" :key="field.prop" :label="field.label" :prop="field.prop"><el-select v-if="field.type === 'select'" v-model="form[field.prop]" class="full-width"><el-option v-for="option in field.options ?? []" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-input-number v-else-if="field.type === 'number'" v-model="form[field.prop] as number" :min="field.min ?? 0" :max="field.max" :controls="false" class="full-width" /><el-input v-else v-model="form[field.prop] as string" :type="field.type === 'textarea' ? 'textarea' : 'text'" :rows="field.type === 'textarea' ? 3 : undefined" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="closeCreate">取消</el-button><el-button type="primary" :loading="submitting" @click="submitCreate">保存{{ props.title.replace('档案', '') }}</el-button></template>
     </el-dialog>

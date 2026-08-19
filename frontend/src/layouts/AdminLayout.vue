@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -34,6 +34,8 @@ const searchKeyword = ref("");
 const searchResults = ref<Array<Record<string, any>>>([]);
 const organizations = ref<Array<Record<string, any>>>([]);
 const switchingOrganization = ref(false);
+const compactViewport = ref(false);
+const sidebarCollapsed = computed(() => app.sidebarCollapsed || compactViewport.value);
 const activeMenu = computed(() => route.path);
 const openMenuKeys = computed(() => {
     const currentGroup = route.path.split("/")[1];
@@ -105,20 +107,27 @@ async function switchOrganization(orgId: string) {
   }
 }
 
-onMounted(loadOrganizations);
+function syncViewport() { compactViewport.value = window.innerWidth <= 820; }
+
+onMounted(async () => {
+  syncViewport();
+  window.addEventListener("resize", syncViewport);
+  await loadOrganizations();
+});
+onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
 </script>
 
 <template>
   <el-container class="admin-layout">
-    <el-aside :width="app.sidebarCollapsed ? '68px' : '224px'" class="sidebar">
+    <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar">
       <div class="brand">
         <span class="brand-mark">ERP</span>
-        <span v-if="!app.sidebarCollapsed">ERP 管理系统</span>
+        <span v-if="!sidebarCollapsed">ERP 管理系统</span>
       </div>
       <el-menu
         :default-active="activeMenu"
         :default-openeds="openMenuKeys"
-        :collapse="app.sidebarCollapsed"
+        :collapse="sidebarCollapsed"
         unique-opened
         router
       >
@@ -240,7 +249,7 @@ onMounted(loadOrganizations);
       <div class="sidebar-spacer" />
       <button class="sidebar-user" type="button" @click="router.push('/profile')">
         <span class="avatar">{{ (auth.user?.display_name || auth.user?.username || "用").slice(0, 1) }}</span>
-        <span v-if="!app.sidebarCollapsed" class="user-copy"><strong>{{ auth.user?.display_name || auth.user?.username || "用户" }}</strong><small>运营管理员</small></span>
+        <span v-if="!sidebarCollapsed" class="user-copy"><strong>{{ auth.user?.display_name || auth.user?.username || "用户" }}</strong><small>运营管理员</small></span>
       </button>
     </el-aside>
     <el-container>
@@ -280,7 +289,8 @@ onMounted(loadOrganizations);
 </template>
 
 <style scoped>
-.admin-layout { min-height: 100vh; background: var(--erp-page-bg); }
+.admin-layout { width: 100%; min-height: 100vh; overflow: hidden; background: var(--erp-page-bg); }
+.admin-layout > :deep(.el-container) { min-width: 0; }
 .sidebar { display: flex; flex-direction: column; background: var(--erp-sidebar-bg); transition: width .2s; overflow: hidden; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 80px; padding: 20px 18px; color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap; }
 .brand-mark { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border-radius: 12px; background: var(--erp-primary); color: #fff; font-size: 10px; letter-spacing: .02em; }
@@ -318,9 +328,15 @@ onMounted(loadOrganizations);
   .sidebar { width: 68px !important; }
   .brand { padding-inline: 16px; }
   .sidebar-user { margin-inline: 18px; }
-  .global-search { flex-basis: 260px; width: min(260px, 36vw); }
+  .global-search { min-width: 0; flex: 1 1 auto; width: auto; margin-left: 4px; }
   .top-action { padding-inline: 6px; }
   .top-action :deep(.el-icon) { margin-right: 0; }
   .top-action:not(:has(.el-icon)) { display: none; }
+}
+@media (max-width: 640px) {
+  .topbar { gap: 2px; padding: 0 8px; }
+  .top-action { display: none; }
+  .user-menu > span:last-child { display: none; }
+  .main-content { padding: 12px 10px; overflow-x: hidden; }
 }
 </style>

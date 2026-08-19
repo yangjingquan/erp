@@ -50,4 +50,4 @@ class UnitCreate(MasterBase):
 
 
 class TaxRateCreate(MasterBase):
-    rate: Decimal = Decimal("0")
+    rate: Decimal = Field(default=Decimal("0"), ge=0, le=100)

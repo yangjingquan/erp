@@ -9,7 +9,7 @@ class SalesOrderItemCreate(BaseModel):
     quantity: Decimal = Field(gt=0)
     unit_price: Decimal = Field(ge=0)
     warehouse_id: str | None = None
-    tax_rate: Decimal = Field(default=0, ge=0)
+    tax_rate: Decimal = Field(default=0, ge=0, le=100)
 
 
 class SalesOrderCreate(BaseModel):
