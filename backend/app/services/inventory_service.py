@@ -91,10 +91,30 @@ def _get_or_create_stock(db: Session, context: UserContext, warehouse_id: str, m
             warehouse_id=warehouse_id,
             material_id=material_id,
             quantity=Decimal("0"),
+            locked_quantity=Decimal("0"),
             available_quantity=Decimal("0"),
         )
         db.add(stock)
         db.flush()
+    return stock
+
+
+def _sync_stock_balances(stock: InvStock) -> InvStock:
+    """Validate and derive ATP from the authoritative stock and lock balances.
+
+    ``available_quantity`` is derived data.  A pre-existing inconsistent row is
+    rejected so a normal business write cannot silently hide a data-integrity
+    problem by overwriting it.
+    """
+    quantity = Decimal(str(stock.quantity or 0))
+    locked = Decimal(str(stock.locked_quantity or 0))
+    available = Decimal(str(stock.available_quantity or 0))
+    if locked < 0:
+        raise AppError("锁定库存不能为负数", code=409)
+    expected = quantity - locked
+    if available != expected:
+        raise AppError("库存余额不一致，请先按库存流水修复", code=409)
+    stock.available_quantity = expected
     return stock
 
 
@@ -133,6 +153,7 @@ def post_stock_transaction(
     if duplicate is not None:
         raise AppError("库存来源单据已入账，禁止重复记账", code=409)
     stock = _get_or_create_stock(db, context, warehouse_id, material_id)
+    _sync_stock_balances(stock)
     if direction == "out" and stock.available_quantity < quantity:
         raise AppError("可用库存不足", code=400)
     delta = quantity if direction == "in" else -quantity
@@ -437,7 +458,7 @@ def list_safety_warnings(db: Session, context: UserContext) -> list[dict]:
     statement = _apply_warehouse_scope(
         select(InvStock, MdMaterial)
         .join(MdMaterial, MdMaterial.id == InvStock.material_id)
-        .where(InvStock.org_id == context.org_id, InvStock.quantity < MdMaterial.min_stock),
+        .where(InvStock.org_id == context.org_id, InvStock.available_quantity < MdMaterial.min_stock),
         InvStock.warehouse_id,
         context,
     )
@@ -446,7 +467,7 @@ def list_safety_warnings(db: Session, context: UserContext) -> list[dict]:
         {
             "warehouse_id": stock.warehouse_id,
             "material_id": stock.material_id,
-            "current_quantity": str(stock.quantity),
+            "current_quantity": str(stock.available_quantity),
             "min_quantity": str(material.min_stock),
         }
         for stock, material in rows

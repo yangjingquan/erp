@@ -44,6 +44,27 @@ def _money(value: Decimal | int | str | None) -> Decimal:
     return Decimal(str(value or 0)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def voucher_entry_totals(entries) -> tuple[Decimal, Decimal]:
+    """Return normalized debit/credit totals for a voucher's entries."""
+    return (
+        sum((_money(item.debit_amount) for item in entries), Decimal("0")),
+        sum((_money(item.credit_amount) for item in entries), Decimal("0")),
+    )
+
+
+def assert_voucher_balanced(voucher: FinVoucher) -> tuple[Decimal, Decimal]:
+    """Reject incomplete or out-of-balance vouchers before they can be posted."""
+    debit, credit = voucher_entry_totals(voucher.entries)
+    if (
+        debit <= 0
+        or debit != credit
+        or debit != _money(voucher.total_debit)
+        or credit != _money(voucher.total_credit)
+    ):
+        raise AppError("凭证借贷不平衡或合计与明细不一致", code=409)
+    return debit, credit
+
+
 def _page(items: list[dict], total: int, page: int, page_size: int, summary: dict | None = None) -> dict:
     return {"items": items, "total": total, "page": page, "page_size": page_size, "summary": summary or {}}
 
@@ -284,8 +305,7 @@ def _validate_voucher_entries(db: Session, context: UserContext, entries) -> tup
         FinAccountingDimension.org_id == context.org_id, FinAccountingDimension.status == "active",
         FinAccountingDimension.is_deleted.is_(False),
     )).all())
-    debit = sum((_money(item.debit_amount) for item in entries), Decimal("0"))
-    credit = sum((_money(item.credit_amount) for item in entries), Decimal("0"))
+    debit, credit = voucher_entry_totals(entries)
     if debit <= 0 or debit != credit:
         raise AppError("凭证借贷必须相等且大于零", code=400)
     rows: list[FinVoucherEntry] = []
@@ -333,16 +353,42 @@ def post_voucher(db: Session, voucher_id: str, context: UserContext) -> FinVouch
     if row.status != "draft":
         raise AppError("当前凭证状态不允许记账", code=409)
     assert_fiscal_period_open(db, context.org_id, row.voucher_date)
-    debit = sum((_money(item.debit_amount) for item in row.entries), Decimal("0"))
-    credit = sum((_money(item.credit_amount) for item in row.entries), Decimal("0"))
-    if debit <= 0 or debit != credit or debit != _money(row.total_debit) or credit != _money(row.total_credit):
-        raise AppError("凭证借贷不平衡或合计与明细不一致", code=409)
+    assert_voucher_balanced(row)
     row.status = "posted"
     row.posted_at = local_now()
     row.posted_by = context.id
     write_operation_log(db, user=context.user, action="post", resource="fin_voucher", target_id=row.id)
     db.flush()
     return row
+
+
+def list_voucher_integrity_issues(db: Session, context: UserContext) -> list[dict]:
+    """Return an auditable discrepancy list without changing voucher data."""
+    rows = db.scalars(
+        select(FinVoucher)
+        .options(selectinload(FinVoucher.entries))
+        .where(FinVoucher.org_id == context.org_id)
+        .order_by(FinVoucher.voucher_date, FinVoucher.voucher_no)
+    ).all()
+    issues = []
+    for row in rows:
+        debit, credit = voucher_entry_totals(row.entries)
+        header_debit = _money(row.total_debit)
+        header_credit = _money(row.total_credit)
+        if debit <= 0 or debit != credit or debit != header_debit or credit != header_credit:
+            issues.append({
+                "id": row.id,
+                "voucher_no": row.voucher_no,
+                "source_type": row.source_type,
+                "source_id": row.source_id,
+                "status": row.status,
+                "header_debit": str(header_debit),
+                "header_credit": str(header_credit),
+                "entry_debit": str(debit),
+                "entry_credit": str(credit),
+                "issue": "凭证分录借贷不平衡或与表头合计不一致",
+            })
+    return issues
 
 
 def reverse_voucher(db: Session, voucher_id: str, context: UserContext) -> FinVoucher:

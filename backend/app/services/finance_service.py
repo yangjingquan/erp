@@ -307,7 +307,7 @@ def settle_expense(db: Session, expense_id: str, context: UserContext) -> FinExp
 
 
 def generate_voucher(db: Session, source_type: str, source_id: str, context: UserContext) -> FinVoucher:
-    from app.services.ledger_service import assert_fiscal_period_open, ensure_default_accounts
+    from app.services.ledger_service import assert_fiscal_period_open, assert_voucher_balanced, ensure_default_accounts
 
     existing = db.scalar(select(FinVoucher).where(
         FinVoucher.org_id == context.org_id,
@@ -315,6 +315,9 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         FinVoucher.source_id == source_id,
     ))
     if existing:
+        # Idempotency must not turn an incomplete historical voucher into a
+        # successful generation result. Surface it for explicit remediation.
+        assert_voucher_balanced(existing)
         return existing
     amount = Decimal("0")
     if source_type == "expense":
@@ -412,6 +415,7 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
     voucher.entries = entries
     db.add(voucher)
     db.flush()
+    assert_voucher_balanced(voucher)
     return voucher
 
 

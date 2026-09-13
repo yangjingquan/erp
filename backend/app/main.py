@@ -35,7 +35,7 @@ from app.core.database import SessionLocal
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_context import RequestContextMiddleware
 from app.middleware.idempotency import IdempotencyMiddleware
-from app.services.startup_check import check_schema
+from app.services.startup_check import check_schema, count_workflow_integrity_issues
 from app.services.runtime_migrations import (
     deactivate_invalid_tax_rates,
     ensure_api_client_schema,
@@ -100,6 +100,13 @@ async def lifespan(application: FastAPI):
             )
         elif not schema_status.initialized:
             logging.getLogger("erp.startup").warning(schema_status.guidance)
+        else:
+            workflow_issue_count = count_workflow_integrity_issues(db)
+            if workflow_issue_count:
+                logging.getLogger("erp.startup").warning(
+                    "发现 %s 条不可处理的流程任务，请访问 /api/workflow/integrity 核查",
+                    workflow_issue_count,
+                )
         yield
     finally:
         db.close()

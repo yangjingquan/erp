@@ -55,6 +55,7 @@ from app.services.ledger_service import (
     list_bank_accounts,
     list_dimensions,
     list_periods,
+    list_voucher_integrity_issues,
     post_voucher,
     reopen_fiscal_period,
     update_account,
@@ -342,6 +343,11 @@ def expenses(context: UserContext = Depends(get_current_user), db: Session = Dep
 @router.get("/vouchers")
 def vouchers(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_vouchers(db, context))
+
+
+@router.get("/vouchers/integrity")
+def voucher_integrity(context: UserContext = Depends(require_permission("finance:view")), db: Session = Depends(get_db)):
+    return ok(list_voucher_integrity_issues(db, context))
 
 
 @router.post("/vouchers")

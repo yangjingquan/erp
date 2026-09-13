@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import AuditMixin, UUIDModel
@@ -341,6 +341,10 @@ class FinVoucher(UUIDModel):
 
 class FinVoucherEntry(UUIDModel):
     __tablename__ = "fin_voucher_entry"
+    __table_args__ = (
+        CheckConstraint("debit_amount >= 0", name="ck_fin_voucher_entry_debit_nonnegative"),
+        CheckConstraint("credit_amount >= 0", name="ck_fin_voucher_entry_credit_nonnegative"),
+    )
 
     voucher_id: Mapped[str] = mapped_column(ForeignKey("fin_voucher.id"), nullable=False)
     line_no: Mapped[int] = mapped_column(nullable=False)

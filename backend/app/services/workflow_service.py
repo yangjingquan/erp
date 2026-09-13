@@ -128,10 +128,13 @@ def start_workflow(db: Session, business_type: str, business_id: str, context: U
         status="running",
         started_by=context.id,
     )
-    db.add(instance)
-    db.flush()
     task = _task_for_node(instance, first)
-    db.add(task)
+    # Persist the instance and its first task as one unit of work.  The
+    # relationship makes the parent insert happen before the FK child insert,
+    # while the caller owns the final commit for the surrounding business
+    # transition.
+    instance.tasks.append(task)
+    db.add(instance)
     db.flush()
     db.add(WfActionLog(instance_id=instance.id, task_id=task.id, action="start", user_id=context.id))
     db.flush()
@@ -306,6 +309,36 @@ def list_pending_tasks(db: Session, context: UserContext) -> list[dict]:
             "created_at": task.created_at.isoformat(timespec="seconds") if task.created_at else None,
         })
     return items
+
+
+def list_workflow_integrity_issues(db: Session, context: UserContext) -> list[dict]:
+    """List orphan or otherwise non-actionable tasks without repairing them."""
+    rows = db.execute(
+        select(WfTask, WfInstance)
+        .outerjoin(WfInstance, WfInstance.id == WfTask.instance_id)
+        .order_by(WfTask.created_at, WfTask.id)
+    ).all()
+    issues = []
+    for task, instance in rows:
+        if instance is None:
+            issues.append({
+                "task_id": task.id,
+                "instance_id": task.instance_id,
+                "status": task.status,
+                "issue": "任务未关联流程实例",
+            })
+            continue
+        if instance.org_id != context.org_id:
+            continue
+        if task.status == "pending" and instance.status != "running":
+            issues.append({
+                "task_id": task.id,
+                "instance_id": instance.id,
+                "status": task.status,
+                "instance_status": instance.status,
+                "issue": "待办任务关联的流程实例不可处理",
+            })
+    return issues
 
 
 def _document_label(db: Session, business_type: str, business_id: str) -> str:

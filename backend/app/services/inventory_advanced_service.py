@@ -1056,7 +1056,7 @@ def _serialize_reservation(row: InvReservation) -> dict:
 
 
 def create_reservation(db: Session, payload, context: UserContext) -> InvReservation:
-    from app.services.inventory_service import _get_or_create_stock
+    from app.services.inventory_service import _get_or_create_stock, _sync_stock_balances
 
     _require_warehouse(db, payload.warehouse_id, context)
     _require_material(db, payload.material_id, context)
@@ -1076,6 +1076,7 @@ def create_reservation(db: Session, payload, context: UserContext) -> InvReserva
             raise AppError("同一来源单据的预留数量不可变更，请先释放后重新预留", code=409)
         return duplicate
     stock = _get_or_create_stock(db, context, payload.warehouse_id, payload.material_id)
+    _sync_stock_balances(stock)
     if _decimal(stock.available_quantity) < quantity:
         raise AppError("可用库存不足，无法预留", code=400)
     stock.locked_quantity = _decimal(stock.locked_quantity) + quantity
@@ -1092,7 +1093,7 @@ def create_reservation(db: Session, payload, context: UserContext) -> InvReserva
 
 
 def release_reservation(db: Session, reservation_id: str, context: UserContext) -> InvReservation:
-    from app.services.inventory_service import _get_or_create_stock
+    from app.services.inventory_service import _get_or_create_stock, _sync_stock_balances
 
     row = db.scalar(select(InvReservation).where(
         InvReservation.id == reservation_id, InvReservation.org_id == context.org_id,
@@ -1104,6 +1105,7 @@ def release_reservation(db: Session, reservation_id: str, context: UserContext) 
     if remaining <= 0 or row.status == "released":
         return row
     stock = _get_or_create_stock(db, context, row.warehouse_id, row.material_id)
+    _sync_stock_balances(stock)
     stock.locked_quantity = max(Decimal("0"), _decimal(stock.locked_quantity) - remaining)
     stock.available_quantity = _decimal(stock.quantity) - _decimal(stock.locked_quantity)
     row.released_quantity = _decimal(row.quantity)

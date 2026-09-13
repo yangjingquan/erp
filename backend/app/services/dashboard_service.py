@@ -65,7 +65,7 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         select(func.count())
         .select_from(InvStock)
         .join(MdMaterial, MdMaterial.id == InvStock.material_id)
-        .where(InvStock.org_id == context.org_id, InvStock.quantity < MdMaterial.min_stock)
+        .where(InvStock.org_id == context.org_id, InvStock.available_quantity < MdMaterial.min_stock)
     ) or 0
     orders = db.scalars(
         select(SalesOrder).where(

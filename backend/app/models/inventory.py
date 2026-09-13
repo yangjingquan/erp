@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, JSON, Date, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.time import local_now
@@ -17,6 +17,13 @@ SUBCONTRACT_RECEIPT_SOURCE = "subcontract_receipt"
 
 class InvStock(UUIDModel):
     __tablename__ = "inv_stock"
+    __table_args__ = (
+        CheckConstraint("locked_quantity >= 0", name="ck_inv_stock_locked_nonnegative"),
+        CheckConstraint(
+            "available_quantity = quantity - locked_quantity",
+            name="ck_inv_stock_available_formula",
+        ),
+    )
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     warehouse_id: Mapped[str] = mapped_column(String(36), nullable=False)

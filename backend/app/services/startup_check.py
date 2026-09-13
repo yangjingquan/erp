@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,8 @@ REQUIRED_TABLES = {
     "fin_bank_account",
     "fin_asset_depreciation",
     "wf_definition",
+    "wf_instance",
+    "wf_task",
     "cfg_number_rule",
     "sys_operation_log",
     "mfg_bom",
@@ -146,3 +148,25 @@ def check_schema(db: Session) -> SchemaStatus:
             error=exc.__class__.__name__,
         )
     return schema_status_from_tables(table_names)
+
+
+def count_workflow_integrity_issues(db: Session) -> int | None:
+    """Count workflow rows that cannot produce an actionable task.
+
+    This is intentionally read-only.  Repair remains an explicit migration or
+    an operator-led data correction, while startup makes the issue visible.
+    """
+    try:
+        tables = set(inspect(db.bind).get_table_names())
+        if not {"wf_instance", "wf_task"}.issubset(tables):
+            return None
+        value = db.scalar(text("""
+            SELECT COUNT(*)
+            FROM wf_task t
+            LEFT JOIN wf_instance i ON i.id = t.instance_id
+            WHERE i.id IS NULL
+               OR (t.status = 'pending' AND i.status <> 'running')
+        """))
+        return int(value or 0)
+    except SQLAlchemyError:
+        return None

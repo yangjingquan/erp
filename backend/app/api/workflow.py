@@ -8,6 +8,7 @@ from app.services.auth_service import UserContext
 from app.services.workflow_service import (
     approve_task,
     get_workflow_definition,
+    list_workflow_integrity_issues,
     list_pending_tasks,
     reject_task,
     save_workflow_definition,
@@ -19,6 +20,11 @@ router = APIRouter(prefix="/api/workflow", tags=["workflow"])
 @router.get("/tasks")
 def my_tasks(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(list_pending_tasks(db, context))
+
+
+@router.get("/integrity")
+def workflow_integrity(context: UserContext = Depends(require_permission("workflow:manage")), db: Session = Depends(get_db)):
+    return ok(list_workflow_integrity_issues(db, context))
 
 
 @router.get("/definitions/{business_type}")

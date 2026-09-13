@@ -567,7 +567,9 @@ CREATE TABLE IF NOT EXISTS inv_stock (
   average_cost DECIMAL(18,6) NOT NULL DEFAULT 0,
   updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   UNIQUE KEY uk_inv_stock_wh_material (warehouse_id, material_id),
-  KEY idx_inv_stock_org_material (org_id, material_id)
+  KEY idx_inv_stock_org_material (org_id, material_id),
+  CONSTRAINT ck_inv_stock_locked_nonnegative CHECK (locked_quantity >= 0),
+  CONSTRAINT ck_inv_stock_available_formula CHECK (available_quantity = quantity - locked_quantity)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS inv_stock_transaction (
@@ -773,7 +775,9 @@ CREATE TABLE IF NOT EXISTS fin_voucher_entry (
   customer_id CHAR(36) NULL,
   supplier_id CHAR(36) NULL,
   department_id CHAR(36) NULL,
-  KEY idx_fin_voucher_entry_voucher (voucher_id)
+  KEY idx_fin_voucher_entry_voucher (voucher_id),
+  CONSTRAINT ck_fin_voucher_entry_debit_nonnegative CHECK (debit_amount >= 0),
+  CONSTRAINT ck_fin_voucher_entry_credit_nonnegative CHECK (credit_amount >= 0)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS fin_account (
@@ -854,6 +858,7 @@ CREATE TABLE IF NOT EXISTS wf_instance (
   started_by CHAR(36) NULL,
   started_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   completed_at DATETIME(6) NULL,
+  CONSTRAINT fk_wf_instance_definition FOREIGN KEY (definition_id) REFERENCES wf_definition(id),
   UNIQUE KEY uk_wf_instance_business (business_type, business_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -867,7 +872,8 @@ CREATE TABLE IF NOT EXISTS wf_task (
   comment VARCHAR(500) NULL,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   completed_at DATETIME(6) NULL,
-  KEY idx_wf_task_assignee_status (assignee_user_id, status)
+  KEY idx_wf_task_assignee_status (assignee_user_id, status),
+  CONSTRAINT fk_wf_task_instance FOREIGN KEY (instance_id) REFERENCES wf_instance(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS wf_action_log (

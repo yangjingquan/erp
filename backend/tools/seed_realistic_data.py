@@ -223,6 +223,10 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
             row[key] = uid("mfg_mps", (index % 20) + 1)
         elif key == "run_id":
             row[key] = uid("mfg_plan_run", (index % 20) + 1)
+        elif key == "definition_id":
+            row[key] = uid("wf_definition", (index % 20) + 1)
+        elif key == "instance_id":
+            row[key] = uid("wf_instance", index)
         elif key == "request_id":
             row[key] = uid("purchase_request", (index % 40) + 1)
         elif key == "order_id":
@@ -283,6 +287,44 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         row["party_id"] = uid("md_customer" if row["party_type"] == "customer" else "md_supplier", ((index - 1) % 40) + 1)
         row["party_name"] = f"华东{('客户' if row['party_type'] == 'customer' else '供应商')}{index:02d}"
         row["source_type"] = doc_type
+    if name == "wf_instance":
+        row["business_type"] = "sales_order"
+        row["business_id"] = uid("sales_order", index)
+        row["definition_id"] = uid("wf_definition", (index % 20) + 1)
+        row["current_node_key"] = "node-1"
+        row["status"] = "running"
+    if name == "wf_node":
+        row["node_key"] = "node-1"
+    if name == "wf_task":
+        row["node_key"] = "node-1"
+        row["status"] = "pending"
+    if name == "inv_stock":
+        row["locked_quantity"] = Decimal("0")
+        row["available_quantity"] = row["quantity"]
+    if name == "inv_stock_transaction":
+        row["direction"] = "in"
+    if name == "inv_reservation":
+        row["status"] = "released"
+        row["released_quantity"] = row["quantity"]
+    if name == "fin_voucher":
+        amount = Decimal(str(10 + index * 3)).quantize(Decimal("0.01"))
+        row["source_type"] = "manual"
+        row["source_id"] = None
+        row["status"] = "draft"
+        row["total_debit"] = amount
+        row["total_credit"] = amount
+    if name == "fin_voucher_entry":
+        line_no = 1 if index % 2 else 2
+        voucher_index = (index + 1) // 2
+        amount = Decimal(str(10 + voucher_index * 3)).quantize(Decimal("0.01"))
+        row["id"] = uid("fin_voucher_entry", index)
+        row["voucher_id"] = uid("fin_voucher", voucher_index)
+        row["line_no"] = line_no
+        row["account_code"] = "6602" if line_no == 1 else "1002"
+        row["account_name"] = "管理费用" if line_no == 1 else "银行存款"
+        row["debit_amount"] = amount if line_no == 1 else Decimal("0")
+        row["credit_amount"] = Decimal("0") if line_no == 1 else amount
+        row["dimensions_json"] = {}
     if "display_name" in table.c:
         row["display_name"] = f"运营专员{index:02d}"
     if "description" in table.c:
@@ -359,7 +401,10 @@ def main() -> None:
             continue
         table = metadata.tables[name]
         success = 0
-        for index in range(1, 41):
+        seed_indices = range(1, 41)
+        if name == "fin_voucher_entry":
+            seed_indices = range(1, 81)
+        for index in seed_indices:
             row = table_rows(table, index)
             try:
                 with engine.begin() as connection:
