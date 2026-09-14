@@ -25,7 +25,7 @@ const runRows = computed(() => {
   const rows: Array<{ section: string; metric: string; value: string }> = [];
   Object.entries(result).forEach(([section, value]) => {
     if (value && typeof value === "object" && !Array.isArray(value)) {
-      Object.entries(value as Row).forEach(([metric, item]) => rows.push({ section: labelOf({ sales: "销售", inventory: "库存", receivables: "应收", production: "生产", quality: "质量", crm: "CRM", finance: "财务", project: "项目" }, section), metric: labelOf({ fulfillment_rate: "履约率", inventory_value: "库存价值", overdue_receivable: "逾期应收", production_completion_rate: "生产完成率", failed_inspections: "不合格检验" }, metric), value: typeof item === "object" ? JSON.stringify(item) : String(item ?? "") }));
+      Object.entries(value as Row).forEach(([metric, item]) => rows.push({ section: labelOf({ sales: "销售", inventory: "库存", receivables: "应收", production: "生产", quality: "质量", crm: "CRM", finance: "财务", project: "项目" }, section), metric: labelOf({ fulfillment_rate: "履约率", inventory_value: "库存账面价值", available_inventory_value: "可用库存价值", overdue_receivable: "逾期应收", order_integrity_issues: "订单金额异常数", production_completion_rate: "生产完成率", failed_inspections: "不合格检验" }, metric), value: typeof item === "object" ? JSON.stringify(item) : String(item ?? "") }));
     } else rows.push({ section: "", metric: labelOf({ fulfillment_rate: "履约率", inventory_value: "库存价值", overdue_receivable: "逾期应收", production_completion_rate: "生产完成率", failed_inspections: "不合格检验" }, section), value: String(value ?? "") });
   });
   return rows;

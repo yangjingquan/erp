@@ -230,7 +230,7 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         elif key == "request_id":
             row[key] = uid("purchase_request", (index % 40) + 1)
         elif key == "order_id":
-            row[key] = uid("sales_order", (index % 40) + 1)
+            row[key] = uid("purchase_order" if name == "purchase_order_item" else "sales_order", (index % 40) + 1)
         elif key in {"quote_id", "return_id", "statement_id", "voucher_id", "receipt_id", "payment_id", "payable_id", "receivable_id", "allocation_id", "plan_id", "change_order_id", "change_request_id", "contract_id", "case_id", "subscription_id", "event_id", "wave_id", "location_id", "batch_id", "transaction_id", "operation_id", "wbs_id", "source_id", "document_id", "object_id", "source_event", "inbound_transaction_id", "outbound_transaction_id", "cost_layer_id", "formal_document_id", "project_id"}:
             row[key] = uid(name + key, index)
         elif key.endswith("_json") or key in {"items_json", "schema_json", "workflow_json", "evidence_json", "payload_json", "result_json", "snapshot_json", "source_snapshot", "input_snapshot", "output_snapshot", "bom_snapshot", "routing_snapshot", "details", "dimensions_json", "goals_json", "response_json", "event_types", "scopes"}:
@@ -287,6 +287,29 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         row["party_id"] = uid("md_customer" if row["party_type"] == "customer" else "md_supplier", ((index - 1) % 40) + 1)
         row["party_name"] = f"华东{('客户' if row['party_type'] == 'customer' else '供应商')}{index:02d}"
         row["source_type"] = doc_type
+    if name in {"sales_order", "purchase_order"}:
+        amount = Decimal(str(10 + index * 3)).quantize(Decimal("0.01"))
+        row["status"] = enum_value(name, "status", index)
+        row["total_amount"] = amount
+        if name == "sales_order":
+            row["receivable_amount"] = amount
+        else:
+            row["payable_amount"] = amount
+    if name in {"sales_order_item", "purchase_order_item"}:
+        amount = Decimal(str(10 + index * 3)).quantize(Decimal("0.01"))
+        row["quantity"] = Decimal("1")
+        row["unit_price"] = amount
+        row["amount"] = amount
+        row["tax_rate"] = Decimal("0")
+    if name == "fin_fiscal_period":
+        period = str(row["period"])
+        period_start = date.fromisoformat(f"{period}-01")
+        next_month = period_start.replace(day=28) + timedelta(days=4)
+        period_end = next_month.replace(day=1) - timedelta(days=1)
+        row["start_date"] = period_start
+        row["end_date"] = period_end
+        row["status"] = "open" if period == date.today().strftime("%Y-%m") else enum_value(name, "status", index)
+        row["closed_at"] = None if row["status"] == "open" else datetime.now()
     if name == "wf_instance":
         row["business_type"] = "sales_order"
         row["business_id"] = uid("sales_order", index)

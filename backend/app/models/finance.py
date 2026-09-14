@@ -35,7 +35,10 @@ class FinAccountingDimension(AuditMixin, UUIDModel):
 
 class FinFiscalPeriod(AuditMixin, UUIDModel):
     __tablename__ = "fin_fiscal_period"
-    __table_args__ = (UniqueConstraint("org_id", "period", name="uk_fin_fiscal_period_org"),)
+    __table_args__ = (
+        UniqueConstraint("org_id", "period", name="uk_fin_fiscal_period_org"),
+        CheckConstraint("status IN ('open', 'closed')", name="ck_fin_fiscal_period_status"),
+    )
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     period: Mapped[str] = mapped_column(String(7), nullable=False)

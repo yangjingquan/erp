@@ -10,6 +10,8 @@ from app.models.purchase import PurchaseOrder, PurchaseOrderItem, PurchaseReceip
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
+PURCHASE_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "completed", "cancelled"})
+
 
 def _validate_order_payload(db: Session, payload, context: UserContext) -> None:
     supplier = db.scalar(
@@ -47,6 +49,19 @@ def _validate_order_payload(db: Session, payload, context: UserContext) -> None:
 
 def _total(items) -> Decimal:
     return sum((item.quantity * item.unit_price for item in items), Decimal("0")).quantize(Decimal("0.01"))
+
+
+def _recalculate_order_totals(order: PurchaseOrder) -> Decimal:
+    if not order.items:
+        raise AppError("采购订单至少需要一条明细", code=422)
+    for item in order.items:
+        if item.quantity <= 0 or item.unit_price < 0:
+            raise AppError("采购订单明细数量或单价无效", code=422)
+        item.amount = (item.quantity * item.unit_price).quantize(Decimal("0.01"))
+    total = _total(order.items)
+    order.total_amount = total
+    order.payable_amount = total
+    return total
 
 
 def serialize_order(order: PurchaseOrder) -> dict:
@@ -113,8 +128,7 @@ def create_purchase_order(db: Session, payload, context: UserContext) -> Purchas
         )
         for index, item in enumerate(payload.items, start=1)
     ]
-    order.total_amount = _total(order.items)
-    order.payable_amount = order.total_amount
+    _recalculate_order_totals(order)
     db.add(order)
     db.commit()
     db.refresh(order)
@@ -184,8 +198,7 @@ def update_purchase_order(db: Session, order_id: str, payload, context: UserCont
         )
         for index, item in enumerate(payload.items, start=1)
     ]
-    order.total_amount = _total(order.items)
-    order.payable_amount = order.total_amount
+    _recalculate_order_totals(order)
     order.updated_by = context.id
     order.version += 1
     db.commit()
@@ -209,8 +222,12 @@ def _transition(db: Session, order_id: str, context: UserContext, expected: str,
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("采购订单不存在", code=404)
+    if order.status not in PURCHASE_ORDER_STATUSES:
+        raise AppError(f"采购订单状态 {order.status} 不合法", code=409)
     if order.status != expected:
         raise AppError(f"采购订单状态 {order.status} 不允许此操作", code=400)
+    if new_status in {"submitted", "approved"}:
+        _recalculate_order_totals(order)
     order.status = new_status
     order.updated_by = context.id
     db.commit()

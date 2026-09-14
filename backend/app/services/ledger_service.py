@@ -106,6 +106,8 @@ def get_or_create_period(db: Session, org_id: str, period: str) -> FinFiscalPeri
 
 def assert_fiscal_period_open(db: Session, org_id: str, business_date: date) -> FinFiscalPeriod:
     row = get_or_create_period(db, org_id, business_date.strftime("%Y-%m"))
+    if row.status not in {"open", "closed"}:
+        raise AppError(f"会计期间 {row.period} 状态不合法，请先修复期间数据", code=409)
     if row.status != "open":
         raise AppError(f"会计期间 {row.period} 已结账", code=409)
     if not (row.start_date <= business_date <= row.end_date):

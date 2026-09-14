@@ -802,7 +802,8 @@ CREATE TABLE IF NOT EXISTS fin_fiscal_period (
   status VARCHAR(32) NOT NULL DEFAULT 'open', closed_at DATETIME(6) NULL, closed_by CHAR(36) NULL,
   reopened_at DATETIME(6) NULL, reopened_by CHAR(36) NULL, is_deleted TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6), updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
-  version INT NOT NULL DEFAULT 1, UNIQUE KEY uk_fin_fiscal_period_org (org_id, period)
+  version INT NOT NULL DEFAULT 1, UNIQUE KEY uk_fin_fiscal_period_org (org_id, period),
+  CONSTRAINT ck_fin_fiscal_period_status CHECK (status IN ('open', 'closed'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS fin_bank_account (

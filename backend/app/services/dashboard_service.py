@@ -3,7 +3,7 @@ import calendar
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.inventory import InvStock
 from app.models.finance import SalesReceivable
@@ -17,6 +17,8 @@ from app.models.purchase import PurchaseOrder
 from app.models.sales import SalesOrder, SalesDelivery
 from app.core.time import local_now, local_today
 from app.services.auth_service import UserContext
+from app.services.finance_control_service import overdue_summary
+from app.services.order_integrity_service import order_is_consistent
 
 
 def _period_bounds(period: str | None) -> tuple[date, date]:
@@ -31,14 +33,25 @@ def _period_bounds(period: str | None) -> tuple[date, date]:
 
 
 def _sum_orders(db: Session, model, org_id: str, start: date, end: date) -> Decimal:
-    value = db.scalar(
-        select(func.coalesce(func.sum(model.total_amount), 0)).where(
+    rows = db.scalars(
+        select(model).options(selectinload(model.items)).where(
             model.org_id == org_id,
             model.order_date.between(start, end),
-            model.status.not_in(["cancelled", "draft"]),
+            model.status.in_({"submitted", "approved", "completed"}),
         )
-    )
-    return Decimal(value or 0).quantize(Decimal("0.01"))
+    ).all()
+    return sum((Decimal(row.total_amount) for row in rows if order_is_consistent(row)), Decimal("0")).quantize(Decimal("0.01"))
+
+
+def _order_integrity_issue_count(db: Session, model, org_id: str, start: date, end: date) -> int:
+    rows = db.scalars(
+        select(model).options(selectinload(model.items)).where(
+            model.org_id == org_id,
+            model.order_date.between(start, end),
+            model.status.in_({"submitted", "approved", "completed"}),
+        )
+    ).all()
+    return sum(not order_is_consistent(row) for row in rows)
 
 
 def _change(current: Decimal, previous: Decimal) -> float:
@@ -55,6 +68,8 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
     purchase_total = _sum_orders(db, PurchaseOrder, context.org_id, start, end)
     previous_sales_total = _sum_orders(db, SalesOrder, context.org_id, previous_start, previous_end)
     previous_purchase_total = _sum_orders(db, PurchaseOrder, context.org_id, previous_start, previous_end)
+    sales_integrity_issues = _order_integrity_issue_count(db, SalesOrder, context.org_id, start, end)
+    purchase_integrity_issues = _order_integrity_issue_count(db, PurchaseOrder, context.org_id, start, end)
     receivable_total = db.scalar(
         select(func.coalesce(func.sum(SalesReceivable.total_amount - SalesReceivable.reconciled_amount), 0)).where(
             SalesReceivable.org_id == context.org_id,
@@ -67,13 +82,13 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         .join(MdMaterial, MdMaterial.id == InvStock.material_id)
         .where(InvStock.org_id == context.org_id, InvStock.available_quantity < MdMaterial.min_stock)
     ) or 0
-    orders = db.scalars(
-        select(SalesOrder).where(
+    orders = [row for row in db.scalars(
+        select(SalesOrder).options(selectinload(SalesOrder.items)).where(
             SalesOrder.org_id == context.org_id,
             SalesOrder.order_date.between(start, end),
-            SalesOrder.status.not_in(["cancelled", "draft"]),
+            SalesOrder.status.in_({"submitted", "approved", "completed"}),
         ).order_by(SalesOrder.order_date.desc(), SalesOrder.created_at.desc()).limit(3)
-    ).all()
+    ).all() if order_is_consistent(row)]
     customer_ids = {row.customer_id for row in orders}
     customer_names = {
         row.id: row.name
@@ -90,12 +105,12 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         ).order_by(MdMaterial.created_at.desc()).limit(3)
     ).all()
     pending_review = db.scalar(select(func.count()).select_from(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.status == "submitted")) or 0
-    overdue = db.scalar(select(func.count()).select_from(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.status != "settled", SalesReceivable.due_date.is_not(None), SalesReceivable.due_date < local_today())) or 0
+    overdue = overdue_summary(db, context, local_today())
     today = local_today()
     trend_end = min(end, today) if (end.year, end.month) == (today.year, today.month) else end
     trend_start = max(start, trend_end - timedelta(days=6))
-    trend_orders = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(trend_start, trend_end), SalesOrder.status.not_in(["cancelled", "draft"]))).all()
-    trend_purchases = db.scalars(select(PurchaseOrder).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(trend_start, trend_end), PurchaseOrder.status.not_in(["cancelled", "draft"]))).all()
+    trend_orders = [row for row in db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(trend_start, trend_end), SalesOrder.status.in_({"submitted", "approved", "completed"}))).all() if order_is_consistent(row)]
+    trend_purchases = [row for row in db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(trend_start, trend_end), PurchaseOrder.status.in_({"submitted", "approved", "completed"}))).all() if order_is_consistent(row)]
     trend = []
     cursor = trend_start
     while cursor <= trend_end:
@@ -114,11 +129,12 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         "inventory_warning_count": int(warning_count),
         "sales_change": _change(sales_total, previous_sales_total),
         "purchase_change": _change(purchase_total, previous_purchase_total),
+        "order_integrity_issues": sales_integrity_issues + purchase_integrity_issues,
         "trend": trend,
         "tasks": [
             {"key": "sales_review", "label": "销售订单待审核", "description": "销售管理", "count": int(pending_review), "path": "/sales/orders"},
             {"key": "inventory_warning", "label": "库存低于安全线", "description": "库存管理", "count": int(warning_count), "path": "/inventory/stock"},
-            {"key": "receivable_overdue", "label": "应收账款逾期", "description": "财务管理", "count": int(overdue), "path": "/finance/receivables"},
+            {"key": "receivable_overdue", "label": "应收账款逾期", "description": "财务管理", "count": int(overdue["count"]), "amount": overdue["amount"], "path": "/finance/receivables"},
         ],
         "materials": [
             {"id": row.id, "code": row.code, "name": row.name, "material_type": row.material_type, "min_stock": str(row.min_stock), "status": "active"}
@@ -159,14 +175,17 @@ def dashboard_phase2(db: Session, context: UserContext, period: str, warehouse_i
 def report_center(db: Session, context: UserContext, period: str | None = None) -> dict:
     """Stable, export-friendly KPI contract for management reports."""
     start, end = _period_bounds(period)
-    sales = db.scalars(select(SalesOrder).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(start, end), SalesOrder.status.not_in(["draft", "cancelled"]))).all()
+    sales_candidates = db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(start, end), SalesOrder.status.in_({"submitted", "approved", "completed"}))).all()
+    sales = [row for row in sales_candidates if order_is_consistent(row)]
+    purchases = db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(start, end), PurchaseOrder.status.in_({"submitted", "approved", "completed"}))).all()
     deliveries = db.scalars(select(SalesDelivery).where(SalesDelivery.org_id == context.org_id, SalesDelivery.delivery_date.between(start, end), SalesDelivery.status == "completed")).all()
     sales_amount = sum((Decimal(row.total_amount) for row in sales), Decimal("0"))
     delivered_amount = sum((Decimal(row.total_amount) for row in deliveries), Decimal("0"))
     order_lines = sum((len(row.items) for row in sales), 0)
     delivered_lines = sum((len(row.items) for row in deliveries), 0)
     stock_value = db.scalar(select(func.coalesce(func.sum(InvStock.quantity * InvStock.average_cost), 0)).where(InvStock.org_id == context.org_id)) or 0
-    overdue_amount = db.scalar(select(func.coalesce(func.sum(SalesReceivable.total_amount - SalesReceivable.reconciled_amount), 0)).where(SalesReceivable.org_id == context.org_id, SalesReceivable.status != "settled", SalesReceivable.due_date < local_today())) or 0
+    available_stock_value = db.scalar(select(func.coalesce(func.sum(InvStock.available_quantity * InvStock.average_cost), 0)).where(InvStock.org_id == context.org_id)) or 0
+    overdue = overdue_summary(db, context, local_today())
     failed_quality = db.scalar(select(func.count()).select_from(QaInspection).where(QaInspection.org_id == context.org_id, QaInspection.created_at >= datetime.combine(start, datetime.min.time()), QaInspection.created_at < datetime.combine(end + timedelta(days=1), datetime.min.time()), QaInspection.result == "failed")) or 0
     work_orders = db.scalars(select(MfgWorkOrder).where(MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.plan_date.between(start, end), MfgWorkOrder.is_deleted.is_(False))).all()
     planned = sum((Decimal(row.quantity) for row in work_orders), Decimal("0"))
@@ -177,7 +196,10 @@ def report_center(db: Session, context: UserContext, period: str | None = None) 
         "fulfillment_rate": round(float(delivered_amount / sales_amount * 100), 2) if sales_amount else 0,
         "order_line_fulfillment_rate": round(delivered_lines / order_lines * 100, 2) if order_lines else 0,
         "inventory_value": str(Decimal(stock_value).quantize(Decimal("0.01"))),
-        "overdue_receivable": str(Decimal(overdue_amount).quantize(Decimal("0.01"))),
+        "available_inventory_value": str(Decimal(available_stock_value).quantize(Decimal("0.01"))),
+        "order_integrity_issues": len(sales_candidates) - len(sales) + sum(not order_is_consistent(row) for row in purchases),
+        "overdue_receivable": overdue["amount"],
+        "overdue_receivable_count": overdue["count"],
         "failed_inspections": int(failed_quality),
         "production_completion_rate": round(float(completed / planned * 100), 2) if planned else 0,
-    }, "definitions": {"fulfillment_rate": "已完成销售出库金额/期间已审核销售订单金额", "inventory_value": "库存数量×当前平均成本", "production_completion_rate": "完工数量/计划数量"}}
+    }, "definitions": {"fulfillment_rate": "已完成销售出库金额/期间有效销售订单金额", "inventory_value": "库存账面数量×当前平均成本", "available_inventory_value": "库存可用数量×当前平均成本", "production_completion_rate": "完工数量/计划数量"}}

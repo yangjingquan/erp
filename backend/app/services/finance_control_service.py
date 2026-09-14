@@ -30,6 +30,18 @@ def _aging_row(row, as_of: date, party_key: str) -> dict:
     return {"id": row.id, "doc_no": row.doc_no, party_key: getattr(row, f"{party_key}_id"), "due_date": row.due_date.isoformat() if row.due_date else None, "outstanding_amount": _money(outstanding), "days_overdue": days, "bucket": bucket}
 
 
+def overdue_summary(db: Session, context: UserContext, as_of: date) -> dict[str, int | str]:
+    """Use one definition for overdue counts and amounts across all views."""
+    rows = db.scalars(select(SalesReceivable).where(
+        SalesReceivable.org_id == context.org_id,
+        SalesReceivable.total_amount > SalesReceivable.reconciled_amount,
+        SalesReceivable.due_date.is_not(None),
+        SalesReceivable.due_date < as_of,
+    )).all()
+    amount = sum((Decimal(row.total_amount or 0) - Decimal(row.reconciled_amount or 0) for row in rows), Decimal("0"))
+    return {"count": len(rows), "amount": _money(amount)}
+
+
 def aging_report(db: Session, context: UserContext, statement_type: str, as_of: date) -> dict:
     model = SalesReceivable if statement_type == "ar" else PurchasePayable
     party_key = "customer" if statement_type == "ar" else "supplier"
@@ -39,7 +51,8 @@ def aging_report(db: Session, context: UserContext, statement_type: str, as_of: 
     for item in items:
         summary[item["bucket"]] += Decimal(item["outstanding_amount"])
     total = sum(summary.values(), Decimal("0"))
-    return {"as_of": as_of.isoformat(), "statement_type": statement_type, "items": items, "summary": {key: _money(value) for key, value in summary.items()} | {"total_outstanding": _money(total)}}
+    overdue = overdue_summary(db, context, as_of) if statement_type == "ar" else {"count": 0, "amount": "0.00"}
+    return {"as_of": as_of.isoformat(), "statement_type": statement_type, "items": items, "summary": {key: _money(value) for key, value in summary.items()} | {"total_outstanding": _money(total), "overdue_count": overdue["count"], "overdue_amount": overdue["amount"]}}
 
 
 def create_budget(db: Session, payload, context: UserContext) -> FinBudget:
