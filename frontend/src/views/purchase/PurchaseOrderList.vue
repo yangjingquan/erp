@@ -14,6 +14,8 @@ import {
 } from "../../api/purchase";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
+import OrderStatusTag from "../../components/OrderStatusTag.vue";
+import { orderStatusLabel } from "../../utils/orderStatus";
 import { formatLocalDateTime, localDateString } from "../../utils/time";
 
 type Row = Record<string, any>;
@@ -42,14 +44,6 @@ const form = reactive<PurchaseOrderPayload>({
 });
 const { suppliers, materials, warehouses, loadOptions } = useMasterOptions();
 
-const statusLabels: Record<string, string> = {
-  draft: "草稿",
-  submitted: "已提交",
-  approved: "已审核",
-  rejected: "已驳回",
-  cancelled: "已取消",
-};
-
 function listFrom(response: any): Row[] {
   if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "采购订单接口返回失败");
   const data = response?.data?.data;
@@ -73,14 +67,6 @@ function warehouseLabel(id: unknown) {
 
 function itemRows(row: Row) {
   return Array.isArray(row.items) ? row.items : [];
-}
-
-function statusLabel(status: string) {
-  return statusLabels[status] || status || "-";
-}
-
-function statusTagType(status: string) {
-  return ({ draft: "info", submitted: "warning", approved: "success", rejected: "danger", cancelled: "danger" } as Record<string, string>)[status] || "info";
 }
 
 async function load() {
@@ -176,7 +162,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     <el-space class="toolbar" wrap><el-input v-model="filters.keyword" clearable placeholder="搜索订单号、供应商" style="width:360px" /><el-select v-model="filters.status" clearable placeholder="状态" style="width:140px"><el-option label="草稿" value="draft" /><el-option label="待审核" value="submitted" /><el-option label="已审核" value="approved" /><el-option label="已驳回" value="rejected" /></el-select><el-button type="primary" @click="openCreate">新建订单</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
-      <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
+      <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><OrderStatusTag :status="scope.row.status" /></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
       <el-table-column label="操作" width="300"><template #default="scope">
         <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button><el-button link @click="copyToForm(scope.row)">复制填充</el-button>
         <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
@@ -195,7 +181,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
       <template v-if="selected">
         <el-descriptions :column="2" border>
           <el-descriptions-item label="订单号">{{ selected.doc_no }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ statusLabel(selected.status) }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ orderStatusLabel(selected.status) }}</el-descriptions-item>
           <el-descriptions-item label="供应商">{{ supplierLabel(selected.supplier_id) }}</el-descriptions-item>
           <el-descriptions-item label="含税金额">{{ selected.total_amount }}</el-descriptions-item>
           <el-descriptions-item label="订单日期">{{ selected.order_date }}</el-descriptions-item>

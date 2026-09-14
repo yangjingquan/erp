@@ -6,7 +6,7 @@ import { createSalesOrder, deleteSalesOrder, updateSalesOrder, type SalesOrderPa
 import { getDocumentWorkspace, listDocuments, runDocumentCommand } from "../../api/documents";
 import DocumentListWorkbench from "../../components/DocumentListWorkbench.vue";
 import DocumentWorkbench from "../../components/DocumentWorkbench.vue";
-import StatusTag from "../../components/StatusTag.vue";
+import OrderStatusTag from "../../components/OrderStatusTag.vue";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { formatLocalDateTime, localDateString } from "../../utils/time";
 
@@ -136,7 +136,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
     <el-table v-loading="loading" :data="rows" stripe width="100%" fit>
       <el-table-column label="订单号" min-width="160"><template #default="scope"><el-button link type="primary" @click="openDetail(scope.row)">{{ scope.row.doc_no }}</el-button></template></el-table-column>
       <el-table-column prop="party_name" label="客户" min-width="180" show-overflow-tooltip />
-      <el-table-column label="状态" width="100"><template #default="scope"><StatusTag :status="scope.row.status" :label="scope.row.status_label" /></template></el-table-column>
+      <el-table-column label="状态" width="100"><template #default="scope"><OrderStatusTag :status="scope.row.status" /></template></el-table-column>
       <el-table-column prop="document_date" label="订单日期" width="115" />
       <el-table-column label="含税金额" width="130" align="right"><template #default="scope">¥{{ scope.row.amount }}</template></el-table-column>
       <el-table-column label="更新时间" width="165"><template #default="scope">{{ formatLocalDateTime(scope.row.updated_at) }}</template></el-table-column>

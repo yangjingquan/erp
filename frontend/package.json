@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5176",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc --noEmit && vite build && npm run check:production-api",
+    "check:production-api": "node scripts/check-production-bundle.mjs",
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest run"
   },

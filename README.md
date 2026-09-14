@@ -104,7 +104,7 @@ npm run dev
 
 打开 http://127.0.0.1:5176。
 
-前端通过 Axios 自动向 API 请求添加 JWT；Token 失效后清理本地登录状态并返回登录页。开发代理将 /api 转发到 8085。
+前端通过 Axios 自动向 API 请求添加 JWT；Token 失效后清理本地登录状态并返回登录页。开发环境使用相对路径 `/api`，由代理转发到 8085。生产构建必须设置 `VITE_API_BASE_URL`（完整的 http/https 地址），构建门禁会拒绝缺失配置以及 `localhost`/`127.0.0.1` 地址，并扫描最终 bundle。
 
 ## 6. 一期功能
 

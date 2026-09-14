@@ -2,8 +2,17 @@ import axios from "axios";
 
 import { useAuthStore } from "../stores/auth";
 
+const configuredApiBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+const apiBaseUrl = import.meta.env.PROD
+  ? configuredApiBaseUrl
+  : configuredApiBaseUrl || "/api";
+
+if (import.meta.env.PROD && !apiBaseUrl) {
+  throw new Error("生产环境缺少 VITE_API_BASE_URL，已阻止前端启动");
+}
+
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8085/api",
+  baseURL: apiBaseUrl,
   timeout: 15000,
 });
 
