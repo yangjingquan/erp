@@ -9,6 +9,7 @@ from app.models.business_extensions import (  # noqa: F401,E402
     SalesReturnItem,
 )
 from app.models.system import SysOrgMembership  # noqa: F401,E402
+from app.models.auth import AuthCaptchaChallenge  # noqa: F401,E402
 from app.models.platform import ExtEventDelivery, ExtEventOutbox, ExtEventSubscription, SysApiClient  # noqa: F401,E402
 from app.models.collaboration import (  # noqa: F401,E402
     BizAttachment,

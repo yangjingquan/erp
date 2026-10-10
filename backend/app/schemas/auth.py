@@ -4,11 +4,18 @@ from pydantic import BaseModel, Field
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+    captcha_token: str = Field(min_length=16, max_length=128)
 
 
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
+    captcha_token: str = Field(min_length=16, max_length=128)
+
+
+class SliderCaptchaVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=36)
+    offset_x: float = Field(ge=0, le=320)
 
 
 class ChangePasswordRequest(BaseModel):

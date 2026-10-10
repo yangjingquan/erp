@@ -8,9 +8,10 @@ from app.core.exceptions import AppError
 from app.core.response import ok
 from app.core.security import create_access_token, create_refresh_token, hash_password, verify_password
 from app.services.audit_service import write_login_log, write_operation_log
-from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest
+from app.schemas.auth import ChangePasswordRequest, LoginRequest, RegisterRequest, SliderCaptchaVerifyRequest
 from app.models.system import SysOrg, SysUser
 from app.services.auth_service import UserContext, authenticate_user, build_user_context, list_user_organizations
+from app.services.captcha_service import consume_captcha_token, create_captcha_challenge, verify_captcha_challenge
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -33,6 +34,10 @@ def serialize_user(context: UserContext) -> dict:
 
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
+    if not consume_captcha_token(db, payload.captcha_token):
+        write_login_log(db, username=payload.username, success=False, message="滑块验证无效或已使用")
+        db.commit()
+        raise AppError("滑块验证已失效，请重新验证", code=400)
     try:
         user = authenticate_user(db, payload.username, payload.password)
     except AppError as exc:
@@ -54,6 +59,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/register")
 def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
+    if not consume_captcha_token(db, payload.captcha_token):
+        raise AppError("滑块验证已失效，请重新验证", code=400)
     username = payload.username.strip()
     if len(username) < 3:
         raise AppError("账号至少 3 位", code=400)
@@ -75,6 +82,17 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> dict:
     db.add(user)
     db.commit()
     return ok({"id": user.id, "username": user.username})
+
+
+@router.get("/captcha/challenge")
+def captcha_challenge(db: Session = Depends(get_db)) -> dict:
+    return ok(create_captcha_challenge(db))
+
+
+@router.post("/captcha/verify")
+def captcha_verify(payload: SliderCaptchaVerifyRequest, db: Session = Depends(get_db)) -> dict:
+    captcha_token = verify_captcha_challenge(db, payload.challenge_id, payload.offset_x)
+    return ok({"captcha_token": captcha_token})
 
 
 @router.get("/me")

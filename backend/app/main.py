@@ -38,6 +38,7 @@ from app.middleware.idempotency import IdempotencyMiddleware
 from app.services.startup_check import check_schema, count_workflow_integrity_issues
 from app.services.runtime_migrations import (
     deactivate_invalid_tax_rates,
+    ensure_auth_captcha_schema,
     ensure_api_client_schema,
     ensure_employee_account_column,
     ensure_leave_request_reason_column,
@@ -69,6 +70,7 @@ async def lifespan(application: FastAPI):
             # Keep invalid legacy rates out of new orders even when a later,
             # unrelated compatibility migration fails.
             deactivate_invalid_tax_rates(db)
+            ensure_auth_captcha_schema(db)
             ensure_employee_account_column(db)
             ensure_leave_request_reason_column(db)
             ensure_purchase_request_supplier_column(db)

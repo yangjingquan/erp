@@ -63,6 +63,18 @@ CREATE TABLE IF NOT EXISTS sys_user (
   KEY idx_sys_user_org_department (org_id, department_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS auth_captcha_challenge (
+  id CHAR(36) PRIMARY KEY,
+  target_x INT NOT NULL,
+  expires_at DATETIME(6) NOT NULL,
+  verified_token_hash CHAR(64) NULL,
+  verified_at DATETIME(6) NULL,
+  consumed_at DATETIME(6) NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  UNIQUE KEY uk_auth_captcha_token_hash (verified_token_hash),
+  KEY idx_auth_captcha_expires_at (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS sys_role (
   id CHAR(36) PRIMARY KEY,
   org_id CHAR(36) NOT NULL,

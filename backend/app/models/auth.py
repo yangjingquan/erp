@@ -1,6 +1,22 @@
-from sqlalchemy import Column, ForeignKey, String, Table
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.time import local_now
+from app.models.base import UUIDModel
+
+
+class AuthCaptchaChallenge(UUIDModel):
+    __tablename__ = "auth_captcha_challenge"
+
+    target_x: Mapped[int] = mapped_column(Integer, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, index=True)
+    verified_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=local_now, nullable=False)
 
 
 sys_user_role = Table(

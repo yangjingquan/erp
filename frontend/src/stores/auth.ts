@@ -35,8 +35,15 @@ export const useAuthStore = defineStore("auth", {
         storage?.setItem("erp_refresh_token", refreshToken);
       }
     },
-    async login(username: string, password: string) {
-      const response = await http.post("/auth/login", { username, password });
+    async login(username: string, password: string, captchaToken: string) {
+      const response = await http.post("/auth/login", {
+        username,
+        password,
+        captcha_token: captchaToken,
+      });
+      if (response.data.code !== 0) {
+        throw new Error(response.data.msg || "登录失败，请重试");
+      }
       const data = response.data.data;
       this.setTokens(data.access_token, data.refresh_token);
       this.user = data.user;

@@ -2,6 +2,16 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 
+def ensure_auth_captcha_schema(db: Session) -> None:
+    """Create the persistent one-time captcha challenge table when upgrading."""
+    from app.core.database import Base
+    from app.models.auth import AuthCaptchaChallenge
+
+    if AuthCaptchaChallenge.__tablename__ not in inspect(db.bind).get_table_names():
+        Base.metadata.create_all(bind=db.bind, tables=[AuthCaptchaChallenge.__table__], checkfirst=True)
+        db.commit()
+
+
 def deactivate_invalid_tax_rates(db: Session) -> None:
     """Keep legacy out-of-range tax rates auditable but unavailable for new business."""
     inspector = inspect(db.bind)

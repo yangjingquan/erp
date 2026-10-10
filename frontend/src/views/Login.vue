@@ -6,6 +6,7 @@ import { useRoute, useRouter } from "vue-router";
 
 import { useAuthStore } from "../stores/auth";
 import { register as registerUser } from "../api/auth";
+import SliderCaptcha from "../components/SliderCaptcha.vue";
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -15,14 +16,18 @@ const password = ref("");
 const confirmPassword = ref("");
 const mode = ref<"login" | "register">("login");
 const loading = ref(false);
+const captchaToken = ref("");
+const captcha = ref<{ reset: () => void } | null>(null);
 
 async function submit() {
+  if (!captchaToken.value) { ElMessage.warning("请先完成滑块验证"); return; }
   loading.value = true;
   try {
-    await auth.login(username.value, password.value);
+    await auth.login(username.value, password.value, captchaToken.value);
     await router.push(String(route.query.redirect || "/dashboard"));
-  } catch {
-    ElMessage.error("登录失败，请检查账号密码");
+  } catch (error) {
+    captcha.value?.reset();
+    ElMessage.error(apiError(error, "登录失败，请检查账号密码"));
   } finally {
     loading.value = false;
   }
@@ -32,11 +37,13 @@ function switchMode(next: "login" | "register") {
   mode.value = next;
   password.value = "";
   confirmPassword.value = "";
+  captchaToken.value = "";
 }
 
 function apiError(error: unknown, fallback: string) {
   const response = (error as { response?: { data?: { msg?: string } } })?.response?.data;
-  return response?.msg || fallback;
+  const message = (error as { message?: string })?.message;
+  return response?.msg || (message && message !== "Request failed with status code 200" ? message : fallback);
 }
 
 async function submitRegister() {
@@ -44,14 +51,19 @@ async function submitRegister() {
   if (account.length < 3) { ElMessage.warning("账号至少 3 位"); return; }
   if (password.value.length < 8) { ElMessage.warning("密码至少 8 位"); return; }
   if (password.value !== confirmPassword.value) { ElMessage.warning("密码和确认密码不一致"); return; }
+  if (!captchaToken.value) { ElMessage.warning("请先完成滑块验证"); return; }
   loading.value = true;
   try {
-    await registerUser(account, password.value);
+    await registerUser(account, password.value, captchaToken.value);
     ElMessage.success("注册成功，请使用新账号登录");
     username.value = account;
     confirmPassword.value = "";
+    captchaToken.value = "";
     mode.value = "login";
-  } catch (error) { ElMessage.error(apiError(error, "注册失败，请稍后重试")); }
+  } catch (error) {
+    captcha.value?.reset();
+    ElMessage.error(apiError(error, "注册失败，请稍后重试"));
+  }
   finally { loading.value = false; }
 }
 </script>
@@ -88,12 +100,14 @@ async function submitRegister() {
           <el-form-item label="账号"><el-input v-model="username" placeholder="请输入账号" size="large" autocomplete="username"><template #prefix><el-icon><User /></el-icon></template></el-input></el-form-item>
           <el-form-item label="密码"><el-input v-model="password" type="password" show-password placeholder="请输入密码" size="large" autocomplete="current-password"><template #prefix><el-icon><Lock /></el-icon></template></el-input></el-form-item>
           <div class="form-helper"><span class="remember-note"><span class="checkbox-mark" aria-hidden="true" />记住本次登录</span><button class="forgot-link" type="button" @click="ElMessage.info('请联系系统管理员重置密码')">忘记密码？</button></div>
+          <SliderCaptcha ref="captcha" v-model="captchaToken" :disabled="loading" />
           <el-button :loading="loading" type="primary" size="large" native-type="submit" class="submit"><span>登录工作台</span><el-icon><ArrowRight /></el-icon></el-button>
         </el-form>
         <el-form v-else class="login-form" label-position="top" @submit.prevent="submitRegister">
           <el-form-item label="账号"><el-input v-model="username" placeholder="请输入注册账号" size="large" autocomplete="username"><template #prefix><el-icon><User /></el-icon></template></el-input></el-form-item>
           <el-form-item label="密码"><el-input v-model="password" type="password" show-password placeholder="至少 8 位密码" size="large" autocomplete="new-password"><template #prefix><el-icon><Lock /></el-icon></template></el-input></el-form-item>
           <el-form-item label="确认密码"><el-input v-model="confirmPassword" type="password" show-password placeholder="请再次输入密码" size="large" autocomplete="new-password"><template #prefix><el-icon><Lock /></el-icon></template></el-input></el-form-item>
+          <SliderCaptcha ref="captcha" v-model="captchaToken" :disabled="loading" />
           <el-button :loading="loading" type="primary" size="large" native-type="submit" class="submit"><span>注册账号</span><el-icon><ArrowRight /></el-icon></el-button>
         </el-form>
         <div class="security-note"><el-icon><CircleCheck /></el-icon><span>当前连接受企业安全策略保护。首次登录或更换设备时，可能需要管理员确认。</span></div>
