@@ -175,7 +175,7 @@ defineExpose({ reset: loadChallenge });
 </template>
 
 <style scoped>
-.slider-captcha { width: 100%; max-width: 320px; margin: 0 0 19px; }
+.slider-captcha { width: 100%; max-width: 420px; margin: 0 0 19px; }
 .captcha-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .captcha-title strong { color: #5a4034; font-size: 12px; font-weight: 750; }
 .captcha-title span { color: #8b6a59; font-size: 11px; }
