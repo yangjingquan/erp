@@ -187,6 +187,11 @@ def process_scan(
         )
         receipt.status = "completed"
         db.flush()
+        from app.services.inventory_service import writeback_purchase_order_received
+        writeback_purchase_order_received(db, receipt)
+        # GAP-07: 扫码收货与单据中心"完成入库"一致，生成应付与凭证。
+        from app.services.finance_service import create_payable_from_purchase_receipt
+        payable = create_payable_from_purchase_receipt(db, receipt.id, context)
         transaction = db.get(InvStockTransaction, layers[0].inbound_transaction_id)
         result = {
             "scan_id": scan_id,
@@ -196,6 +201,7 @@ def process_scan(
             "transaction_id": transaction.id,
             "quantity": _number(transaction.quantity),
             "unit_cost": _number(transaction.unit_cost),
+            "payable_id": payable.id,
         }
     elif action in {"fill", "return"}:
         from types import SimpleNamespace
