@@ -37,7 +37,7 @@ def _sum_orders(db: Session, model, org_id: str, start: date, end: date) -> Deci
         select(model).options(selectinload(model.items)).where(
             model.org_id == org_id,
             model.order_date.between(start, end),
-            model.status.in_({"submitted", "approved", "completed"}),
+            model.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}),
         )
     ).all()
     return sum((Decimal(row.total_amount) for row in rows if order_is_consistent(row)), Decimal("0")).quantize(Decimal("0.01"))
@@ -48,7 +48,7 @@ def _order_integrity_issue_count(db: Session, model, org_id: str, start: date, e
         select(model).options(selectinload(model.items)).where(
             model.org_id == org_id,
             model.order_date.between(start, end),
-            model.status.in_({"submitted", "approved", "completed"}),
+            model.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}),
         )
     ).all()
     return sum(not order_is_consistent(row) for row in rows)
@@ -90,7 +90,7 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
         select(SalesOrder).options(selectinload(SalesOrder.items)).where(
             SalesOrder.org_id == context.org_id,
             SalesOrder.order_date.between(start, end),
-            SalesOrder.status.in_({"submitted", "approved", "completed"}),
+            SalesOrder.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}),
         ).order_by(SalesOrder.order_date.desc(), SalesOrder.created_at.desc()).limit(3)
     ).all() if order_is_consistent(row)]
     customer_ids = {row.customer_id for row in orders}
@@ -113,8 +113,8 @@ def dashboard_overview(db: Session, context: UserContext, period: str | None = N
     today = local_today()
     trend_end = min(end, today) if (end.year, end.month) == (today.year, today.month) else end
     trend_start = max(start, trend_end - timedelta(days=6))
-    trend_orders = [row for row in db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(trend_start, trend_end), SalesOrder.status.in_({"submitted", "approved", "completed"}))).all() if order_is_consistent(row)]
-    trend_purchases = [row for row in db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(trend_start, trend_end), PurchaseOrder.status.in_({"submitted", "approved", "completed"}))).all() if order_is_consistent(row)]
+    trend_orders = [row for row in db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(trend_start, trend_end), SalesOrder.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}))).all() if order_is_consistent(row)]
+    trend_purchases = [row for row in db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(trend_start, trend_end), PurchaseOrder.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}))).all() if order_is_consistent(row)]
     trend = []
     cursor = trend_start
     while cursor <= trend_end:
@@ -179,9 +179,9 @@ def dashboard_phase2(db: Session, context: UserContext, period: str, warehouse_i
 def report_center(db: Session, context: UserContext, period: str | None = None) -> dict:
     """Stable, export-friendly KPI contract for management reports."""
     start, end = _period_bounds(period)
-    sales_candidates = db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(start, end), SalesOrder.status.in_({"submitted", "approved", "completed"}))).all()
+    sales_candidates = db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(SalesOrder.org_id == context.org_id, SalesOrder.order_date.between(start, end), SalesOrder.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}))).all()
     sales = [row for row in sales_candidates if order_is_consistent(row)]
-    purchases = db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(start, end), PurchaseOrder.status.in_({"submitted", "approved", "completed"}))).all()
+    purchases = db.scalars(select(PurchaseOrder).options(selectinload(PurchaseOrder.items)).where(PurchaseOrder.org_id == context.org_id, PurchaseOrder.order_date.between(start, end), PurchaseOrder.status.in_({"submitted", "approved", "partially_received", "partially_delivered", "completed"}))).all()
     deliveries = db.scalars(select(SalesDelivery).where(SalesDelivery.org_id == context.org_id, SalesDelivery.delivery_date.between(start, end), SalesDelivery.status == "completed")).all()
     sales_amount = sum((Decimal(row.total_amount) for row in sales), Decimal("0"))
     delivered_amount = sum((Decimal(row.total_amount) for row in deliveries), Decimal("0"))

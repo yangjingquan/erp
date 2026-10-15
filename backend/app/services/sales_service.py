@@ -10,7 +10,7 @@ from app.models.sales import SalesDelivery, SalesDeliveryItem, SalesOrder, Sales
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
-SALES_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "completed", "cancelled"})
+SALES_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "partially_delivered", "completed", "rejected", "cancelled"})
 
 
 def _total(items) -> Decimal:
@@ -235,10 +235,12 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "approved":
-        raise AppError("只有已审核订单才能出库", code=400)
-    if db.scalar(select(SalesDelivery).where(SalesDelivery.order_id == order.id, SalesDelivery.status != "cancelled")):
-        raise AppError("该订单已创建出库单", code=409)
+    if order.status not in {"approved", "partially_delivered"}:
+        raise AppError("只有已审核或部分出库的订单才能出库", code=400)
+    if not any(item.quantity > item.delivered_quantity for item in order.items):
+        raise AppError("该订单已全部出库", code=409)
+    if db.scalar(select(SalesDelivery).where(SalesDelivery.order_id == order.id, SalesDelivery.status == "draft")):
+        raise AppError("该订单已有未完成的出库单，请先完成或取消", code=409)
     active_items = [item for item in order.items if item.quantity > item.delivered_quantity]
     warehouse_ids = {item.warehouse_id for item in active_items if item.warehouse_id}
     if len(warehouse_ids) != 1:
@@ -266,10 +268,11 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
             material_id=item.material_id,
             quantity=item.quantity - item.delivered_quantity,
             unit_price=item.unit_price,
-            amount=item.amount,
+            amount=((item.quantity - item.delivered_quantity) * item.unit_price).quantize(Decimal("0.01")),
         )
         for item in active_items
     ]
+    delivery.total_amount = sum((line.amount for line in delivery.items), Decimal("0")).quantize(Decimal("0.01"))
     db.add(delivery)
     db.commit()
     db.refresh(delivery)

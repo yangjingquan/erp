@@ -498,6 +498,7 @@ def complete_sales_delivery(db: Session, delivery_id: str, context: UserContext)
         )
     delivery.status = "completed"
     db.flush()
+    writeback_sales_order_delivered(db, delivery)
     return delivery
 
 
@@ -521,4 +522,61 @@ def complete_purchase_receipt(db: Session, receipt_id: str, context: UserContext
         )
     receipt.status = "completed"
     db.flush()
+    writeback_purchase_order_received(db, receipt)
     return receipt
+
+
+# ---------------------------------------------------------------------------
+# GAP-01: write completed receipt/delivery quantities back to the source order.
+# ---------------------------------------------------------------------------
+PURCHASE_PARTIAL_STATUS = "partially_received"
+SALES_PARTIAL_STATUS = "partially_delivered"
+
+
+def _order_progress_status(lines, done_attr: str, partial_status: str, current: str) -> str:
+    total_done = sum((Decimal(str(getattr(line, done_attr) or 0)) for line in lines), Decimal("0"))
+    if lines and all(Decimal(str(getattr(line, done_attr) or 0)) >= Decimal(str(line.quantity)) for line in lines):
+        return "completed"
+    if total_done > 0:
+        return partial_status
+    return current
+
+
+def writeback_purchase_order_received(db: Session, receipt: PurchaseReceipt) -> None:
+    """Accumulate received quantity on the purchase order lines and derive order status."""
+    from app.models.purchase import PurchaseOrder
+
+    order = db.get(PurchaseOrder, receipt.order_id) if receipt.order_id else None
+    if order is None:
+        return
+    lines = {line.id: line for line in order.items}
+    for item in receipt.items:
+        line = lines.get(item.order_item_id) if item.order_item_id else None
+        if line is None:
+            line = next((row for row in order.items if row.material_id == item.material_id and row.received_quantity < row.quantity), None)
+        if line is None:
+            continue
+        line.received_quantity = Decimal(str(line.received_quantity or 0)) + Decimal(str(item.quantity))
+    if order.status in {"approved", PURCHASE_PARTIAL_STATUS}:
+        order.status = _order_progress_status(order.items, "received_quantity", PURCHASE_PARTIAL_STATUS, order.status)
+    db.flush()
+
+
+def writeback_sales_order_delivered(db: Session, delivery: SalesDelivery) -> None:
+    """Accumulate delivered quantity on the sales order lines and derive order status."""
+    from app.models.sales import SalesOrder
+
+    order = db.get(SalesOrder, delivery.order_id) if delivery.order_id else None
+    if order is None:
+        return
+    lines = {line.id: line for line in order.items}
+    for item in delivery.items:
+        line = lines.get(item.order_item_id) if item.order_item_id else None
+        if line is None:
+            line = next((row for row in order.items if row.material_id == item.material_id and row.delivered_quantity < row.quantity), None)
+        if line is None:
+            continue
+        line.delivered_quantity = Decimal(str(line.delivered_quantity or 0)) + Decimal(str(item.quantity))
+    if order.status in {"approved", SALES_PARTIAL_STATUS}:
+        order.status = _order_progress_status(order.items, "delivered_quantity", SALES_PARTIAL_STATUS, order.status)
+    db.flush()

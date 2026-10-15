@@ -73,7 +73,7 @@ TYPE_CONFIG: dict[str, dict[str, Any]] = {
 STATUS_LABELS = {
     "draft": "草稿", "submitted": "待审核", "approved": "已审核", "completed": "已完成",
     "open": "待核销", "partial": "部分核销", "settled": "已结清", "confirmed": "已确认",
-    "posted": "已过账", "rejected": "已驳回", "cancelled": "已取消", "closed": "已关闭", "active": "在用", "maintenance": "保养中", "retired": "已报废", "assigned": "已派工", "resolved": "已解决", "reopened": "已重开",
+    "posted": "已过账", "rejected": "已驳回", "partially_received": "部分入库", "partially_delivered": "部分出库", "cancelled": "已取消", "closed": "已关闭", "active": "在用", "maintenance": "保养中", "retired": "已报废", "assigned": "已派工", "resolved": "已解决", "reopened": "已重开",
     "released": "已下达", "in_progress": "进行中", "reversed": "已冲销",
 }
 
@@ -82,12 +82,14 @@ ACTION_CONFIG = {
         "draft": [("submit", "提交审核", "primary")],
         "submitted": [("approve", "审核通过", "success")],
         "approved": [("create_delivery", "生成出库单", "warning")],
+        "partially_delivered": [("create_delivery", "继续出库", "warning")],
     },
     "sales_delivery": {"draft": [("complete", "完成出库", "success")]},
     "purchase_order": {
         "draft": [("submit", "提交审核", "primary")],
         "submitted": [("approve", "审核通过", "success")],
         "approved": [("create_receipt", "生成入库单", "warning")],
+        "partially_received": [("create_receipt", "继续入库", "warning")],
     },
     "purchase_receipt": {"draft": [("complete", "完成入库", "success")]},
     "mfg_work_order": {
@@ -316,11 +318,11 @@ def _sync_inferred_relations(db: Session, org_id: str) -> None:
 
 def _available_actions(db: Session, row: BizDocument) -> list[tuple[str, str, str]]:
     actions = ACTION_CONFIG.get(row.business_type, {}).get(row.status, [])
-    if row.business_type == "sales_order" and row.status == "approved":
+    if row.business_type == "sales_order" and row.status in {"approved", "partially_delivered"}:
         delivery_exists = db.scalar(select(SalesDelivery.id).where(
             SalesDelivery.org_id == row.org_id,
             SalesDelivery.order_id == row.business_id,
-            SalesDelivery.status != "cancelled",
+            SalesDelivery.status == "draft",
         ))
         if delivery_exists is not None:
             actions = [action for action in actions if action[0] != "create_delivery"]
@@ -600,6 +602,19 @@ def mark_notification_read(db: Session, context: UserContext, notification_id: s
     return len(rows)
 
 
+def _sync_source_order(db: Session, business_type: str, order_id: str | None) -> None:
+    """GAP-01: refresh the document-center row of the order after receipt/delivery write-back."""
+    if not order_id:
+        return
+    from app.models.purchase import PurchaseOrder
+    from app.models.sales import SalesOrder
+
+    model = SalesOrder if business_type == "sales_order" else PurchaseOrder
+    order = db.get(model, order_id)
+    if order is not None:
+        _sync_row(db, business_type, order)
+
+
 def execute_command(db: Session, context: UserContext, business_type: str, business_id: str, command: str) -> dict[str, Any]:
     _assert_command_access(context, business_type)
     if business_type == "sales_order":
@@ -631,6 +646,7 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
         receivable = create_receivable_from_sales_delivery(db, delivery.id, context)
         _sync_row(db, "sales_delivery", delivery)
         _sync_row(db, "sales_receivable", receivable)
+        _sync_source_order(db, "sales_order", delivery.order_id)
         _sync_inferred_relations(db, context.org_id)
         db.commit()
         return {"document": _serialize_document(db.scalar(select(BizDocument).where(BizDocument.org_id == context.org_id, BizDocument.business_type == "sales_delivery", BizDocument.business_id == delivery.id)), context, db), "created": {"business_type": "sales_receivable", "business_id": receivable.id}}
@@ -662,6 +678,7 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
         payable = create_payable_from_purchase_receipt(db, receipt.id, context)
         _sync_row(db, business_type, receipt)
         _sync_row(db, "purchase_payable", payable)
+        _sync_source_order(db, "purchase_order", receipt.order_id)
         _sync_inferred_relations(db, context.org_id)
         db.commit()
         return {"document": _serialize_document(_sync_row(db, business_type, receipt), context, db), "created": {"business_type": "purchase_payable", "business_id": payable.id}}

@@ -10,7 +10,7 @@ from app.models.purchase import PurchaseOrder, PurchaseOrderItem, PurchaseReceip
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
-PURCHASE_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "completed", "cancelled"})
+PURCHASE_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "partially_received", "completed", "rejected", "cancelled"})
 
 
 def _validate_order_payload(db: Session, payload, context: UserContext) -> None:
@@ -251,10 +251,12 @@ def create_receipt_from_order(db: Session, order_id: str, context: UserContext) 
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("采购订单不存在", code=404)
-    if order.status != "approved":
-        raise AppError("只有已审核订单才能入库", code=400)
-    if db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.order_id == order.id, PurchaseReceipt.status != "cancelled")):
-        raise AppError("该订单已创建入库单", code=409)
+    if order.status not in {"approved", "partially_received"}:
+        raise AppError("只有已审核或部分入库的订单才能入库", code=400)
+    if not any(item.quantity > item.received_quantity for item in order.items):
+        raise AppError("该订单已全部入库", code=409)
+    if db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.order_id == order.id, PurchaseReceipt.status == "draft")):
+        raise AppError("该订单已有未完成的入库单，请先完成或取消", code=409)
     warehouse_ids = {item.warehouse_id for item in order.items if item.warehouse_id}
     if len(warehouse_ids) != 1:
         raise AppError("采购订单必须指定同一个有效仓库后才能生成入库单", code=422)
@@ -283,11 +285,12 @@ def create_receipt_from_order(db: Session, order_id: str, context: UserContext) 
             material_id=item.material_id,
             quantity=item.quantity - item.received_quantity,
             unit_price=item.unit_price,
-            amount=item.amount,
+            amount=((item.quantity - item.received_quantity) * item.unit_price).quantize(Decimal("0.01")),
         )
         for item in order.items
         if item.quantity > item.received_quantity
     ]
+    receipt.total_amount = sum((line.amount for line in receipt.items), Decimal("0")).quantize(Decimal("0.01"))
     db.add(receipt)
     db.commit()
     db.refresh(receipt)

@@ -121,7 +121,7 @@ def _source_demands(db: Session, plan_from: date, plan_to: date, warehouse_id: s
     if "sales_order" in sources:
         orders = db.scalars(select(SalesOrder).options(selectinload(SalesOrder.items)).where(
             SalesOrder.org_id == context.org_id,
-            SalesOrder.status.in_({"submitted", "approved"}),
+            SalesOrder.status.in_({"submitted", "approved", "partially_delivered"}),
             SalesOrder.expected_date.between(plan_from, plan_to),
             SalesOrder.is_deleted.is_(False),
         )).all()
@@ -155,7 +155,7 @@ def _supply_snapshot(db: Session, material_id: str, warehouse_id: str | None, co
     if warehouse_id:
         stock = stock.where(InvStock.warehouse_id == warehouse_id)
     available = q(db.scalar(stock))
-    purchase = select(func.coalesce(func.sum(PurchaseOrderItem.quantity - PurchaseOrderItem.received_quantity), 0)).join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.order_id).where(PurchaseOrder.org_id == context.org_id, PurchaseOrderItem.material_id == material_id, PurchaseOrder.status.in_({"submitted", "approved"}), PurchaseOrder.is_deleted.is_(False))
+    purchase = select(func.coalesce(func.sum(PurchaseOrderItem.quantity - PurchaseOrderItem.received_quantity), 0)).join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderItem.order_id).where(PurchaseOrder.org_id == context.org_id, PurchaseOrderItem.material_id == material_id, PurchaseOrder.status.in_({"submitted", "approved", "partially_received"}), PurchaseOrder.is_deleted.is_(False))
     if warehouse_id:
         purchase = purchase.where(PurchaseOrderItem.warehouse_id == warehouse_id)
     in_transit = q(db.scalar(purchase))

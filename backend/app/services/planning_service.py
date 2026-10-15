@@ -17,7 +17,7 @@ from app.services.configuration_service import next_doc_no
 
 
 QUANTITY_SCALE = Decimal("0.000001")
-OPEN_ORDER_STATUSES = ("submitted", "approved")
+OPEN_ORDER_STATUSES = ("submitted", "approved", "partially_received", "partially_delivered")
 
 
 def _quantity(value: Decimal | int | str | None) -> Decimal:
