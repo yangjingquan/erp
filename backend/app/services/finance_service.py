@@ -140,6 +140,8 @@ def create_receipt(db: Session, context: UserContext, *, customer_id: str, amoun
     )
     db.add(receipt)
     db.flush()
+    # GAP-04: 收款即生成凭证 借1002 银行存款 / 贷1122 应收账款。
+    auto_generate_voucher(db, "receipt", receipt.id, context)
     return receipt
 
 
@@ -168,6 +170,9 @@ def reconcile_receivable(db: Session, receipt_id: str, receivable_id: str, amoun
     receipt_reconciled = sum(item.amount for item in receipt.reconciles) + amount
     receipt.status = "settled" if receipt_reconciled == receipt.amount else "partial"
     db.flush()
+    # GAP-04: 收款凭证已贷记 1122，核销只做辅助账对冲，不重复过账；
+    # 历史收款若缺凭证，在核销时补生成（幂等）。
+    auto_generate_voucher(db, "receipt", receipt.id, context)
 
 
 def create_payment(db: Session, context: UserContext, *, supplier_id: str, amount: Decimal) -> FinPayment:
@@ -186,6 +191,8 @@ def create_payment(db: Session, context: UserContext, *, supplier_id: str, amoun
     )
     db.add(payment)
     db.flush()
+    # GAP-04: 付款即生成凭证 借2202 应付账款 / 贷1002 银行存款。
+    auto_generate_voucher(db, "payment", payment.id, context)
     return payment
 
 
@@ -217,6 +224,8 @@ def reconcile_payable(db: Session, payment_id: str, payable_id: str, amount: Dec
     payment_reconciled += amount
     payment.status = "settled" if payment_reconciled == payment.amount else "partial"
     db.flush()
+    # GAP-04: 同收款，付款凭证缺失时在核销时补生成（幂等）。
+    auto_generate_voucher(db, "payment", payment.id, context)
 
 
 def create_expense(db: Session, context: UserContext, *, amount: Decimal, expense_type: str, description: str = "") -> FinExpense:
@@ -478,8 +487,13 @@ def list_payables(db: Session, context: UserContext) -> list[dict]:
     ]
 
 
+def _voucher_source_ids(db: Session, context: UserContext, source_type: str) -> set[str]:
+    return set(db.scalars(select(FinVoucher.source_id).where(FinVoucher.org_id == context.org_id, FinVoucher.source_type == source_type)).all())
+
+
 def list_receipts(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinReceipt).where(FinReceipt.org_id == context.org_id).order_by(FinReceipt.id.desc())).all()
+    voucher_ids = _voucher_source_ids(db, context, "receipt")
     return [
         {
             "id": row.id,
@@ -490,6 +504,7 @@ def list_receipts(db: Session, context: UserContext) -> list[dict]:
             "receipt_date": row.receipt_date.isoformat(),
             "status": row.status,
             "reconciled_amount": _money(sum(item.amount for item in row.reconciles)),
+            "voucher_generated": row.id in voucher_ids,
         }
         for row in rows
     ]
@@ -497,6 +512,7 @@ def list_receipts(db: Session, context: UserContext) -> list[dict]:
 
 def list_payments(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinPayment).where(FinPayment.org_id == context.org_id).order_by(FinPayment.id.desc())).all()
+    voucher_ids = _voucher_source_ids(db, context, "payment")
     return [
         {
             "id": row.id,
@@ -507,6 +523,7 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
             "payment_date": row.payment_date.isoformat(),
             "reconciled_amount": _money(sum(item.amount for item in row.reconciles)),
             "status": row.status,
+            "voucher_generated": row.id in voucher_ids,
         }
         for row in rows
     ]

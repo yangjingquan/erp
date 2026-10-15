@@ -38,3 +38,17 @@ def receive(db, ctx, md, qty="10", price="5"):
     complete_purchase_receipt(db, receipt.id, ctx)
     db.commit()
     return order, receipt
+
+
+def voucher_lines(db, source_type, source_id):
+    """Return {account_code: (debit, credit)} for the voucher of a source document."""
+    from sqlalchemy import select
+    from app.models.finance import FinVoucher
+
+    vouchers = db.scalars(select(FinVoucher).where(FinVoucher.source_type == source_type, FinVoucher.source_id == source_id)).all()
+    assert len(vouchers) == 1, f"expected 1 voucher for {source_type}, got {len(vouchers)}"
+    out = {}
+    for e in vouchers[0].entries:
+        d, c = out.get(e.account_code, (Decimal("0"), Decimal("0")))
+        out[e.account_code] = (d + Decimal(e.debit_amount), c + Decimal(e.credit_amount))
+    return out
