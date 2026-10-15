@@ -39,6 +39,38 @@ def create_quote(db: Session, payload, context: UserContext):
     return row
 
 
+def _editable_quote(db: Session, quote_id: str, context: UserContext, verb: str):
+    row = db.get(SalesQuote, quote_id)
+    if row is None or row.org_id != context.org_id or row.is_deleted:
+        raise AppError("报价单不存在", code=404)
+    if row.status != "draft":
+        raise AppError(f"只有草稿状态的报价单可以{verb}", code=400)
+    return row
+
+
+def update_quote(db: Session, quote_id: str, payload, context: UserContext):
+    """GAP-03: 草稿报价单修改。"""
+    row = _editable_quote(db, quote_id, context, "修改")
+    row.customer_id = payload.customer_id
+    row.quote_date = payload.quote_date
+    row.valid_until = payload.valid_until
+    row.items = [SalesQuoteItem(material_id=item.material_id, quantity=item.quantity, unit_price=item.unit_price, tax_rate=item.tax_rate, amount=(item.quantity * item.unit_price).quantize(Decimal("0.01")), line_no=index) for index, item in enumerate(payload.items, 1)]
+    row.total_amount = _total(row.items)
+    row.updated_by = context.id
+    row.version += 1
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_quote(db: Session, quote_id: str, context: UserContext) -> None:
+    """GAP-03: 草稿报价单删除（软删除）。"""
+    row = _editable_quote(db, quote_id, context, "删除")
+    row.is_deleted = True
+    row.updated_by = context.id
+    db.commit()
+
+
 def transition_quote(db: Session, quote_id: str, new_status: str, context: UserContext):
     row = db.get(SalesQuote, quote_id)
     if row is None or row.org_id != context.org_id:

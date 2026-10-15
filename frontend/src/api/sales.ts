@@ -73,3 +73,6 @@ export function completeSalesReturn(id: string) { return http.post(`/sales/retur
 
 export function rejectSalesOrder(orderId: string) { return http.post(`/sales/orders/${orderId}/reject`); }
 export function unapproveSalesOrder(orderId: string) { return http.post(`/sales/orders/${orderId}/unapprove`); }
+
+export function updateSalesQuote(id: string, payload: SalesQuotePayload) { return http.put(`/sales/quotes/${id}`, payload); }
+export function deleteSalesQuote(id: string) { return http.delete(`/sales/quotes/${id}`); }

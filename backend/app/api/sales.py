@@ -101,6 +101,19 @@ def add_quote(payload: SalesQuoteCreate, context: UserContext = Depends(require_
     return ok(serialize_quote(create_quote(db, payload, context)))
 
 
+@router.put("/quotes/{quote_id}")
+def edit_quote(quote_id: str, payload: SalesQuoteCreate, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    from app.services.business_extension_service import update_quote
+    return ok(serialize_quote(update_quote(db, quote_id, payload, context)), "报价单已修改")
+
+
+@router.delete("/quotes/{quote_id}")
+def remove_quote(quote_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    from app.services.business_extension_service import delete_quote
+    delete_quote(db, quote_id, context)
+    return ok(msg="报价单已删除")
+
+
 @router.post("/quotes/{quote_id}/convert")
 def convert_quote(quote_id: str, payload: dict, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
     order = convert_quote_to_order(db, quote_id, str(payload.get("warehouse_id") or ""), context)
