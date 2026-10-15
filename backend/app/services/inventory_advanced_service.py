@@ -166,6 +166,8 @@ def process_scan(
             raise AppError("扫描仓库与单据仓库不一致", code=403)
         if len(receipt.items) != 1:
             raise AppError("扫描入库暂仅支持单行入库单", code=400)
+        from app.services.inventory_service import assert_receipt_inspection_passed
+        assert_receipt_inspection_passed(db, receipt)
         item = receipt.items[0]
         material_id = payload.get("material_id")
         quantity = _decimal(payload.get("quantity", "0"))

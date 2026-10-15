@@ -57,14 +57,8 @@ def get_stock_unit_cost(
     from app.services.inventory_advanced_service import assert_warehouse_access
 
     assert_warehouse_access(context, warehouse_id)
-    stock = db.scalar(
-        select(InvStock).where(
-            InvStock.org_id == context.org_id,
-            InvStock.warehouse_id == warehouse_id,
-            InvStock.material_id == material_id,
-        )
-    )
-    return Decimal(stock.average_cost) if stock is not None else Decimal("0")
+    # GAP-09: 成本方法驱动出库成本（移动加权平均 / 标准成本）。
+    return current_unit_cost(db, context.org_id, warehouse_id, material_id)
 
 
 def list_stock(db: Session, context: UserContext, warehouse_id: str | None = None) -> list[InvStock]:
@@ -182,6 +176,33 @@ def current_unit_cost(db: Session, org_id: str, warehouse_id: str, material_id: 
         return Decimal(str(material.standard_cost)) if material is not None else Decimal("0")
     stock = db.scalar(select(InvStock).where(InvStock.org_id == org_id, InvStock.warehouse_id == warehouse_id, InvStock.material_id == material_id))
     return Decimal(str(stock.average_cost)) if stock is not None else Decimal("0")
+
+
+def inspection_required(db: Session, org_id: str) -> bool:
+    from app.services.phase2_parameter_service import get_phase2_parameter
+
+    return _bool_parameter(get_phase2_parameter(db, org_id, "qa.inspection_required", "false"))
+
+
+def assert_receipt_inspection_passed(db: Session, receipt: PurchaseReceipt) -> None:
+    """GAP-09: qa.inspection_required=true 时，采购入库完成前必须有合格（或已让步接收）的来料检验。"""
+    if not inspection_required(db, receipt.org_id):
+        return
+    from app.models.quality import QaInspection
+
+    inspections = db.scalars(select(QaInspection).where(
+        QaInspection.org_id == receipt.org_id,
+        QaInspection.source_type == "purchase_receipt",
+        QaInspection.source_id == receipt.id,
+        QaInspection.is_deleted.is_(False),
+    )).all()
+    ok = any(
+        (row.result == "passed" and row.status in {"submitted", "closed"})
+        or (row.status == "closed" and row.disposition == "accept")
+        for row in inspections
+    )
+    if not ok:
+        raise AppError(f"采购入库单 {receipt.doc_no} 需先完成来料检验且结果合格后才能入库（全局参数「质量检验是否必填」已开启）", code=409)
 
 
 def post_stock_transaction(
@@ -583,6 +604,7 @@ def complete_purchase_receipt(db: Session, receipt_id: str, context: UserContext
         raise AppError("采购入库单不存在", code=404)
     if receipt.status != "draft":
         raise AppError("采购入库单当前不可完成", code=400)
+    assert_receipt_inspection_passed(db, receipt)
     for item in receipt.items:
         post_stock_transaction(
             db,

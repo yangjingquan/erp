@@ -556,6 +556,9 @@ def issue_material(db: Session, work_order_id: str, items, context: UserContext)
         ).all()
     }
     quantities = {item.material_id: _quantity(item.quantity) for item in items}
+    from app.services.inventory_service import _bool_parameter
+    from app.services.phase2_parameter_service import get_phase2_parameter
+    allow_over_issue = _bool_parameter(get_phase2_parameter(db, context.org_id, "mfg.allow_over_issue", "false"))
     issue_lines: dict[str, tuple[MfgWorkOrderMaterial, Decimal]] = {}
     for material_id, quantity in quantities.items():
         line = material_lines.get(material_id)
@@ -567,8 +570,10 @@ def issue_material(db: Session, work_order_id: str, items, context: UserContext)
         if line is None:
             raise AppError("领料物料不在工单 BOM 快照中", code=400)
         primary_quantity = _quantity(quantity * conversion)
-        if _quantity(line.issued_quantity + primary_quantity) > _quantity(line.required_quantity):
-            raise AppError("领料数量超过 BOM 计划数量", code=400)
+        if _quantity(line.issued_quantity + primary_quantity) > _quantity(line.required_quantity) and not allow_over_issue:
+            # GAP-09: 由全局参数 mfg.allow_over_issue 控制是否允许超额领料。
+            remaining = _quantity(line.required_quantity) - _quantity(line.issued_quantity)
+            raise AppError(f"领料数量超过 BOM 计划数量（剩余可领 {remaining.normalize():f}），如需超发请在全局参数中开启「生产领料是否允许超发」", code=400)
         issue_lines[material_id] = (line, primary_quantity)
 
     issue = MfgMaterialIssue(
