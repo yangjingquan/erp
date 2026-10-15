@@ -469,6 +469,23 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
             FinVoucherEntry(line_no=1, account_code="2202", account_name="应付账款", summary="采购退货冲减应付", debit_amount=amount, credit_amount=0),
             FinVoucherEntry(line_no=2, account_code="1403", account_name="原材料", summary="采购退货", debit_amount=0, credit_amount=amount),
         ]
+    elif source_type in {"payroll_accrual", "payroll"}:
+        # GAP-06: 薪资计提（审批）借6602/贷2211；薪资发放（支付）借2211/贷1002。
+        from app.models.hr import HrPayroll
+        source = db.get(HrPayroll, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        if source_type == "payroll_accrual":
+            entries = [
+                FinVoucherEntry(line_no=1, account_code="6602", account_name="管理费用", summary=f"计提{source.period}工资", debit_amount=amount, credit_amount=0),
+                FinVoucherEntry(line_no=2, account_code="2211", account_name="应付职工薪酬", summary=f"计提{source.period}工资", debit_amount=0, credit_amount=amount),
+            ]
+        else:
+            entries = [
+                FinVoucherEntry(line_no=1, account_code="2211", account_name="应付职工薪酬", summary=f"发放{source.period}工资", debit_amount=amount, credit_amount=0),
+                FinVoucherEntry(line_no=2, account_code="1002", account_name="银行存款", summary=f"发放{source.period}工资", debit_amount=0, credit_amount=amount),
+            ]
     elif source_type == "allocation":
         from app.models.cost import CostAllocation
         source = db.get(CostAllocation, source_id)
