@@ -166,3 +166,21 @@ def complete_return(return_id: str, context: UserContext = Depends(require_permi
 def remove_purchase_return(return_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
     delete_purchase_return(db, return_id, context)
     return ok(msg="采购退货单已删除")
+
+
+@router.post("/orders/{order_id}/reject")
+def reject_order_manual(order_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 列表驳回（submitted → rejected）。审批流中的单据请在我的待办处理。"""
+    from app.services.purchase_service import reject_purchase_order_manual, serialize_order as _serialize
+
+    if has_running_workflow(db, "purchase_order", order_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+    return ok(_serialize(reject_purchase_order_manual(db, order_id, context)), "订单已驳回")
+
+
+@router.post("/orders/{order_id}/unapprove")
+def unapprove_order(order_id: str, context: UserContext = Depends(require_permission("purchase:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 反审核（approved 且无下游单据 → draft）。"""
+    from app.services.purchase_service import serialize_order as _serialize, unapprove_purchase_order
+
+    return ok(_serialize(unapprove_purchase_order(db, order_id, context)), "订单已反审核")

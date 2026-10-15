@@ -155,8 +155,8 @@ def update_sales_order(db: Session, order_id: str, payload, context: UserContext
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的销售订单可以修改", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的销售订单可以修改", code=400)
     item_warehouse_ids = [item.warehouse_id.strip() if item.warehouse_id else "" for item in payload.items]
     if any(not warehouse_id for warehouse_id in item_warehouse_ids):
         raise AppError("销售订单每条明细必须选择仓库", code=422)
@@ -195,20 +195,21 @@ def delete_sales_order(db: Session, order_id: str, context: UserContext) -> None
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的销售订单可以删除", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的销售订单可以删除", code=400)
     order.is_deleted = True
     order.updated_by = context.id
     db.commit()
 
 
-def _transition(db: Session, order_id: str, context: UserContext, expected: str, new_status: str) -> SalesOrder:
+def _transition(db: Session, order_id: str, context: UserContext, expected: str | tuple[str, ...], new_status: str) -> SalesOrder:
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("销售订单不存在", code=404)
     if order.status not in SALES_ORDER_STATUSES:
         raise AppError(f"销售订单状态 {order.status} 不合法", code=409)
-    if order.status != expected:
+    allowed = (expected,) if isinstance(expected, str) else tuple(expected)
+    if order.status not in allowed:
         raise AppError(f"销售订单状态 {order.status} 不允许此操作", code=400)
     if new_status in {"submitted", "approved"}:
         _recalculate_order_totals(order)
@@ -220,7 +221,7 @@ def _transition(db: Session, order_id: str, context: UserContext, expected: str,
 
 
 def submit_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
-    return _transition(db, order_id, context, "draft", "submitted")
+    return _transition(db, order_id, context, ("draft", "rejected"), "submitted")
 
 
 def approve_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
@@ -300,3 +301,16 @@ def create_sales_return(db: Session, payload, context: UserContext) -> SalesRetu
     db.commit()
     db.refresh(result)
     return result
+
+
+def reject_sales_order_manual(db: Session, order_id: str, context: UserContext) -> SalesOrder:
+    """GAP-02: list-page reject, submitted → rejected (editable and re-submittable)."""
+    return _transition(db, order_id, context, "submitted", "rejected")
+
+
+def unapprove_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
+    """GAP-02: 反审核, approved → draft when no downstream 出库单 exists."""
+    downstream = db.scalar(select(SalesDelivery.id).where(SalesDelivery.order_id == order_id, SalesDelivery.status != "cancelled"))
+    if downstream is not None:
+        raise AppError("该销售订单已生成出库单，不能反审核", code=409)
+    return _transition(db, order_id, context, "approved", "draft")

@@ -8,7 +8,9 @@ import {
   createPurchaseReceipt,
   deletePurchaseOrder,
   listPurchaseOrders,
+  rejectPurchaseOrder,
   submitPurchaseOrder,
+  unapprovePurchaseOrder,
   updatePurchaseOrder,
   type PurchaseOrderPayload,
 } from "../../api/purchase";
@@ -63,6 +65,10 @@ function materialLabel(id: unknown) {
 function warehouseLabel(id: unknown) {
   const value = String(id || "");
   return warehouses.value.find((option) => option.value === value)?.label || value || "-";
+}
+
+function hasReceipt(row: Row) {
+  return (row.items || []).some((item: Row) => Number(item.received_quantity || 0) > 0) || Boolean(row.has_receipt);
 }
 
 function itemRows(row: Row) {
@@ -137,14 +143,15 @@ async function removeOrder(row: Row) {
   } finally { actionLoading.value = null; }
 }
 
-async function confirmAction(row: Row, action: "submit" | "approve" | "receipt") {
+async function confirmAction(row: Row, action: "submit" | "approve" | "receipt" | "reject" | "unapprove") {
   const id = String(row.id || "");
   if (!id) { ElMessage.error("订单缺少有效 ID，无法操作"); return; }
-  const labels = { submit: "提交审核", approve: "审核订单", receipt: "创建入库单" };
+  const labels = { submit: "提交审核", approve: "审核订单", receipt: "创建入库单", reject: "驳回订单", unapprove: "反审核订单" };
   try {
     await ElMessageBox.confirm(`确认${labels[action]}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" });
     actionLoading.value = id;
-    const response = action === "submit" ? await submitPurchaseOrder(id) : action === "approve" ? await approvePurchaseOrder(id) : await createPurchaseReceipt(id);
+    const handlers = { submit: submitPurchaseOrder, approve: approvePurchaseOrder, receipt: createPurchaseReceipt, reject: rejectPurchaseOrder, unapprove: unapprovePurchaseOrder };
+    const response = await handlers[action](id);
     if (response.data.code !== 0) throw new Error(response.data.msg);
     ElMessage.success(`${labels[action]}成功`);
     await load();
@@ -163,12 +170,14 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
     <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit :header-cell-style="{ textAlign: 'center' }" :cell-style="{ textAlign: 'center' }">
       <el-table-column prop="doc_no" label="订单号" /><el-table-column label="供应商"><template #default="scope">{{ supplierLabel(scope.row.supplier_id) }}</template></el-table-column><el-table-column label="物料"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-${index}`">{{ materialLabel(item.material_id) }}</div></template></el-table-column><el-table-column label="数量"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-quantity-${index}`">{{ item.quantity }}</div></template></el-table-column><el-table-column label="单价"><template #default="scope"><div v-for="(item, index) in itemRows(scope.row)" :key="item.id || `${item.material_id}-price-${index}`">{{ item.unit_price }}</div></template></el-table-column><el-table-column prop="total_amount" label="含税金额" /><el-table-column label="状态"><template #default="scope"><OrderStatusTag :status="scope.row.status" /></template></el-table-column><el-table-column label="创建时间"><template #default="scope">{{ formatLocalDateTime(scope.row.created_at) }}</template></el-table-column>
-      <el-table-column label="操作" width="300"><template #default="scope">
+      <el-table-column label="操作" width="360"><template #default="scope">
         <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button><el-button link @click="copyToForm(scope.row)">复制填充</el-button>
-        <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
-        <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === scope.row.id" @click="removeOrder(scope.row)">删除</el-button>
-        <el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'submit')">提交</el-button>
+        <el-button v-if="['draft', 'rejected'].includes(scope.row.status)" link type="primary" @click="openEdit(scope.row)">修改</el-button>
+        <el-button v-if="['draft', 'rejected'].includes(scope.row.status)" link type="danger" :loading="actionLoading === scope.row.id" @click="removeOrder(scope.row)">删除</el-button>
+        <el-button v-if="['draft', 'rejected'].includes(scope.row.status)" link type="primary" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'submit')">{{ scope.row.status === 'rejected' ? '重新提交' : '提交' }}</el-button>
         <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'approve')">审核</el-button>
+        <el-button v-if="scope.row.status === 'submitted'" link type="danger" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'reject')">驳回</el-button>
+        <el-button v-if="scope.row.status === 'approved' && !hasReceipt(scope.row)" link type="info" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'unapprove')">反审核</el-button>
         <el-button v-if="['approved', 'partially_received'].includes(scope.row.status)" link type="warning" :loading="actionLoading === scope.row.id" @click="confirmAction(scope.row, 'receipt')">生成入库</el-button>
       </template></el-table-column>
     </el-table>

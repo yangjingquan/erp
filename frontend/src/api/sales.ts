@@ -70,3 +70,6 @@ export function updateSalesReturn(id: string, payload: Record<string, unknown>) 
 export function deleteSalesReturn(id: string) { return http.delete(`/sales/returns/${id}`); }
 export function submitSalesReturn(id: string) { return http.post(`/sales/returns/${id}/submit`); }
 export function completeSalesReturn(id: string) { return http.post(`/sales/returns/${id}/complete`); }
+
+export function rejectSalesOrder(orderId: string) { return http.post(`/sales/orders/${orderId}/reject`); }
+export function unapproveSalesOrder(orderId: string) { return http.post(`/sales/orders/${orderId}/unapprove`); }

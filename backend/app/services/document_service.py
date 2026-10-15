@@ -80,15 +80,17 @@ STATUS_LABELS = {
 ACTION_CONFIG = {
     "sales_order": {
         "draft": [("submit", "提交审核", "primary")],
-        "submitted": [("approve", "审核通过", "success")],
-        "approved": [("create_delivery", "生成出库单", "warning")],
+        "submitted": [("approve", "审核通过", "success"), ("reject", "驳回", "danger")],
+        "approved": [("create_delivery", "生成出库单", "warning"), ("unapprove", "反审核", "info")],
+        "rejected": [("submit", "重新提交", "primary")],
         "partially_delivered": [("create_delivery", "继续出库", "warning")],
     },
     "sales_delivery": {"draft": [("complete", "完成出库", "success")]},
     "purchase_order": {
         "draft": [("submit", "提交审核", "primary")],
-        "submitted": [("approve", "审核通过", "success")],
-        "approved": [("create_receipt", "生成入库单", "warning")],
+        "submitted": [("approve", "审核通过", "success"), ("reject", "驳回", "danger")],
+        "approved": [("create_receipt", "生成入库单", "warning"), ("unapprove", "反审核", "info")],
+        "rejected": [("submit", "重新提交", "primary")],
         "partially_received": [("create_receipt", "继续入库", "warning")],
     },
     "purchase_receipt": {"draft": [("complete", "完成入库", "success")]},
@@ -326,6 +328,12 @@ def _available_actions(db: Session, row: BizDocument) -> list[tuple[str, str, st
         ))
         if delivery_exists is not None:
             actions = [action for action in actions if action[0] != "create_delivery"]
+    if row.business_type in {"sales_order", "purchase_order"} and row.status == "approved":
+        from app.models.purchase import PurchaseReceipt
+        model = SalesDelivery if row.business_type == "sales_order" else PurchaseReceipt
+        downstream = db.scalar(select(model.id).where(model.org_id == row.org_id, model.order_id == row.business_id, model.status != "cancelled"))
+        if downstream is not None:
+            actions = [action for action in actions if action[0] != "unapprove"]
     return actions
 
 
@@ -633,6 +641,14 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
             document = _sync_row(db, business_type, result)
             db.commit()
             return {"document": _serialize_document(document, context, db)}
+        if command in {"reject", "unapprove"}:
+            from app.services.sales_service import reject_sales_order_manual, unapprove_sales_order
+            if command == "reject" and has_running_workflow(db, "sales_order", business_id, context):
+                raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+            result = reject_sales_order_manual(db, business_id, context) if command == "reject" else unapprove_sales_order(db, business_id, context)
+            document = _sync_row(db, business_type, result)
+            db.commit()
+            return {"document": _serialize_document(document, context, db)}
         if command == "create_delivery":
             result = create_delivery_from_order(db, business_id, context)
             _sync_row(db, "sales_delivery", result)
@@ -660,6 +676,14 @@ def execute_command(db: Session, context: UserContext, business_type: str, busin
             if has_running_workflow(db, "purchase_order", business_id, context):
                 raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
             result = approve_purchase_order(db, business_id, context)
+        elif command == "reject":
+            from app.services.purchase_service import reject_purchase_order_manual
+            if has_running_workflow(db, "purchase_order", business_id, context):
+                raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+            result = reject_purchase_order_manual(db, business_id, context)
+        elif command == "unapprove":
+            from app.services.purchase_service import unapprove_purchase_order
+            result = unapprove_purchase_order(db, business_id, context)
         elif command == "create_receipt":
             result = create_receipt_from_order(db, business_id, context)
             _sync_row(db, "purchase_receipt", result)

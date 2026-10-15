@@ -136,3 +136,21 @@ def complete_delivery(delivery_id: str, context: UserContext = Depends(require_p
     receivable = create_receivable_from_sales_delivery(db, delivery.id, context)
     db.commit()
     return ok({"delivery_id": delivery.id, "status": delivery.status, "receivable_id": receivable.id})
+
+
+@router.post("/orders/{order_id}/reject")
+def reject_order_manual(order_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 列表驳回（submitted → rejected）。审批流中的单据请在我的待办处理。"""
+    from app.services.sales_service import reject_sales_order_manual, serialize_order as _serialize
+
+    if has_running_workflow(db, "sales_order", order_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+    return ok(_serialize(reject_sales_order_manual(db, order_id, context)), "订单已驳回")
+
+
+@router.post("/orders/{order_id}/unapprove")
+def unapprove_order(order_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 反审核（approved 且无下游单据 → draft）。"""
+    from app.services.sales_service import serialize_order as _serialize, unapprove_sales_order
+
+    return ok(_serialize(unapprove_sales_order(db, order_id, context)), "订单已反审核")
