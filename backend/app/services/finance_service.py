@@ -562,11 +562,28 @@ def _money(value: Decimal) -> str:
     return str(value)
 
 
+def _party_names(db: Session, context: UserContext, model, ids) -> dict[str, tuple[str, str]]:
+    """GAP-11: map customer/supplier id → (code, name) for list display and name filtering."""
+    ids = {value for value in ids if value}
+    if not ids:
+        return {}
+    rows = db.execute(select(model.id, model.code, model.name).where(model.org_id == context.org_id, model.id.in_(ids))).all()
+    return {row.id: (row.code, row.name) for row in rows}
+
+
+def _with_party(items: list[dict], names: dict, key: str) -> list[dict]:
+    for item in items:
+        code, name = names.get(item.get(f"{key}_id"), ("", ""))
+        item[f"{key}_code"] = code
+        item[f"{key}_name"] = name or item.get(f"{key}_id")
+    return items
+
+
 def list_receivables(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(
         select(SalesReceivable).where(SalesReceivable.org_id == context.org_id).order_by(SalesReceivable.id.desc())
     ).all()
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -580,13 +597,15 @@ def list_receivables(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdCustomer
+    return _with_party(items, _party_names(db, context, MdCustomer, [item["customer_id"] for item in items]), "customer")
 
 
 def list_payables(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(
         select(PurchasePayable).where(PurchasePayable.org_id == context.org_id).order_by(PurchasePayable.id.desc())
     ).all()
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -600,6 +619,8 @@ def list_payables(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdSupplier
+    return _with_party(items, _party_names(db, context, MdSupplier, [item["supplier_id"] for item in items]), "supplier")
 
 
 def _voucher_source_ids(db: Session, context: UserContext, source_type: str) -> set[str]:
@@ -609,7 +630,7 @@ def _voucher_source_ids(db: Session, context: UserContext, source_type: str) -> 
 def list_receipts(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinReceipt).where(FinReceipt.org_id == context.org_id).order_by(FinReceipt.id.desc())).all()
     voucher_ids = _voucher_source_ids(db, context, "receipt")
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -623,12 +644,14 @@ def list_receipts(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdCustomer
+    return _with_party(items, _party_names(db, context, MdCustomer, [item["customer_id"] for item in items]), "customer")
 
 
 def list_payments(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinPayment).where(FinPayment.org_id == context.org_id).order_by(FinPayment.id.desc())).all()
     voucher_ids = _voucher_source_ids(db, context, "payment")
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -642,6 +665,8 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdSupplier
+    return _with_party(items, _party_names(db, context, MdSupplier, [item["supplier_id"] for item in items]), "supplier")
 
 
 def list_expenses(db: Session, context: UserContext) -> list[dict]:
