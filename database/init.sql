@@ -2529,7 +2529,8 @@ INSERT INTO cfg_global_parameter (id, org_id, parameter_key, parameter_value, va
 VALUES
 ('50000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000001', 'inventory.costing_method', 'weighted_average', 'string', '库存成本计价方法'),
 ('50000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'mfg.allow_over_issue', 'false', 'boolean', '生产领料是否允许超发'),
-('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'qa.inspection_required', 'true', 'boolean', '质量检验是否必填')
+('50000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000001', 'qa.inspection_required', 'true', 'boolean', '质量检验是否必填'),
+('50000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000001', 'inventory.allow_negative_stock', 'false', 'boolean', '库存是否允许负数出库')
 ON DUPLICATE KEY UPDATE parameter_value = VALUES(parameter_value), value_type = VALUES(value_type), description = VALUES(description);
 
 INSERT INTO ext_module_registry (id, module_key, module_name, phase, enabled)

@@ -743,3 +743,19 @@ def sanitize_leave_request_seed(db: Session) -> None:
             changed = True
     if changed:
         db.commit()
+
+
+def ensure_negative_stock_parameter(db: Session) -> None:
+    """GAP-08: expose ``inventory.allow_negative_stock`` (default 否) next to the costing method.
+
+    Only inserts the parameter row when missing; never touches stock balances.
+    """
+    from sqlalchemy import select
+
+    from app.models.configuration import CfgGlobalParameter
+
+    org_ids = set(db.scalars(select(CfgGlobalParameter.org_id).where(CfgGlobalParameter.parameter_key == "inventory.costing_method")).all())
+    existing = set(db.scalars(select(CfgGlobalParameter.org_id).where(CfgGlobalParameter.parameter_key == "inventory.allow_negative_stock")).all())
+    for org_id in org_ids - existing:
+        db.add(CfgGlobalParameter(org_id=org_id, parameter_key="inventory.allow_negative_stock", parameter_value="false", value_type="boolean", description="库存是否允许负数出库"))
+    db.commit()
