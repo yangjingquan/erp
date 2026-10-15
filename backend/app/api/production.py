@@ -350,6 +350,13 @@ def run_mrp_api(mps_id: str, context: UserContext = Depends(require_permission("
     return ok(serialize_mrp_run(run))
 
 
+@router.get("/mrp-runs")
+def list_mrp_runs_alias(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Compatibility alias: MRP run list is served by plan-runs. Prefer GET /production/plan-runs."""
+    rows = list_plan_runs(db, context)
+    return ok({"items": rows, "total": len(rows), "page": 1, "page_size": len(rows), "summary": {"runs": len(rows), "alias_of": "/production/plan-runs"}})
+
+
 @router.get("/mrp-runs/{run_id}")
 def mrp_run_detail(run_id: str, context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     return ok(serialize_mrp_run(_get_mrp_run(db, run_id, context)))

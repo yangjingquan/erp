@@ -93,6 +93,9 @@ def calculate_project_cost(db: Session, project_id: str, period: str, context: U
 
 
 def close_period(db: Session, org_id: str, period: str, context: UserContext) -> CostPeriodClose:
+    from app.services.ledger_service import reject_closing_current_natural_month
+
+    reject_closing_current_natural_month(period)
     negative = db.scalar(select(InvStock.id).where(InvStock.org_id == org_id, InvStock.quantity < 0))
     if negative is not None:
         raise AppError("存在负库存，不能结账", code=400)

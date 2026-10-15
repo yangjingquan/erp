@@ -48,6 +48,7 @@ export const createServiceVisit = (payload: unknown) => http.post("/phase2/servi
 export const listServiceVisits = (caseId?: string) => http.get("/phase2/service/visits", { params: caseId ? { case_id: caseId } : undefined });
 export const updateServiceVisit = (id: string, payload: unknown) => http.put(`/phase2/service/visits/${id}`, payload);
 
+// Canonical leave path (not /hr/leave-requests).
 export const listLeaveRequests = () => http.get("/phase2/hr/leave-requests");
 export const listAttendance = (attendanceDate?: string) => http.get("/phase2/hr/attendance", { params: attendanceDate ? { attendance_date: attendanceDate } : undefined });
 export const createLeaveRequest = (payload: unknown) => http.post("/phase2/hr/leave-requests", payload);

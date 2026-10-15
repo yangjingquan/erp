@@ -121,7 +121,7 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
 </script>
 
 <template>
-  <el-container class="admin-layout">
+  <el-container data-erp-ready="1" class="admin-layout">
     <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar">
       <div class="brand">
         <span class="brand-mark">ERP</span>

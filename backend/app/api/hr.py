@@ -6,8 +6,10 @@ from app.core.database import get_db
 from app.core.exceptions import AppError
 from app.core.response import ok
 from app.schemas.hr import EmployeeCreate, EmployeePasswordUpdate, EmployeeUpdate, AttendanceCreate
+from app.schemas.phase2 import LeaveRequestCreate
 from app.services.auth_service import UserContext
 from app.services.hr_service import *
+from app.services import phase2_service as phase2
 from app.models.hr import HrEmployee, HrPayroll
 from app.models.system import SysUser
 router=APIRouter(prefix="/api/hr",tags=["hr"])
@@ -47,3 +49,25 @@ def payroll_details(payroll_id: str, context: UserContext = Depends(get_current_
 def approve(payroll_id:str,context:UserContext=Depends(require_permission("hr:salary:manage")),db:Session=Depends(get_db)): row=approve_payroll(db,payroll_id,context);db.commit();return ok({"id":row.id,"status":row.status})
 @router.post("/payroll/{payroll_id}/pay")
 def pay(payroll_id:str,context:UserContext=Depends(require_permission("hr:salary:manage")),db:Session=Depends(get_db)): row=pay_payroll(db,payroll_id,context);db.commit();return ok({"id":row.id,"status":row.status})
+
+
+@router.get("/leave-requests")
+def leave_requests_alias(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Compatibility alias. Canonical path: GET /api/phase2/hr/leave-requests."""
+    return ok(phase2.list_leave_requests(db, context))
+
+
+@router.post("/leave-requests")
+def create_leave_alias(payload: LeaveRequestCreate, context: UserContext = Depends(require_permission("hr:employee:manage")), db: Session = Depends(get_db)):
+    """Compatibility alias. Canonical path: POST /api/phase2/hr/leave-requests."""
+    row = phase2.create_leave_request(db, payload, context)
+    db.commit()
+    return ok(phase2._row(row, ["employee_id", "leave_type", "start_date", "end_date", "reason", "status"]))
+
+
+@router.post("/leave-requests/{leave_id}/transition/{status}")
+def transition_leave_alias(leave_id: str, status: str, context: UserContext = Depends(require_permission("hr:employee:manage")), db: Session = Depends(get_db)):
+    """Compatibility alias. Canonical path: POST /api/phase2/hr/leave-requests/{id}/transition/{status}."""
+    row = phase2.transition_leave_request(db, leave_id, status, context)
+    db.commit()
+    return ok(phase2._row(row, ["employee_id", "leave_type", "start_date", "end_date", "status", "approved_by"]))

@@ -86,7 +86,10 @@ STATUS_POOLS: dict[str, dict[str, list[str]]] = {
     "crm_lead": {"status": ["new", "contacted", "qualified", "converted", "lost"]},
     "crm_opportunity": {"stage": ["new", "prospecting", "negotiation", "won", "lost"]},
     "hr_employee": {"status": ["active", "inactive"]},
-    "hr_leave_request": {"status": ["draft", "submitted", "approved", "rejected"]},
+    "hr_leave_request": {
+        "status": ["draft", "submitted", "approved", "rejected"],
+        "leave_type": ["annual", "sick", "personal", "compensatory"],
+    },
     "hr_attendance": {"status": ["present", "absent", "late", "leave"]},
     "hr_payroll_run": {"status": ["draft", "approved", "paid"]},
     "hr_recruitment_candidate": {"status": ["new", "interview", "hired", "rejected"]},
@@ -140,6 +143,7 @@ STATUS_POOLS: dict[str, dict[str, list[str]]] = {
 
 # Fallback pools for enum-style columns that are not listed per-table above.
 ENUM_FALLBACK: dict[str, list[str]] = {
+    "leave_type": ["annual", "sick", "personal", "compensatory"],
     "status": ["active", "inactive"],
     "stage": ["new", "prospecting", "negotiation", "won"],
     "severity": ["low", "medium", "high"],
@@ -171,9 +175,27 @@ ENUM_FALLBACK: dict[str, list[str]] = {
 }
 
 
+# Document / order workflow tables must never seed the master-data sentinel "active".
+DOCUMENT_WORKFLOW_TABLES = frozenset({
+    "sales_quote", "sales_order", "sales_delivery", "sales_return",
+    "purchase_request", "purchase_order", "purchase_receipt", "purchase_return",
+    "hr_leave_request", "fin_expense", "fin_voucher", "biz_document",
+    "inv_transfer", "inv_count", "mfg_work_order", "mfg_bom",
+})
+DOCUMENT_STATUS_FALLBACK = ["draft", "submitted", "approved", "completed"]
+
+
 def enum_value(table_name: str, key: str, index: int) -> str:
-    pool = STATUS_POOLS.get(table_name, {}).get(key) or ENUM_FALLBACK.get(key, ["active"])
-    return pool[(index - 1) % len(pool)]
+    pool = STATUS_POOLS.get(table_name, {}).get(key)
+    if not pool and key == "status" and table_name in DOCUMENT_WORKFLOW_TABLES:
+        pool = DOCUMENT_STATUS_FALLBACK
+    if not pool:
+        pool = ENUM_FALLBACK.get(key, ["active"])
+    value = pool[(index - 1) % len(pool)]
+    # Hard stop: never write illegal "active" into document workflow status columns.
+    if key == "status" and table_name in DOCUMENT_WORKFLOW_TABLES and value == "active":
+        value = DOCUMENT_STATUS_FALLBACK[(index - 1) % len(DOCUMENT_STATUS_FALLBACK)]
+    return value
 
 
 def table_rows(table: Table, index: int) -> dict[str, object]:
@@ -245,7 +267,7 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
             row[key] = (index % 20) + 1
         elif key in {"amount", "total_amount", "actual_amount", "budget_amount", "original_value", "accumulated_depreciation", "standard_cost", "sale_price", "purchase_price", "credit_limit", "quote_amount", "processing_fee", "processing_fee_amount", "inflow_amount", "outflow_amount", "net_amount", "total_debit", "total_credit", "debit_amount", "credit_amount", "value", "freight_amount", "statement_amount", "reconciled_amount", "matched_amount", "unit_cost", "total_cost", "material_cost", "labor_cost", "overhead_cost", "subcontract_cost", "scrap_cost", "variance_amount", "actual_unit_cost", "base_salary", "allowance", "score", "target", "rate", "tax_amount", "delivery_score", "quality_score", "service_score", "total_score", "defect_rate", "sample_value", "lsl", "usl", "cpk", "impact_quantity", "quantity", "min_stock", "max_stock", "plan_quantity", "receivable_amount", "payable_amount", "residual_rate", "efficiency_rate", "labor_rate", "overhead_rate", "required_quantity", "issued_quantity", "returned_quantity", "completed_quantity", "reported_good_quantity", "reported_scrap_quantity", "planned_quantity", "good_quantity", "scrap_quantity", "hours", "scheduled_hours", "actual_hours", "original_quantity", "remaining_quantity", "released_quantity", "locked_quantity", "available_quantity", "average_cost", "estimated_price", "unit_price", "tax_rate"}:
             row[key] = Decimal(str(10 + index * 3))
-        elif key in {"status", "result", "disposition", "severity", "stage", "account_type", "balance_direction", "dimension_type", "depreciation_method", "basis", "source_type", "statement_type", "match_type", "direction", "task_type", "order_type", "inspection_type", "change_type", "object_type", "service_type", "invoice_type", "event_type", "membership_type", "action_type", "notification_type", "document_type", "visibility", "reset_cycle"}:
+        elif key in {"status", "leave_type", "result", "disposition", "severity", "stage", "account_type", "balance_direction", "dimension_type", "depreciation_method", "basis", "source_type", "statement_type", "match_type", "direction", "task_type", "order_type", "inspection_type", "change_type", "object_type", "service_type", "invoice_type", "event_type", "membership_type", "action_type", "notification_type", "document_type", "visibility", "reset_cycle"}:
             row[key] = enum_value(name, key, index)
         else:
             row[key] = f"{name.replace('_', ' ').title()} {index:02d}"
@@ -321,8 +343,29 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
     if name == "wf_task":
         row["node_key"] = "node-1"
         row["status"] = "pending"
+    if name == "md_material":
+        # Keep demo inventory warnings in single-digit range: only a few SKUs
+        # carry a meaningful safety stock, and most materials use min_stock=0
+        # (ignored by warning rules that require min_stock > 0).
+        if index <= 3:
+            row["min_stock"] = Decimal("80")
+            row["max_stock"] = Decimal("500")
+        else:
+            row["min_stock"] = Decimal("0")
+            row["max_stock"] = Decimal(str(200 + index * 5))
+    if name == "hr_leave_request":
+        row["leave_type"] = enum_value(name, "leave_type", index)
+        row["status"] = enum_value(name, "status", index)
+        row["reason"] = f"示例请假事由-{enum_value(name, 'leave_type', index)}-{index:02d}"
     if name == "inv_stock":
         row["locked_quantity"] = Decimal("0")
+        # Stocks for materials 1..3 stay intentionally below min_stock (80)
+        # so the dashboard shows a handful of warnings; others stay healthy.
+        material_index = (index % 40) + 1
+        if material_index <= 3:
+            row["quantity"] = Decimal("20")
+        else:
+            row["quantity"] = Decimal(str(120 + index * 2))
         row["available_quantity"] = row["quantity"]
     if name == "inv_stock_transaction":
         row["direction"] = "in"

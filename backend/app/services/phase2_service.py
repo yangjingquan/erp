@@ -731,9 +731,15 @@ def list_attendance(db, context, attendance_date=None):
     return [_row(row, ["employee_id", "attendance_date", "status"]) for row in rows]
 
 
+LEAVE_TYPES = frozenset({"annual", "sick", "personal", "compensatory"})
+LEAVE_STATUSES = frozenset({"draft", "submitted", "approved", "rejected", "cancelled"})
+
+
 def create_leave_request(db, payload, context):
     if payload.end_date < payload.start_date:
         raise AppError("请假结束日期不能早于开始日期", code=422)
+    if payload.leave_type not in LEAVE_TYPES:
+        raise AppError("请假类型不合法，允许：annual/sick/personal/compensatory", code=422)
     row = HrLeaveRequest(org_id=context.org_id, **payload.model_dump(), status="draft")
     db.add(row); db.flush(); return row
 
