@@ -199,7 +199,7 @@ class MembershipUpdate(BaseModel):
 
 class LeaveRequestCreate(BaseModel):
     employee_id: str = Field(min_length=1, max_length=36)
-    leave_type: str = Field(min_length=1, max_length=64)
+    leave_type: Literal["annual", "sick", "personal", "compensatory"] = "annual"
     start_date: date
     end_date: date
     reason: str = Field(default="", max_length=500)

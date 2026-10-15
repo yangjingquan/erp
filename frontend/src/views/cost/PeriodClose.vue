@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 
 import { closePeriod, reopenPeriod } from "../../api/cost";
 import { usePermissionStore } from "../../stores/permission";
+import { localMonthString } from "../../utils/time";
 
 const period = ref("");
 const actionLoading = ref<"close" | "reopen" | null>(null);
@@ -20,6 +21,10 @@ function validPeriod() {
 
 async function close() {
   if (!validPeriod()) return;
+  if (period.value === localMonthString()) {
+    ElMessage.warning(`不能关闭当前自然月会计期间 ${period.value}，请待该月结束后再结账，以免阻塞入库/出库等业务过账`);
+    return;
+  }
   try {
     await ElMessageBox.confirm(`确认关闭 ${period.value} 期间吗？`, "确认结账", { type: "warning" });
     actionLoading.value = "close";
@@ -58,7 +63,7 @@ async function reopen() {
         <el-button type="primary" :loading="actionLoading === 'close'" :disabled="Boolean(actionLoading)" @click="close">结账</el-button>
         <el-button v-if="canReopen" type="warning" :loading="actionLoading === 'reopen'" :disabled="Boolean(actionLoading)" @click="reopen">重开</el-button>
       </el-space>
-      <el-alert class="permission-hint" title="重开会计期间需要 cost:period:reopen 权限。" type="info" :closable="false" />
+      <el-alert class="permission-hint" title="当前自然月禁止结账；重开会计期间需要 cost:period:reopen 权限。" type="info" :closable="false" />
     </el-card>
   </section>
 </template>

@@ -227,7 +227,18 @@ def create_period(db: Session, payload, context: UserContext) -> FinFiscalPeriod
     return row
 
 
+def reject_closing_current_natural_month(period: str) -> None:
+    """Forbid closing the current natural month so inventory/finance posting is not blocked mid-month."""
+    current = local_today().strftime("%Y-%m")
+    if period == current:
+        raise AppError(
+            f"不能关闭当前自然月会计期间 {period}，请待该月结束后再结账，以免阻塞入库/出库等业务过账",
+            code=409,
+        )
+
+
 def close_fiscal_period(db: Session, period: str, context: UserContext) -> FinFiscalPeriod:
+    reject_closing_current_natural_month(period)
     row = get_or_create_period(db, context.org_id, period)
     if row.status == "closed":
         return row
@@ -235,7 +246,7 @@ def close_fiscal_period(db: Session, period: str, context: UserContext) -> FinFi
         FinVoucher.org_id == context.org_id, FinVoucher.period == period, FinVoucher.status == "draft",
     )) or 0
     if draft_count:
-        raise AppError(f"期间内仍有 {draft_count} 张未记账凭证", code=409)
+        raise AppError(f"期间内仍有 {draft_count} 张未记账凭证，请先过账或作废后再关账", code=409)
     row.status = "closed"
     row.closed_at = local_now()
     row.closed_by = context.id

@@ -6,6 +6,7 @@ export const importBoms = (payload: unknown[]) => http.post("/production/boms/im
 export const submitBom = (id: string) => http.post(`/production/boms/${id}/submit`);
 export const approveBom = (id: string) => http.post(`/production/boms/${id}/approve`);
 export const disableBom = (id: string) => http.post(`/production/boms/${id}/disable`);
+// Canonical MPS path.
 export const listMps = () => http.get("/production/mps");
 export const createMps = (payload: unknown) => http.post("/production/mps", payload);
 export const runMrp = (id: string) => http.post(`/production/mps/${id}/run-mrp`);
@@ -39,6 +40,7 @@ export const approveRouting = (id: string) => http.post(`/production/routings/${
 export const disableRouting = (id: string) => http.post(`/production/routings/${id}/disable`);
 export const listDemandLines = () => http.get("/production/demand-lines");
 export const createDemandLine = (payload: unknown) => http.post("/production/demand-lines", payload);
+// Canonical MRP / planning list path (do not use /production/mrp-runs for lists).
 export const listPlanRuns = () => http.get("/production/plan-runs");
 export const createPlanRun = (payload: unknown) => http.post("/production/plan-runs", payload);
 export const getPlanRun = (id: string) => http.get(`/production/plan-runs/${id}`);

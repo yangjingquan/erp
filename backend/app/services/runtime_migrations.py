@@ -654,3 +654,92 @@ def ensure_wms_closure_schema(db: Session) -> None:
         db.execute(text(statement))
     if statements:
         db.commit()
+
+
+def remap_document_active_status(db: Session) -> None:
+    """Normalize legacy demo rows that stored workflow status as 'active'.
+
+    Order/document status machines use draft/submitted/approved/... Master-data
+    'active' is not a valid workflow state and caused the frontend to render
+    「未知状态」. Map historical 'active' rows to 'approved' (生效中单据).
+    """
+    inspector = inspect(db.bind)
+    tables = set(inspector.get_table_names())
+    targets = (
+        "sales_quote", "sales_order", "sales_delivery", "sales_return",
+        "purchase_request", "purchase_order", "purchase_receipt", "purchase_return",
+        "hr_leave_request", "fin_expense", "inv_transfer", "inv_count",
+        "biz_document",
+    )
+    changed = False
+    for table in targets:
+        if table not in tables:
+            continue
+        columns = {column["name"] for column in inspector.get_columns(table)}
+        if "status" not in columns:
+            continue
+        set_clause = "status = 'approved'"
+        if "version" in columns:
+            set_clause += ", version = version + 1"
+        result = db.execute(text(f"UPDATE {table} SET {set_clause} WHERE status = 'active'"))
+        if result.rowcount:
+            changed = True
+    if changed:
+        db.commit()
+
+
+def calibrate_demo_min_stock(db: Session) -> None:
+    """Bring noisy demo safety-stock thresholds down to a handful of warnings.
+
+    Historical seeds set every material's min_stock to a rising series, so nearly
+    every stock row fired the dashboard warning. Keep the first three materials
+    as intentional low-stock samples and zero out the rest when they look like
+    the default demo pattern (min_stock > 0 and code like MAT-xxxx).
+    """
+    inspector = inspect(db.bind)
+    if "md_material" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("md_material")}
+    if not {"min_stock", "code", "status"}.issubset(columns):
+        return
+    # Zero out high demo thresholds except a small sample set.
+    db.execute(text(
+        "UPDATE md_material SET min_stock = 0 "
+        "WHERE is_deleted = 0 AND min_stock > 0 "
+        "AND code LIKE 'MAT-%' "
+        "AND code NOT IN ('MAT-0001', 'MAT-0002', 'MAT-0003')"
+    ))
+    db.execute(text(
+        "UPDATE md_material SET min_stock = 80, max_stock = CASE WHEN max_stock < 80 THEN 500 ELSE max_stock END "
+        "WHERE is_deleted = 0 AND code IN ('MAT-0001', 'MAT-0002', 'MAT-0003')"
+    ))
+    db.commit()
+
+
+def sanitize_leave_request_seed(db: Session) -> None:
+    """Normalize dirty demo leave_type / status values on hr_leave_request."""
+    inspector = inspect(db.bind)
+    if "hr_leave_request" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("hr_leave_request")}
+    if "leave_type" not in columns or "status" not in columns:
+        return
+    # Map placeholder English titles / unknown types onto the legal enum by hash of id.
+    types = ["annual", "sick", "personal", "compensatory"]
+    rows = db.execute(text(
+        "SELECT id, leave_type, status FROM hr_leave_request WHERE is_deleted = 0"
+    )).mappings().all()
+    changed = False
+    for row in rows:
+        leave_type = str(row["leave_type"] or "")
+        status = str(row["status"] or "")
+        new_type = leave_type if leave_type in types else types[sum(ord(c) for c in str(row["id"])) % len(types)]
+        new_status = status if status in {"draft", "submitted", "approved", "rejected", "cancelled"} else "draft"
+        if new_type != leave_type or new_status != status:
+            db.execute(
+                text("UPDATE hr_leave_request SET leave_type = :lt, status = :st WHERE id = :id"),
+                {"lt": new_type, "st": new_status, "id": row["id"]},
+            )
+            changed = True
+    if changed:
+        db.commit()

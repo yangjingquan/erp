@@ -458,7 +458,11 @@ def list_safety_warnings(db: Session, context: UserContext) -> list[dict]:
     statement = _apply_warehouse_scope(
         select(InvStock, MdMaterial)
         .join(MdMaterial, MdMaterial.id == InvStock.material_id)
-        .where(InvStock.org_id == context.org_id, InvStock.available_quantity < MdMaterial.min_stock),
+        .where(
+            InvStock.org_id == context.org_id,
+            MdMaterial.min_stock > 0,
+            InvStock.available_quantity < MdMaterial.min_stock,
+        ),
         InvStock.warehouse_id,
         context,
     )
