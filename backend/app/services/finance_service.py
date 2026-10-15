@@ -124,6 +124,70 @@ def create_payable_from_subcontract_receipt(
     return payable
 
 
+def _offset_red_document(red, source) -> None:
+    """Net a red (negative) AR/AP document against the open balance of its source document."""
+    if source is None:
+        return
+    open_balance = Decimal(source.total_amount) - Decimal(source.reconciled_amount)
+    offset = min(open_balance, -Decimal(red.total_amount))
+    if offset <= 0:
+        return
+    source.reconciled_amount = Decimal(source.reconciled_amount) + offset
+    source.status = "settled" if source.reconciled_amount >= source.total_amount else "partial"
+    red.reconciled_amount = Decimal(red.reconciled_amount) - offset
+    red.status = "settled" if red.reconciled_amount <= red.total_amount else "partial"
+
+
+def create_red_receivable_from_sales_return(db: Session, return_id: str, context: UserContext) -> SalesReceivable:
+    """GAP-05: 销售退货完成 → 红字应收（负数）冲减原出库应收，并生成反向凭证。"""
+    from app.models.sales import SalesReturn
+
+    row = db.get(SalesReturn, return_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("销售退货单不存在", code=404)
+    existing = db.scalar(select(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.source_type == "sales_return", SalesReceivable.source_id == row.id))
+    if existing is None:
+        existing = SalesReceivable(
+            org_id=context.org_id, doc_no=f"AR-RED-{row.doc_no}", customer_id=row.customer_id,
+            source_type="sales_return", source_id=row.id, total_amount=-Decimal(row.total_amount),
+            reconciled_amount=Decimal("0"), status="open",
+        )
+        db.add(existing)
+        db.flush()
+        source = None
+        if row.source_delivery_id:
+            source = db.scalar(select(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.source_type == "sales_delivery", SalesReceivable.source_id == row.source_delivery_id))
+        _offset_red_document(existing, source)
+        db.flush()
+    auto_generate_voucher(db, "sales_return", row.id, context)
+    return existing
+
+
+def create_red_payable_from_purchase_return(db: Session, return_id: str, context: UserContext) -> PurchasePayable:
+    """GAP-05: 采购退货完成 → 红字应付（负数）冲减原入库应付，并生成反向凭证。"""
+    from app.models.purchase import PurchaseReturn
+
+    row = db.get(PurchaseReturn, return_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("采购退货单不存在", code=404)
+    existing = db.scalar(select(PurchasePayable).where(PurchasePayable.org_id == context.org_id, PurchasePayable.source_type == "purchase_return", PurchasePayable.source_id == row.id))
+    if existing is None:
+        existing = PurchasePayable(
+            org_id=context.org_id, doc_no=f"AP-RED-{row.doc_no}", supplier_id=row.supplier_id,
+            source_type="purchase_return", source_id=row.id, total_amount=-Decimal(row.total_amount),
+            reconciled_amount=Decimal("0"), status="open",
+        )
+        db.add(existing)
+        db.flush()
+        source = None
+        if row.source_receipt_id:
+            source = db.scalar(select(PurchasePayable).where(PurchasePayable.org_id == context.org_id, PurchasePayable.source_type == "purchase_receipt", PurchasePayable.source_id == row.source_receipt_id))
+        _offset_red_document(existing, source)
+        db.flush()
+    auto_generate_voucher(db, "purchase_return", row.id, context)
+    return existing
+
+
 def create_receipt(db: Session, context: UserContext, *, customer_id: str, amount: Decimal) -> FinReceipt:
     from app.services.ledger_service import assert_fiscal_period_open
 
@@ -140,6 +204,8 @@ def create_receipt(db: Session, context: UserContext, *, customer_id: str, amoun
     )
     db.add(receipt)
     db.flush()
+    # GAP-04: 收款即生成凭证 借1002 银行存款 / 贷1122 应收账款。
+    auto_generate_voucher(db, "receipt", receipt.id, context)
     return receipt
 
 
@@ -168,6 +234,9 @@ def reconcile_receivable(db: Session, receipt_id: str, receivable_id: str, amoun
     receipt_reconciled = sum(item.amount for item in receipt.reconciles) + amount
     receipt.status = "settled" if receipt_reconciled == receipt.amount else "partial"
     db.flush()
+    # GAP-04: 收款凭证已贷记 1122，核销只做辅助账对冲，不重复过账；
+    # 历史收款若缺凭证，在核销时补生成（幂等）。
+    auto_generate_voucher(db, "receipt", receipt.id, context)
 
 
 def create_payment(db: Session, context: UserContext, *, supplier_id: str, amount: Decimal) -> FinPayment:
@@ -186,6 +255,8 @@ def create_payment(db: Session, context: UserContext, *, supplier_id: str, amoun
     )
     db.add(payment)
     db.flush()
+    # GAP-04: 付款即生成凭证 借2202 应付账款 / 贷1002 银行存款。
+    auto_generate_voucher(db, "payment", payment.id, context)
     return payment
 
 
@@ -217,6 +288,8 @@ def reconcile_payable(db: Session, payment_id: str, payable_id: str, amount: Dec
     payment_reconciled += amount
     payment.status = "settled" if payment_reconciled == payment.amount else "partial"
     db.flush()
+    # GAP-04: 同收款，付款凭证缺失时在核销时补生成（幂等）。
+    auto_generate_voucher(db, "payment", payment.id, context)
 
 
 def create_expense(db: Session, context: UserContext, *, amount: Decimal, expense_type: str, description: str = "") -> FinExpense:
@@ -291,6 +364,18 @@ def approve_expense(db: Session, expense_id: str, context: UserContext) -> FinEx
     if expense.status != "draft":
         raise AppError("报销单当前不可审核", code=400)
     expense.status = "approved"
+    db.flush()
+    return expense
+
+
+def reject_expense(db: Session, expense_id: str, context: UserContext) -> FinExpense:
+    """GAP-10: 审批流驳回报销单 → rejected。"""
+    expense = db.get(FinExpense, expense_id)
+    if expense is None or expense.org_id != context.org_id:
+        raise AppError("报销单不存在", code=404)
+    if expense.status != "draft":
+        raise AppError("报销单当前不可驳回", code=400)
+    expense.status = "rejected"
     db.flush()
     return expense
 
@@ -374,6 +459,45 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
             FinVoucherEntry(line_no=1, account_code="5001", account_name="生产成本", summary="委外加工费", debit_amount=amount, credit_amount=0),
             FinVoucherEntry(line_no=2, account_code="2202", account_name="应付账款", summary="委外应付", debit_amount=0, credit_amount=amount),
         ]
+    elif source_type == "sales_return":
+        # GAP-05: 销售退货反向凭证（冲回销售出库凭证 借1122/贷6001）。
+        from app.models.sales import SalesReturn
+        source = db.get(SalesReturn, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="6001", account_name="主营业务收入", summary="销售退货冲减收入", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="1122", account_name="应收账款", summary="销售退货冲减应收", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "purchase_return":
+        # GAP-05: 采购退货反向凭证（冲回采购入库凭证 借1403/贷2202）。
+        from app.models.purchase import PurchaseReturn
+        source = db.get(PurchaseReturn, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="2202", account_name="应付账款", summary="采购退货冲减应付", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="1403", account_name="原材料", summary="采购退货", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type in {"payroll_accrual", "payroll"}:
+        # GAP-06: 薪资计提（审批）借6602/贷2211；薪资发放（支付）借2211/贷1002。
+        from app.models.hr import HrPayroll
+        source = db.get(HrPayroll, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        if source_type == "payroll_accrual":
+            entries = [
+                FinVoucherEntry(line_no=1, account_code="6602", account_name="管理费用", summary=f"计提{source.period}工资", debit_amount=amount, credit_amount=0),
+                FinVoucherEntry(line_no=2, account_code="2211", account_name="应付职工薪酬", summary=f"计提{source.period}工资", debit_amount=0, credit_amount=amount),
+            ]
+        else:
+            entries = [
+                FinVoucherEntry(line_no=1, account_code="2211", account_name="应付职工薪酬", summary=f"发放{source.period}工资", debit_amount=amount, credit_amount=0),
+                FinVoucherEntry(line_no=2, account_code="1002", account_name="银行存款", summary=f"发放{source.period}工资", debit_amount=0, credit_amount=amount),
+            ]
     elif source_type == "allocation":
         from app.models.cost import CostAllocation
         source = db.get(CostAllocation, source_id)
@@ -438,11 +562,28 @@ def _money(value: Decimal) -> str:
     return str(value)
 
 
+def _party_names(db: Session, context: UserContext, model, ids) -> dict[str, tuple[str, str]]:
+    """GAP-11: map customer/supplier id → (code, name) for list display and name filtering."""
+    ids = {value for value in ids if value}
+    if not ids:
+        return {}
+    rows = db.execute(select(model.id, model.code, model.name).where(model.org_id == context.org_id, model.id.in_(ids))).all()
+    return {row.id: (row.code, row.name) for row in rows}
+
+
+def _with_party(items: list[dict], names: dict, key: str) -> list[dict]:
+    for item in items:
+        code, name = names.get(item.get(f"{key}_id"), ("", ""))
+        item[f"{key}_code"] = code
+        item[f"{key}_name"] = name or item.get(f"{key}_id")
+    return items
+
+
 def list_receivables(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(
         select(SalesReceivable).where(SalesReceivable.org_id == context.org_id).order_by(SalesReceivable.id.desc())
     ).all()
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -456,13 +597,15 @@ def list_receivables(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdCustomer
+    return _with_party(items, _party_names(db, context, MdCustomer, [item["customer_id"] for item in items]), "customer")
 
 
 def list_payables(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(
         select(PurchasePayable).where(PurchasePayable.org_id == context.org_id).order_by(PurchasePayable.id.desc())
     ).all()
-    return [
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -476,11 +619,18 @@ def list_payables(db: Session, context: UserContext) -> list[dict]:
         }
         for row in rows
     ]
+    from app.models.master_data import MdSupplier
+    return _with_party(items, _party_names(db, context, MdSupplier, [item["supplier_id"] for item in items]), "supplier")
+
+
+def _voucher_source_ids(db: Session, context: UserContext, source_type: str) -> set[str]:
+    return set(db.scalars(select(FinVoucher.source_id).where(FinVoucher.org_id == context.org_id, FinVoucher.source_type == source_type)).all())
 
 
 def list_receipts(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinReceipt).where(FinReceipt.org_id == context.org_id).order_by(FinReceipt.id.desc())).all()
-    return [
+    voucher_ids = _voucher_source_ids(db, context, "receipt")
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -490,14 +640,18 @@ def list_receipts(db: Session, context: UserContext) -> list[dict]:
             "receipt_date": row.receipt_date.isoformat(),
             "status": row.status,
             "reconciled_amount": _money(sum(item.amount for item in row.reconciles)),
+            "voucher_generated": row.id in voucher_ids,
         }
         for row in rows
     ]
+    from app.models.master_data import MdCustomer
+    return _with_party(items, _party_names(db, context, MdCustomer, [item["customer_id"] for item in items]), "customer")
 
 
 def list_payments(db: Session, context: UserContext) -> list[dict]:
     rows = db.scalars(select(FinPayment).where(FinPayment.org_id == context.org_id).order_by(FinPayment.id.desc())).all()
-    return [
+    voucher_ids = _voucher_source_ids(db, context, "payment")
+    items = [
         {
             "id": row.id,
             "doc_no": row.doc_no,
@@ -507,13 +661,23 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
             "payment_date": row.payment_date.isoformat(),
             "reconciled_amount": _money(sum(item.amount for item in row.reconciles)),
             "status": row.status,
+            "voucher_generated": row.id in voucher_ids,
         }
         for row in rows
     ]
+    from app.models.master_data import MdSupplier
+    return _with_party(items, _party_names(db, context, MdSupplier, [item["supplier_id"] for item in items]), "supplier")
 
 
 def list_expenses(db: Session, context: UserContext) -> list[dict]:
+    from app.models.workflow import WfInstance
+
     rows = db.scalars(select(FinExpense).where(FinExpense.org_id == context.org_id).order_by(FinExpense.id.desc())).all()
+    running_ids = set(db.scalars(select(WfInstance.business_id).where(
+        WfInstance.org_id == context.org_id,
+        WfInstance.business_type.in_(("expense", "fin_expense")),
+        WfInstance.status == "running",
+    )).all())
     voucher_source_ids = set(
         db.scalars(
             select(FinVoucher.source_id).where(
@@ -536,6 +700,7 @@ def list_expenses(db: Session, context: UserContext) -> list[dict]:
             "source_type": row.source_type,
             "source_id": row.source_id,
             "voucher_generated": row.id in voucher_source_ids,
+            "in_workflow": row.id in running_ids,
         }
         for row in rows
     ]

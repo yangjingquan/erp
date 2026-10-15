@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Body, Depends
 from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
@@ -8,7 +8,7 @@ from app.services.auth_service import UserContext
 from app.services.crm_service import *
 router = APIRouter(prefix="/api/crm", tags=["crm"])
 def _row(row):
-    keys = ("id", "lead_no", "opportunity_no", "name", "status", "stage", "phone", "email", "source", "customer_id", "material_id", "quantity", "unit_price", "won_order_id")
+    keys = ("id", "lead_no", "opportunity_no", "name", "status", "stage", "loss_reason", "phone", "email", "source", "customer_id", "material_id", "quantity", "unit_price", "won_order_id")
     result = {}
     for k in keys:
         if not hasattr(row, k):
@@ -29,7 +29,8 @@ def opportunities(context: UserContext=Depends(get_current_user),db: Session=Dep
 @router.post("/opportunities")
 def opportunity(payload: OpportunityCreate,context: UserContext=Depends(require_permission("crm:manage")),db: Session=Depends(get_db)): row=create_opportunity(db,payload.model_dump(),context);db.commit();return ok(_row(row))
 @router.post("/opportunities/{opportunity_id}/transition/{stage}")
-def opportunity_transition(opportunity_id: str, stage: str, context: UserContext=Depends(require_permission("crm:manage")), db: Session=Depends(get_db)):
-    row = transition_opportunity(db, opportunity_id, stage, context); db.commit(); return ok(_row(row))
+def opportunity_transition(opportunity_id: str, stage: str, payload: dict | None = Body(default=None), context: UserContext=Depends(require_permission("crm:manage")), db: Session=Depends(get_db)):
+    reason = (payload or {}).get("loss_reason")
+    row = transition_opportunity(db, opportunity_id, stage, context, loss_reason=reason); db.commit(); return ok(_row(row))
 @router.post("/opportunities/{opportunity_id}/follow-ups")
 def followup(opportunity_id: str,payload: FollowUpCreate,context: UserContext=Depends(require_permission("crm:manage")),db: Session=Depends(get_db)): row=add_follow_up(db,opportunity_id,payload.model_dump(),context);db.commit();return ok(_row(row))

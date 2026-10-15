@@ -140,11 +140,11 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "ma
       <el-table-column prop="document_date" label="订单日期" width="115" />
       <el-table-column label="含税金额" width="130" align="right"><template #default="scope">¥{{ scope.row.amount }}</template></el-table-column>
       <el-table-column label="更新时间" width="165"><template #default="scope">{{ formatLocalDateTime(scope.row.updated_at) }}</template></el-table-column>
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" width="320" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openDetail(scope.row)">查看</el-button>
-          <el-button v-if="scope.row.status === 'draft'" link @click="openEdit(scope.row)">修改</el-button>
-          <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === scope.row.business_id" @click="removeOrder(scope.row)">删除</el-button>
+          <el-button v-if="['draft', 'rejected'].includes(scope.row.status)" link @click="openEdit(scope.row)">修改</el-button>
+          <el-button v-if="['draft', 'rejected'].includes(scope.row.status)" link type="danger" :loading="actionLoading === scope.row.business_id" @click="removeOrder(scope.row)">删除</el-button>
           <el-button link @click="copyToForm(scope.row)">复制填充</el-button>
           <el-button v-for="action in scope.row.available_actions" :key="action.command" link :type="action.type" :loading="actionLoading === scope.row.business_id" @click="confirmAction(scope.row, action)">{{ action.label }}</el-button>
         </template>

@@ -57,14 +57,8 @@ def get_stock_unit_cost(
     from app.services.inventory_advanced_service import assert_warehouse_access
 
     assert_warehouse_access(context, warehouse_id)
-    stock = db.scalar(
-        select(InvStock).where(
-            InvStock.org_id == context.org_id,
-            InvStock.warehouse_id == warehouse_id,
-            InvStock.material_id == material_id,
-        )
-    )
-    return Decimal(stock.average_cost) if stock is not None else Decimal("0")
+    # GAP-09: 成本方法驱动出库成本（移动加权平均 / 标准成本）。
+    return current_unit_cost(db, context.org_id, warehouse_id, material_id)
 
 
 def list_stock(db: Session, context: UserContext, warehouse_id: str | None = None) -> list[InvStock]:
@@ -118,6 +112,99 @@ def _sync_stock_balances(stock: InvStock) -> InvStock:
     return stock
 
 
+# ---------------------------------------------------------------------------
+# GAP-08 / GAP-09: costing method & negative stock control.
+# ---------------------------------------------------------------------------
+MOVING_AVERAGE_METHODS = frozenset({"weighted_average", "moving_average", "moving_weighted_average", "fifo"})
+STANDARD_COST_METHODS = frozenset({"standard", "standard_cost"})
+COST_SCALE = Decimal("0.000001")
+
+
+def _bool_parameter(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on", "是"}
+
+
+def get_costing_method(db: Session, org_id: str) -> str:
+    """Return the normalised ``inventory.costing_method`` (default weighted_average)."""
+    from app.services.phase2_parameter_service import get_phase2_parameter
+
+    value = (get_phase2_parameter(db, org_id, "inventory.costing_method", "weighted_average") or "").strip().lower()
+    if value in STANDARD_COST_METHODS:
+        return "standard"
+    return "weighted_average" if value in MOVING_AVERAGE_METHODS or not value else value
+
+
+def allow_negative_stock(db: Session, org_id: str) -> bool:
+    from app.services.phase2_parameter_service import get_phase2_parameter
+
+    return _bool_parameter(get_phase2_parameter(db, org_id, "inventory.allow_negative_stock", "false"))
+
+
+def _material_label(db: Session, material_id: str) -> str:
+    material = db.get(MdMaterial, material_id)
+    return f"{material.code} {material.name}" if material is not None else material_id
+
+
+def _warehouse_label(db: Session, warehouse_id: str) -> str:
+    from app.models.master_data import MdWarehouse
+
+    warehouse = db.get(MdWarehouse, warehouse_id)
+    return f"{warehouse.code} {warehouse.name}" if warehouse is not None else warehouse_id
+
+
+def _apply_inbound_cost(db: Session, org_id: str, stock: InvStock, quantity: Decimal, unit_cost: Decimal) -> None:
+    """Recalculate ``average_cost`` for an inbound posting according to the costing method."""
+    method = get_costing_method(db, org_id)
+    if method == "standard":
+        material = db.get(MdMaterial, stock.material_id)
+        stock.average_cost = Decimal(str(material.standard_cost if material is not None else unit_cost or 0))
+        return
+    old_qty = Decimal(str(stock.quantity or 0))
+    old_avg = Decimal(str(stock.average_cost or 0))
+    new_qty = old_qty + quantity
+    if old_qty <= 0 or new_qty <= 0:
+        # Negative / empty historical balances carry no meaningful value; restart from this receipt.
+        stock.average_cost = Decimal(str(unit_cost)).quantize(COST_SCALE)
+    else:
+        stock.average_cost = ((old_qty * old_avg + quantity * Decimal(str(unit_cost))) / new_qty).quantize(COST_SCALE)
+
+
+def current_unit_cost(db: Session, org_id: str, warehouse_id: str, material_id: str) -> Decimal:
+    """Unit cost used for outbound postings (moving average or standard cost)."""
+    if get_costing_method(db, org_id) == "standard":
+        material = db.get(MdMaterial, material_id)
+        return Decimal(str(material.standard_cost)) if material is not None else Decimal("0")
+    stock = db.scalar(select(InvStock).where(InvStock.org_id == org_id, InvStock.warehouse_id == warehouse_id, InvStock.material_id == material_id))
+    return Decimal(str(stock.average_cost)) if stock is not None else Decimal("0")
+
+
+def inspection_required(db: Session, org_id: str) -> bool:
+    from app.services.phase2_parameter_service import get_phase2_parameter
+
+    return _bool_parameter(get_phase2_parameter(db, org_id, "qa.inspection_required", "false"))
+
+
+def assert_receipt_inspection_passed(db: Session, receipt: PurchaseReceipt) -> None:
+    """GAP-09: qa.inspection_required=true 时，采购入库完成前必须有合格（或已让步接收）的来料检验。"""
+    if not inspection_required(db, receipt.org_id):
+        return
+    from app.models.quality import QaInspection
+
+    inspections = db.scalars(select(QaInspection).where(
+        QaInspection.org_id == receipt.org_id,
+        QaInspection.source_type == "purchase_receipt",
+        QaInspection.source_id == receipt.id,
+        QaInspection.is_deleted.is_(False),
+    )).all()
+    ok = any(
+        (row.result == "passed" and row.status in {"submitted", "closed"})
+        or (row.status == "closed" and row.disposition == "accept")
+        for row in inspections
+    )
+    if not ok:
+        raise AppError(f"采购入库单 {receipt.doc_no} 需先完成来料检验且结果合格后才能入库（全局参数「质量检验是否必填」已开启）", code=409)
+
+
 def post_stock_transaction(
     db: Session,
     context: UserContext,
@@ -154,8 +241,14 @@ def post_stock_transaction(
         raise AppError("库存来源单据已入账，禁止重复记账", code=409)
     stock = _get_or_create_stock(db, context, warehouse_id, material_id)
     _sync_stock_balances(stock)
-    if direction == "out" and stock.available_quantity < quantity:
-        raise AppError("可用库存不足", code=400)
+    if direction == "out" and stock.available_quantity < quantity and not allow_negative_stock(db, context.org_id):
+        raise AppError(
+            f"可用库存不足：仓库「{_warehouse_label(db, warehouse_id)}」物料「{_material_label(db, material_id)}」"
+            f"可用 {Decimal(stock.available_quantity).normalize():f}，本次需出库 {Decimal(quantity).normalize():f}，不允许出现负库存",
+            code=400,
+        )
+    if direction == "in":
+        _apply_inbound_cost(db, context.org_id, stock, quantity, unit_cost)
     delta = quantity if direction == "in" else -quantity
     stock.quantity += delta
     stock.available_quantity = stock.quantity - stock.locked_quantity
@@ -342,15 +435,17 @@ def complete_transfer(db: Session, transfer_id: str, context: UserContext) -> In
     if transfer.status != "approved":
         raise AppError("只有已审核调拨单才能完成", code=400)
     for item in transfer.items:
+        # GAP-08: 调拨按调出仓当前成本平移，避免 0 单价拉低调入仓平均成本。
+        transfer_cost = current_unit_cost(db, context.org_id, transfer.from_warehouse_id, item.material_id) or Decimal(str(item.unit_cost or 0))
         post_stock_transaction(
             db, context, source_type="transfer", source_id=transfer.id,
             warehouse_id=transfer.from_warehouse_id, material_id=item.material_id,
-            quantity=item.quantity, direction="out", unit_cost=item.unit_cost,
+            quantity=item.quantity, direction="out", unit_cost=transfer_cost,
         )
         post_stock_transaction(
             db, context, source_type="transfer", source_id=transfer.id,
             warehouse_id=transfer.to_warehouse_id, material_id=item.material_id,
-            quantity=item.quantity, direction="in", unit_cost=item.unit_cost,
+            quantity=item.quantity, direction="in", unit_cost=transfer_cost,
         )
     transfer.status = "completed"
     db.flush()
@@ -494,10 +589,12 @@ def complete_sales_delivery(db: Session, delivery_id: str, context: UserContext)
             material_id=item.material_id,
             quantity=item.quantity,
             direction="out",
-            unit_cost=item.unit_price,
+            # GAP-08: 出库成本取移动加权平均（或标准成本），而不是销售单价。
+            unit_cost=current_unit_cost(db, context.org_id, delivery.warehouse_id, item.material_id),
         )
     delivery.status = "completed"
     db.flush()
+    writeback_sales_order_delivered(db, delivery)
     return delivery
 
 
@@ -507,6 +604,7 @@ def complete_purchase_receipt(db: Session, receipt_id: str, context: UserContext
         raise AppError("采购入库单不存在", code=404)
     if receipt.status != "draft":
         raise AppError("采购入库单当前不可完成", code=400)
+    assert_receipt_inspection_passed(db, receipt)
     for item in receipt.items:
         post_stock_transaction(
             db,
@@ -521,4 +619,61 @@ def complete_purchase_receipt(db: Session, receipt_id: str, context: UserContext
         )
     receipt.status = "completed"
     db.flush()
+    writeback_purchase_order_received(db, receipt)
     return receipt
+
+
+# ---------------------------------------------------------------------------
+# GAP-01: write completed receipt/delivery quantities back to the source order.
+# ---------------------------------------------------------------------------
+PURCHASE_PARTIAL_STATUS = "partially_received"
+SALES_PARTIAL_STATUS = "partially_delivered"
+
+
+def _order_progress_status(lines, done_attr: str, partial_status: str, current: str) -> str:
+    total_done = sum((Decimal(str(getattr(line, done_attr) or 0)) for line in lines), Decimal("0"))
+    if lines and all(Decimal(str(getattr(line, done_attr) or 0)) >= Decimal(str(line.quantity)) for line in lines):
+        return "completed"
+    if total_done > 0:
+        return partial_status
+    return current
+
+
+def writeback_purchase_order_received(db: Session, receipt: PurchaseReceipt) -> None:
+    """Accumulate received quantity on the purchase order lines and derive order status."""
+    from app.models.purchase import PurchaseOrder
+
+    order = db.get(PurchaseOrder, receipt.order_id) if receipt.order_id else None
+    if order is None:
+        return
+    lines = {line.id: line for line in order.items}
+    for item in receipt.items:
+        line = lines.get(item.order_item_id) if item.order_item_id else None
+        if line is None:
+            line = next((row for row in order.items if row.material_id == item.material_id and row.received_quantity < row.quantity), None)
+        if line is None:
+            continue
+        line.received_quantity = Decimal(str(line.received_quantity or 0)) + Decimal(str(item.quantity))
+    if order.status in {"approved", PURCHASE_PARTIAL_STATUS}:
+        order.status = _order_progress_status(order.items, "received_quantity", PURCHASE_PARTIAL_STATUS, order.status)
+    db.flush()
+
+
+def writeback_sales_order_delivered(db: Session, delivery: SalesDelivery) -> None:
+    """Accumulate delivered quantity on the sales order lines and derive order status."""
+    from app.models.sales import SalesOrder
+
+    order = db.get(SalesOrder, delivery.order_id) if delivery.order_id else None
+    if order is None:
+        return
+    lines = {line.id: line for line in order.items}
+    for item in delivery.items:
+        line = lines.get(item.order_item_id) if item.order_item_id else None
+        if line is None:
+            line = next((row for row in order.items if row.material_id == item.material_id and row.delivered_quantity < row.quantity), None)
+        if line is None:
+            continue
+        line.delivered_quantity = Decimal(str(line.delivered_quantity or 0)) + Decimal(str(item.quantity))
+    if order.status in {"approved", SALES_PARTIAL_STATUS}:
+        order.status = _order_progress_status(order.items, "delivered_quantity", SALES_PARTIAL_STATUS, order.status)
+    db.flush()

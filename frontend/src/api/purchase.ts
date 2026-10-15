@@ -57,3 +57,6 @@ export function updatePurchaseReturn(id: string, payload: Record<string, unknown
 export function deletePurchaseReturn(id: string) { return http.delete(`/purchase/returns/${id}`); }
 export function submitPurchaseReturn(id: string) { return http.post(`/purchase/returns/${id}/submit`); }
 export function completePurchaseReturn(id: string) { return http.post(`/purchase/returns/${id}/complete`); }
+
+export function rejectPurchaseOrder(orderId: string) { return http.post(`/purchase/orders/${orderId}/reject`); }
+export function unapprovePurchaseOrder(orderId: string) { return http.post(`/purchase/orders/${orderId}/unapprove`); }

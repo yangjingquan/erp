@@ -52,10 +52,19 @@ def create_opportunity(db, payload, context):
         owner_id=context.id,
         **payload,
     ); db.add(row); db.flush(); return row
-def transition_opportunity(db, opportunity_id, stage, context):
+OPPORTUNITY_STAGES = {"new", "lead", "qualification", "qualified", "prospecting", "proposal", "negotiation", "won", "lost"}
+
+
+def transition_opportunity(db, opportunity_id, stage, context, loss_reason: str | None = None):
     row = db.scalar(select(CrmOpportunity).where(CrmOpportunity.id == opportunity_id, CrmOpportunity.org_id == context.org_id))
     if row is None: raise AppError("商机不存在", code=404)
-    if stage == "lost" and not row.loss_reason: raise AppError("输单必须填写原因", code=400)
+    if stage not in OPPORTUNITY_STAGES: raise AppError("不支持的商机阶段", code=400)
+    if row.stage in {"won", "lost"} and stage != row.stage: raise AppError("商机已赢单或输单，不能再变更阶段", code=400)
+    if stage == "lost":
+        # GAP-03: 输单需填写原因，原因随请求传入并保存。
+        reason = (loss_reason or row.loss_reason or "").strip()
+        if not reason: raise AppError("输单必须填写原因", code=400)
+        row.loss_reason = reason[:255]
     if stage == "won" and row.stage != "won":
         result = _win_opportunity(db, row, context)
         row.customer_id = result.get("customer_id") or row.customer_id

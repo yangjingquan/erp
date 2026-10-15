@@ -166,6 +166,8 @@ def process_scan(
             raise AppError("扫描仓库与单据仓库不一致", code=403)
         if len(receipt.items) != 1:
             raise AppError("扫描入库暂仅支持单行入库单", code=400)
+        from app.services.inventory_service import assert_receipt_inspection_passed
+        assert_receipt_inspection_passed(db, receipt)
         item = receipt.items[0]
         material_id = payload.get("material_id")
         quantity = _decimal(payload.get("quantity", "0"))
@@ -187,6 +189,11 @@ def process_scan(
         )
         receipt.status = "completed"
         db.flush()
+        from app.services.inventory_service import writeback_purchase_order_received
+        writeback_purchase_order_received(db, receipt)
+        # GAP-07: 扫码收货与单据中心"完成入库"一致，生成应付与凭证。
+        from app.services.finance_service import create_payable_from_purchase_receipt
+        payable = create_payable_from_purchase_receipt(db, receipt.id, context)
         transaction = db.get(InvStockTransaction, layers[0].inbound_transaction_id)
         result = {
             "scan_id": scan_id,
@@ -196,6 +203,7 @@ def process_scan(
             "transaction_id": transaction.id,
             "quantity": _number(transaction.quantity),
             "unit_cost": _number(transaction.unit_cost),
+            "payable_id": payable.id,
         }
     elif action in {"fill", "return"}:
         from types import SimpleNamespace

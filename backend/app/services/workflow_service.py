@@ -268,11 +268,13 @@ def _apply_workflow_outcome(db: Session, instance: WfInstance, outcome: str, con
         elif business_type == "quote":
             from app.services.business_extension_service import transition_quote
             transition_quote(db, business_id, "approved" if outcome == "approved" else "rejected", context)
-        elif business_type == "fin_expense":
-            from app.services.finance_service import approve_expense
+        elif business_type in {"expense", "fin_expense"}:
+            # GAP-10: 配置页业务类型为 expense，历史回写使用 fin_expense，两者都接受。
+            from app.services.finance_service import approve_expense, reject_expense
             if outcome == "approved":
                 approve_expense(db, business_id, context)
-            # Rejected expenses stay in draft for rework.
+            else:
+                reject_expense(db, business_id, context)
         # Unknown business types are intentionally left to the direct command path.
     except AppError as exc:
         LOGGER.warning("审批结果未回写单据 business_type=%s business_id=%s: %s", business_type, business_id, exc.msg)

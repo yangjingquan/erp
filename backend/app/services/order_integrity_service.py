@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 
-VALID_ORDER_STATUSES = frozenset({"submitted", "approved", "completed"})
+VALID_ORDER_STATUSES = frozenset({"submitted", "approved", "partially_received", "partially_delivered", "completed"})
 
 
 def order_line_total(order) -> Decimal:

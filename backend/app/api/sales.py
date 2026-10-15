@@ -101,6 +101,19 @@ def add_quote(payload: SalesQuoteCreate, context: UserContext = Depends(require_
     return ok(serialize_quote(create_quote(db, payload, context)))
 
 
+@router.put("/quotes/{quote_id}")
+def edit_quote(quote_id: str, payload: SalesQuoteCreate, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    from app.services.business_extension_service import update_quote
+    return ok(serialize_quote(update_quote(db, quote_id, payload, context)), "报价单已修改")
+
+
+@router.delete("/quotes/{quote_id}")
+def remove_quote(quote_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    from app.services.business_extension_service import delete_quote
+    delete_quote(db, quote_id, context)
+    return ok(msg="报价单已删除")
+
+
 @router.post("/quotes/{quote_id}/convert")
 def convert_quote(quote_id: str, payload: dict, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
     order = convert_quote_to_order(db, quote_id, str(payload.get("warehouse_id") or ""), context)
@@ -136,3 +149,21 @@ def complete_delivery(delivery_id: str, context: UserContext = Depends(require_p
     receivable = create_receivable_from_sales_delivery(db, delivery.id, context)
     db.commit()
     return ok({"delivery_id": delivery.id, "status": delivery.status, "receivable_id": receivable.id})
+
+
+@router.post("/orders/{order_id}/reject")
+def reject_order_manual(order_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 列表驳回（submitted → rejected）。审批流中的单据请在我的待办处理。"""
+    from app.services.sales_service import reject_sales_order_manual, serialize_order as _serialize
+
+    if has_running_workflow(db, "sales_order", order_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+    return ok(_serialize(reject_sales_order_manual(db, order_id, context)), "订单已驳回")
+
+
+@router.post("/orders/{order_id}/unapprove")
+def unapprove_order(order_id: str, context: UserContext = Depends(require_permission("sales:manage")), db: Session = Depends(get_db)):
+    """GAP-02: 反审核（approved 且无下游单据 → draft）。"""
+    from app.services.sales_service import serialize_order as _serialize, unapprove_sales_order
+
+    return ok(_serialize(unapprove_sales_order(db, order_id, context)), "订单已反审核")

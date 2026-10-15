@@ -57,6 +57,7 @@ from app.services.runtime_migrations import (
     ensure_customer_claim_closed_loop_schema,
     remap_document_active_status,
     calibrate_demo_min_stock,
+    ensure_negative_stock_parameter,
     sanitize_leave_request_seed,
 )
 from app.services.permission_service import ensure_permission_catalog
@@ -92,6 +93,7 @@ async def lifespan(application: FastAPI):
             ensure_customer_claim_closed_loop_schema(db)
             remap_document_active_status(db)
             calibrate_demo_min_stock(db)
+            ensure_negative_stock_parameter(db)
             sanitize_leave_request_seed(db)
             ensure_permission_catalog(db)
             # Permission catalog upgrades may insert page/function rows. Keep

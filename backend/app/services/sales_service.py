@@ -10,7 +10,7 @@ from app.models.sales import SalesDelivery, SalesDeliveryItem, SalesOrder, Sales
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
-SALES_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "completed", "cancelled"})
+SALES_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "partially_delivered", "completed", "rejected", "cancelled"})
 
 
 def _total(items) -> Decimal:
@@ -155,8 +155,8 @@ def update_sales_order(db: Session, order_id: str, payload, context: UserContext
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的销售订单可以修改", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的销售订单可以修改", code=400)
     item_warehouse_ids = [item.warehouse_id.strip() if item.warehouse_id else "" for item in payload.items]
     if any(not warehouse_id for warehouse_id in item_warehouse_ids):
         raise AppError("销售订单每条明细必须选择仓库", code=422)
@@ -195,20 +195,21 @@ def delete_sales_order(db: Session, order_id: str, context: UserContext) -> None
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的销售订单可以删除", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的销售订单可以删除", code=400)
     order.is_deleted = True
     order.updated_by = context.id
     db.commit()
 
 
-def _transition(db: Session, order_id: str, context: UserContext, expected: str, new_status: str) -> SalesOrder:
+def _transition(db: Session, order_id: str, context: UserContext, expected: str | tuple[str, ...], new_status: str) -> SalesOrder:
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("销售订单不存在", code=404)
     if order.status not in SALES_ORDER_STATUSES:
         raise AppError(f"销售订单状态 {order.status} 不合法", code=409)
-    if order.status != expected:
+    allowed = (expected,) if isinstance(expected, str) else tuple(expected)
+    if order.status not in allowed:
         raise AppError(f"销售订单状态 {order.status} 不允许此操作", code=400)
     if new_status in {"submitted", "approved"}:
         _recalculate_order_totals(order)
@@ -220,7 +221,7 @@ def _transition(db: Session, order_id: str, context: UserContext, expected: str,
 
 
 def submit_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
-    return _transition(db, order_id, context, "draft", "submitted")
+    return _transition(db, order_id, context, ("draft", "rejected"), "submitted")
 
 
 def approve_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
@@ -235,10 +236,12 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
     order = db.get(SalesOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("销售订单不存在", code=404)
-    if order.status != "approved":
-        raise AppError("只有已审核订单才能出库", code=400)
-    if db.scalar(select(SalesDelivery).where(SalesDelivery.order_id == order.id, SalesDelivery.status != "cancelled")):
-        raise AppError("该订单已创建出库单", code=409)
+    if order.status not in {"approved", "partially_delivered"}:
+        raise AppError("只有已审核或部分出库的订单才能出库", code=400)
+    if not any(item.quantity > item.delivered_quantity for item in order.items):
+        raise AppError("该订单已全部出库", code=409)
+    if db.scalar(select(SalesDelivery).where(SalesDelivery.order_id == order.id, SalesDelivery.status == "draft")):
+        raise AppError("该订单已有未完成的出库单，请先完成或取消", code=409)
     active_items = [item for item in order.items if item.quantity > item.delivered_quantity]
     warehouse_ids = {item.warehouse_id for item in active_items if item.warehouse_id}
     if len(warehouse_ids) != 1:
@@ -266,10 +269,11 @@ def create_delivery_from_order(db: Session, order_id: str, context: UserContext)
             material_id=item.material_id,
             quantity=item.quantity - item.delivered_quantity,
             unit_price=item.unit_price,
-            amount=item.amount,
+            amount=((item.quantity - item.delivered_quantity) * item.unit_price).quantize(Decimal("0.01")),
         )
         for item in active_items
     ]
+    delivery.total_amount = sum((line.amount for line in delivery.items), Decimal("0")).quantize(Decimal("0.01"))
     db.add(delivery)
     db.commit()
     db.refresh(delivery)
@@ -297,3 +301,16 @@ def create_sales_return(db: Session, payload, context: UserContext) -> SalesRetu
     db.commit()
     db.refresh(result)
     return result
+
+
+def reject_sales_order_manual(db: Session, order_id: str, context: UserContext) -> SalesOrder:
+    """GAP-02: list-page reject, submitted → rejected (editable and re-submittable)."""
+    return _transition(db, order_id, context, "submitted", "rejected")
+
+
+def unapprove_sales_order(db: Session, order_id: str, context: UserContext) -> SalesOrder:
+    """GAP-02: 反审核, approved → draft when no downstream 出库单 exists."""
+    downstream = db.scalar(select(SalesDelivery.id).where(SalesDelivery.order_id == order_id, SalesDelivery.status != "cancelled"))
+    if downstream is not None:
+        raise AppError("该销售订单已生成出库单，不能反审核", code=409)
+    return _transition(db, order_id, context, "approved", "draft")

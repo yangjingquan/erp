@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { addFollowUp, createOpportunity, listOpportunities, transitionOpportunity } from "../../api/crm";
 import { useClientPagination } from "../../composables/useClientPagination";
 import { useMasterOptions } from "../../composables/useMasterOptions";
@@ -69,6 +69,21 @@ async function move(row: Row, stage: string) {
   }
 }
 
+async function markLost(row: Row) {
+  try {
+    const { value } = await ElMessageBox.prompt(`请输入商机“${row.name || row.opportunity_no}”的输单原因`, "输单", {
+      confirmButtonText: "确认输单", cancelButtonText: "取消", inputPlaceholder: "如：价格不具竞争力",
+      inputValidator: (input: string) => Boolean(String(input || "").trim()) || "输单必须填写原因",
+    });
+    const response = await transitionOpportunity(row.id, "lost", { loss_reason: String(value).trim() });
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success("已标记为输单");
+    await load();
+  } catch (error: any) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "输单失败");
+  }
+}
+
 async function follow(id: string) {
   try {
     const response = await addFollowUp(id, { content: "跟进记录", occurred_at: localDateTimeString() });
@@ -91,7 +106,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
       <el-table-column prop="customer_id" label="客户" min-width="180" />
       <el-table-column label="物料" min-width="140"><template #default="scope">{{ scope.row.material_id ? (materials.find((o) => o.value === scope.row.material_id)?.label || scope.row.material_id) : '-' }}</template></el-table-column>
       <el-table-column label="阶段" width="120"><template #default="scope"><el-tag :type="tagTypeOf(scope.row.stage === 'won' ? 'won' : scope.row.stage === 'lost' ? 'lost' : 'proposal')" effect="light">{{ stageLabels[scope.row.stage] || scope.row.stage || '-' }}</el-tag></template></el-table-column>
-      <el-table-column label="操作" width="300"><template #default="scope"><el-button link type="primary" @click="follow(scope.row.id)">添加跟进</el-button><el-button v-if="scope.row.stage !== 'won'" link @click="move(scope.row, 'proposal')">推进商谈</el-button><el-button v-if="scope.row.stage !== 'won'" link type="success" @click="move(scope.row, 'won')">赢单</el-button></template></el-table-column>
+      <el-table-column label="操作" width="300"><template #default="scope"><el-button link type="primary" @click="follow(scope.row.id)">添加跟进</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link @click="move(scope.row, 'proposal')">推进商谈</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link type="success" @click="move(scope.row, 'won')">赢单</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link type="danger" @click="markLost(scope.row)">输单</el-button><span v-if="scope.row.stage === 'lost' && scope.row.loss_reason" class="loss-reason">原因：{{ scope.row.loss_reason }}</span></template></el-table-column>
       <template #empty><el-empty description="暂无商机" /></template>
     </el-table>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />

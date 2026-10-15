@@ -107,9 +107,16 @@ def approve_payroll(db,payroll_id,context):
  row=db.get(HrPayroll,payroll_id)
  if row is None or row.org_id!=context.org_id: raise AppError("薪资批次不存在",code=404)
  if row.status!="calculated": raise AppError("只有已计算薪资可审批",code=400)
- row.status="approved";db.flush();return row
+ row.status="approved";db.flush()
+ from app.services.finance_service import auto_generate_voucher
+ auto_generate_voucher(db,"payroll_accrual",row.id,context)  # GAP-06 计提
+ return row
 def pay_payroll(db,payroll_id,context):
  row=db.get(HrPayroll,payroll_id)
  if row is None or row.org_id!=context.org_id: raise AppError("薪资批次不存在",code=404)
  if row.status!="approved": raise AppError("只有已审批薪资可支付",code=400)
- row.status="paid";db.flush();return row
+ row.status="paid";db.flush()
+ from app.services.finance_service import auto_generate_voucher
+ auto_generate_voucher(db,"payroll_accrual",row.id,context)  # 历史已审批未计提的批次补计提（幂等）
+ auto_generate_voucher(db,"payroll",row.id,context)  # GAP-06 发放
+ return row

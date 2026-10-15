@@ -10,7 +10,7 @@ from app.models.purchase import PurchaseOrder, PurchaseOrderItem, PurchaseReceip
 from app.services.auth_service import UserContext
 from app.services.configuration_service import next_doc_no
 
-PURCHASE_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "completed", "cancelled"})
+PURCHASE_ORDER_STATUSES = frozenset({"draft", "submitted", "approved", "partially_received", "completed", "rejected", "cancelled"})
 
 
 def _validate_order_payload(db: Session, payload, context: UserContext) -> None:
@@ -180,8 +180,8 @@ def update_purchase_order(db: Session, order_id: str, payload, context: UserCont
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("采购订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的采购订单可以修改", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的采购订单可以修改", code=400)
     _validate_order_payload(db, payload, context)
     order.supplier_id = payload.supplier_id
     order.order_date = payload.order_date
@@ -210,21 +210,22 @@ def delete_purchase_order(db: Session, order_id: str, context: UserContext) -> N
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id or order.is_deleted:
         raise AppError("采购订单不存在", code=404)
-    if order.status != "draft":
-        raise AppError("只有草稿状态的采购订单可以删除", code=400)
+    if order.status not in {"draft", "rejected"}:
+        raise AppError("只有草稿或已驳回的采购订单可以删除", code=400)
     order.is_deleted = True
     order.updated_by = context.id
     order.version += 1
     db.commit()
 
 
-def _transition(db: Session, order_id: str, context: UserContext, expected: str, new_status: str) -> PurchaseOrder:
+def _transition(db: Session, order_id: str, context: UserContext, expected: str | tuple[str, ...], new_status: str) -> PurchaseOrder:
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("采购订单不存在", code=404)
     if order.status not in PURCHASE_ORDER_STATUSES:
         raise AppError(f"采购订单状态 {order.status} 不合法", code=409)
-    if order.status != expected:
+    allowed = (expected,) if isinstance(expected, str) else tuple(expected)
+    if order.status not in allowed:
         raise AppError(f"采购订单状态 {order.status} 不允许此操作", code=400)
     if new_status in {"submitted", "approved"}:
         _recalculate_order_totals(order)
@@ -236,7 +237,7 @@ def _transition(db: Session, order_id: str, context: UserContext, expected: str,
 
 
 def submit_purchase_order(db: Session, order_id: str, context: UserContext) -> PurchaseOrder:
-    return _transition(db, order_id, context, "draft", "submitted")
+    return _transition(db, order_id, context, ("draft", "rejected"), "submitted")
 
 
 def approve_purchase_order(db: Session, order_id: str, context: UserContext) -> PurchaseOrder:
@@ -251,10 +252,12 @@ def create_receipt_from_order(db: Session, order_id: str, context: UserContext) 
     order = db.get(PurchaseOrder, order_id)
     if order is None or order.org_id != context.org_id:
         raise AppError("采购订单不存在", code=404)
-    if order.status != "approved":
-        raise AppError("只有已审核订单才能入库", code=400)
-    if db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.order_id == order.id, PurchaseReceipt.status != "cancelled")):
-        raise AppError("该订单已创建入库单", code=409)
+    if order.status not in {"approved", "partially_received"}:
+        raise AppError("只有已审核或部分入库的订单才能入库", code=400)
+    if not any(item.quantity > item.received_quantity for item in order.items):
+        raise AppError("该订单已全部入库", code=409)
+    if db.scalar(select(PurchaseReceipt).where(PurchaseReceipt.order_id == order.id, PurchaseReceipt.status == "draft")):
+        raise AppError("该订单已有未完成的入库单，请先完成或取消", code=409)
     warehouse_ids = {item.warehouse_id for item in order.items if item.warehouse_id}
     if len(warehouse_ids) != 1:
         raise AppError("采购订单必须指定同一个有效仓库后才能生成入库单", code=422)
@@ -283,12 +286,26 @@ def create_receipt_from_order(db: Session, order_id: str, context: UserContext) 
             material_id=item.material_id,
             quantity=item.quantity - item.received_quantity,
             unit_price=item.unit_price,
-            amount=item.amount,
+            amount=((item.quantity - item.received_quantity) * item.unit_price).quantize(Decimal("0.01")),
         )
         for item in order.items
         if item.quantity > item.received_quantity
     ]
+    receipt.total_amount = sum((line.amount for line in receipt.items), Decimal("0")).quantize(Decimal("0.01"))
     db.add(receipt)
     db.commit()
     db.refresh(receipt)
     return receipt
+
+
+def reject_purchase_order_manual(db: Session, order_id: str, context: UserContext) -> PurchaseOrder:
+    """GAP-02: list-page reject, submitted → rejected (editable and re-submittable)."""
+    return _transition(db, order_id, context, "submitted", "rejected")
+
+
+def unapprove_purchase_order(db: Session, order_id: str, context: UserContext) -> PurchaseOrder:
+    """GAP-02: 反审核, approved → draft when no downstream 入库单 exists."""
+    downstream = db.scalar(select(PurchaseReceipt.id).where(PurchaseReceipt.order_id == order_id, PurchaseReceipt.status != "cancelled"))
+    if downstream is not None:
+        raise AppError("该采购订单已生成入库单，不能反审核", code=409)
+    return _transition(db, order_id, context, "approved", "draft")

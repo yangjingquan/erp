@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 
-import { completeSalesReturn, convertQuoteToOrder, createSalesQuote, createSalesReturn, deleteSalesReturn, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn, updateSalesReturn } from "../api/sales";
+import { completeSalesReturn, convertQuoteToOrder, createSalesQuote, createSalesReturn, deleteSalesQuote, deleteSalesReturn, updateSalesQuote, listSalesQuotes, listSalesReturns, quoteAction, submitSalesReturn, updateSalesReturn } from "../api/sales";
 import {
   completePurchaseReturn,
   convertRequestToOrder,
@@ -156,7 +156,10 @@ function openEdit(row: any) {
   editingId.value = String(row.id);
   form.supplier_id = row.supplier_id || "";
   form.customer_id = row.customer_id || "";
-  if (isRequest()) {
+  if (isQuote()) {
+    form.quote_date = row.quote_date || form.quote_date;
+    form.valid_until = row.valid_until || null;
+  } else if (isRequest()) {
     form.request_date = row.request_date || form.request_date;
     form.remark = row.remark || "";
   } else if (isPurchaseReturn()) {
@@ -224,12 +227,13 @@ async function save() {
   try {
     let response: any;
     if (isQuote()) {
-      response = await createSalesQuote({
+      const quotePayload = {
         customer_id: form.customer_id,
         quote_date: form.quote_date,
         valid_until: form.valid_until,
         items: [{ material_id: form.items[0].material_id, quantity: form.items[0].quantity, unit_price: form.items[0].unit_price }],
-      });
+      };
+      response = editing ? await updateSalesQuote(editingId.value, quotePayload) : await createSalesQuote(quotePayload);
     } else if (isRequest()) {
       response = editing ? await updatePurchaseRequest(editingId.value, purchaseRequestPayload()) : await createPurchaseRequest(purchaseRequestPayload());
     } else if (isSalesReturn()) {
@@ -307,6 +311,21 @@ async function doConvert() {
     ElMessage.error(error instanceof Error ? error.message : "转换失败");
   } finally {
     saving.value = false;
+  }
+}
+
+async function removeQuote(row: any) {
+  try {
+    await ElMessageBox.confirm(`确认删除报价单“${row.doc_no}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
+    actionLoading.value = `delete:${row.id}`;
+    const response = await deleteSalesQuote(row.id);
+    if (response.data.code !== 0) throw new Error(response.data.msg);
+    ElMessage.success("报价单已删除");
+    await load();
+  } catch (error) {
+    if (error !== "cancel" && error !== "close") ElMessage.error(error instanceof Error ? error.message : "删除失败");
+  } finally {
+    actionLoading.value = "";
   }
 }
 
@@ -400,8 +419,9 @@ onMounted(async () => {
             <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
             <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removeRequest(scope.row)">删除</el-button>
             <el-button v-if="scope.row.status === 'draft'" link :loading="actionLoading === scope.row.id" @click="action(scope.row, 'submit')">提交</el-button>
-            <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button>
-            <el-button v-if="scope.row.status === 'submitted'" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'reject')">驳回</el-button>
+            <el-tag v-if="scope.row.status === 'submitted' && scope.row.in_workflow" type="warning" effect="plain" size="small">审批中（我的待办）</el-tag>
+            <el-button v-if="scope.row.status === 'submitted' && !scope.row.in_workflow" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button>
+            <el-button v-if="scope.row.status === 'submitted' && !scope.row.in_workflow" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'reject')">驳回</el-button>
             <el-button v-if="scope.row.status === 'approved'" link type="warning" @click="openConvert(scope.row)">转订单</el-button>
           </template>
         </el-table-column>
@@ -458,8 +478,10 @@ onMounted(async () => {
           <el-table-column v-if="isQuote()" label="状态" width="110">
             <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="操作" width="220" v-if="isQuote() || isSalesReturn()">
+          <el-table-column label="操作" width="280" v-if="isQuote() || isSalesReturn()">
             <template #default="scope">
+              <el-button v-if="isQuote() && scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
+              <el-button v-if="isQuote() && scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removeQuote(scope.row)">删除</el-button>
               <el-button v-if="isQuote() && scope.row.status === 'draft'" link @click="action(scope.row, 'submit')">提交</el-button>
               <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="success" @click="action(scope.row, 'approve')">审核</el-button>
               <el-button v-if="isQuote() && scope.row.status === 'submitted'" link type="danger" @click="action(scope.row, 'reject')">驳回</el-button>

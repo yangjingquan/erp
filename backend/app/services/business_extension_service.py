@@ -39,6 +39,38 @@ def create_quote(db: Session, payload, context: UserContext):
     return row
 
 
+def _editable_quote(db: Session, quote_id: str, context: UserContext, verb: str):
+    row = db.get(SalesQuote, quote_id)
+    if row is None or row.org_id != context.org_id or row.is_deleted:
+        raise AppError("报价单不存在", code=404)
+    if row.status != "draft":
+        raise AppError(f"只有草稿状态的报价单可以{verb}", code=400)
+    return row
+
+
+def update_quote(db: Session, quote_id: str, payload, context: UserContext):
+    """GAP-03: 草稿报价单修改。"""
+    row = _editable_quote(db, quote_id, context, "修改")
+    row.customer_id = payload.customer_id
+    row.quote_date = payload.quote_date
+    row.valid_until = payload.valid_until
+    row.items = [SalesQuoteItem(material_id=item.material_id, quantity=item.quantity, unit_price=item.unit_price, tax_rate=item.tax_rate, amount=(item.quantity * item.unit_price).quantize(Decimal("0.01")), line_no=index) for index, item in enumerate(payload.items, 1)]
+    row.total_amount = _total(row.items)
+    row.updated_by = context.id
+    row.version += 1
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def delete_quote(db: Session, quote_id: str, context: UserContext) -> None:
+    """GAP-03: 草稿报价单删除（软删除）。"""
+    row = _editable_quote(db, quote_id, context, "删除")
+    row.is_deleted = True
+    row.updated_by = context.id
+    db.commit()
+
+
 def transition_quote(db: Session, quote_id: str, new_status: str, context: UserContext):
     row = db.get(SalesQuote, quote_id)
     if row is None or row.org_id != context.org_id:
@@ -59,8 +91,11 @@ def serialize_request(row):
 
 
 def list_requests(db: Session, context: UserContext):
+    from app.models.workflow import WfInstance
+
     rows = db.scalars(select(PurchaseRequest).where(PurchaseRequest.org_id == context.org_id).order_by(PurchaseRequest.created_at.desc())).all()
-    return [serialize_request(row) for row in rows]
+    running_ids = set(db.scalars(select(WfInstance.business_id).where(WfInstance.org_id == context.org_id, WfInstance.business_type == "purchase_request", WfInstance.status == "running")).all())
+    return [{**serialize_request(row), "in_workflow": row.id in running_ids} for row in rows]
 
 
 def create_request(db: Session, payload, context: UserContext):
@@ -244,7 +279,10 @@ def complete_sales_return(db: Session, return_id: str, context: UserContext):
             warehouse_id=row.warehouse_id, material_id=item.material_id,
             quantity=item.quantity, direction="in", unit_cost=item.unit_price,
         )
-    row.status = "completed"; row.version += 1; db.flush(); return row
+    row.status = "completed"; row.version += 1; db.flush()
+    from app.services.finance_service import create_red_receivable_from_sales_return
+    create_red_receivable_from_sales_return(db, row.id, context)
+    return row
 
 
 def submit_purchase_return(db: Session, return_id: str, context: UserContext):
@@ -265,7 +303,10 @@ def complete_purchase_return(db: Session, return_id: str, context: UserContext):
             warehouse_id=row.warehouse_id, material_id=item.material_id,
             quantity=item.quantity, direction="out", unit_cost=item.unit_price,
         )
-    row.status = "completed"; row.version += 1; db.flush(); return row
+    row.status = "completed"; row.version += 1; db.flush()
+    from app.services.finance_service import create_red_payable_from_purchase_return
+    create_red_payable_from_purchase_return(db, row.id, context)
+    return row
 
 
 def delete_purchase_return(db: Session, return_id: str, context: UserContext) -> None:
