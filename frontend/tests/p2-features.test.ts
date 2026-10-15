@@ -11,8 +11,11 @@ function source(path: string) {
 
 describe("P2 业务订单状态展示", () => {
   it("keeps order statuses separate from master-data statuses", () => {
-    expect(orderStatusLabel("active")).toBe("未知状态");
-    expect(orderStatusTagType("active")).toBe("warning");
+    expect(orderStatusLabel("active")).toBe("生效"); // DEF-002: legacy active shown as 生效
+    expect(orderStatusLabel("partially_received")).toBe("部分入库");
+    expect(orderStatusLabel("partially_delivered")).toBe("部分出库");
+    expect(orderStatusTagType("active")).toBe("success");
+    expect(orderStatusTagType("unknown_status")).toBe("warning");
     expect(isKnownOrderStatus("approved")).toBe(true);
     expect(source("../src/views/sales/SalesOrderList.vue")).toContain("OrderStatusTag");
     expect(source("../src/views/purchase/PurchaseOrderList.vue")).toContain("OrderStatusTag");
