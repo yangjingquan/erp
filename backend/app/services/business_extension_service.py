@@ -276,7 +276,10 @@ def complete_sales_return(db: Session, return_id: str, context: UserContext):
             warehouse_id=row.warehouse_id, material_id=item.material_id,
             quantity=item.quantity, direction="in", unit_cost=item.unit_price,
         )
-    row.status = "completed"; row.version += 1; db.flush(); return row
+    row.status = "completed"; row.version += 1; db.flush()
+    from app.services.finance_service import create_red_receivable_from_sales_return
+    create_red_receivable_from_sales_return(db, row.id, context)
+    return row
 
 
 def submit_purchase_return(db: Session, return_id: str, context: UserContext):
@@ -297,7 +300,10 @@ def complete_purchase_return(db: Session, return_id: str, context: UserContext):
             warehouse_id=row.warehouse_id, material_id=item.material_id,
             quantity=item.quantity, direction="out", unit_cost=item.unit_price,
         )
-    row.status = "completed"; row.version += 1; db.flush(); return row
+    row.status = "completed"; row.version += 1; db.flush()
+    from app.services.finance_service import create_red_payable_from_purchase_return
+    create_red_payable_from_purchase_return(db, row.id, context)
+    return row
 
 
 def delete_purchase_return(db: Session, return_id: str, context: UserContext) -> None:

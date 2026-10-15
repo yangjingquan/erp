@@ -124,6 +124,70 @@ def create_payable_from_subcontract_receipt(
     return payable
 
 
+def _offset_red_document(red, source) -> None:
+    """Net a red (negative) AR/AP document against the open balance of its source document."""
+    if source is None:
+        return
+    open_balance = Decimal(source.total_amount) - Decimal(source.reconciled_amount)
+    offset = min(open_balance, -Decimal(red.total_amount))
+    if offset <= 0:
+        return
+    source.reconciled_amount = Decimal(source.reconciled_amount) + offset
+    source.status = "settled" if source.reconciled_amount >= source.total_amount else "partial"
+    red.reconciled_amount = Decimal(red.reconciled_amount) - offset
+    red.status = "settled" if red.reconciled_amount <= red.total_amount else "partial"
+
+
+def create_red_receivable_from_sales_return(db: Session, return_id: str, context: UserContext) -> SalesReceivable:
+    """GAP-05: 销售退货完成 → 红字应收（负数）冲减原出库应收，并生成反向凭证。"""
+    from app.models.sales import SalesReturn
+
+    row = db.get(SalesReturn, return_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("销售退货单不存在", code=404)
+    existing = db.scalar(select(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.source_type == "sales_return", SalesReceivable.source_id == row.id))
+    if existing is None:
+        existing = SalesReceivable(
+            org_id=context.org_id, doc_no=f"AR-RED-{row.doc_no}", customer_id=row.customer_id,
+            source_type="sales_return", source_id=row.id, total_amount=-Decimal(row.total_amount),
+            reconciled_amount=Decimal("0"), status="open",
+        )
+        db.add(existing)
+        db.flush()
+        source = None
+        if row.source_delivery_id:
+            source = db.scalar(select(SalesReceivable).where(SalesReceivable.org_id == context.org_id, SalesReceivable.source_type == "sales_delivery", SalesReceivable.source_id == row.source_delivery_id))
+        _offset_red_document(existing, source)
+        db.flush()
+    auto_generate_voucher(db, "sales_return", row.id, context)
+    return existing
+
+
+def create_red_payable_from_purchase_return(db: Session, return_id: str, context: UserContext) -> PurchasePayable:
+    """GAP-05: 采购退货完成 → 红字应付（负数）冲减原入库应付，并生成反向凭证。"""
+    from app.models.purchase import PurchaseReturn
+
+    row = db.get(PurchaseReturn, return_id)
+    if row is None or row.org_id != context.org_id:
+        raise AppError("采购退货单不存在", code=404)
+    existing = db.scalar(select(PurchasePayable).where(PurchasePayable.org_id == context.org_id, PurchasePayable.source_type == "purchase_return", PurchasePayable.source_id == row.id))
+    if existing is None:
+        existing = PurchasePayable(
+            org_id=context.org_id, doc_no=f"AP-RED-{row.doc_no}", supplier_id=row.supplier_id,
+            source_type="purchase_return", source_id=row.id, total_amount=-Decimal(row.total_amount),
+            reconciled_amount=Decimal("0"), status="open",
+        )
+        db.add(existing)
+        db.flush()
+        source = None
+        if row.source_receipt_id:
+            source = db.scalar(select(PurchasePayable).where(PurchasePayable.org_id == context.org_id, PurchasePayable.source_type == "purchase_receipt", PurchasePayable.source_id == row.source_receipt_id))
+        _offset_red_document(existing, source)
+        db.flush()
+    auto_generate_voucher(db, "purchase_return", row.id, context)
+    return existing
+
+
 def create_receipt(db: Session, context: UserContext, *, customer_id: str, amount: Decimal) -> FinReceipt:
     from app.services.ledger_service import assert_fiscal_period_open
 
@@ -382,6 +446,28 @@ def generate_voucher(db: Session, source_type: str, source_id: str, context: Use
         entries = [
             FinVoucherEntry(line_no=1, account_code="5001", account_name="生产成本", summary="委外加工费", debit_amount=amount, credit_amount=0),
             FinVoucherEntry(line_no=2, account_code="2202", account_name="应付账款", summary="委外应付", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "sales_return":
+        # GAP-05: 销售退货反向凭证（冲回销售出库凭证 借1122/贷6001）。
+        from app.models.sales import SalesReturn
+        source = db.get(SalesReturn, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="6001", account_name="主营业务收入", summary="销售退货冲减收入", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="1122", account_name="应收账款", summary="销售退货冲减应收", debit_amount=0, credit_amount=amount),
+        ]
+    elif source_type == "purchase_return":
+        # GAP-05: 采购退货反向凭证（冲回采购入库凭证 借1403/贷2202）。
+        from app.models.purchase import PurchaseReturn
+        source = db.get(PurchaseReturn, source_id)
+        if source is None or source.org_id != context.org_id:
+            raise AppError("凭证来源单据不存在", code=404)
+        amount = source.total_amount
+        entries = [
+            FinVoucherEntry(line_no=1, account_code="2202", account_name="应付账款", summary="采购退货冲减应付", debit_amount=amount, credit_amount=0),
+            FinVoucherEntry(line_no=2, account_code="1403", account_name="原材料", summary="采购退货", debit_amount=0, credit_amount=amount),
         ]
     elif source_type == "allocation":
         from app.models.cost import CostAllocation
