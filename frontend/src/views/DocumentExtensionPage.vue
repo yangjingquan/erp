@@ -419,8 +419,9 @@ onMounted(async () => {
             <el-button v-if="scope.row.status === 'draft'" link type="primary" @click="openEdit(scope.row)">修改</el-button>
             <el-button v-if="scope.row.status === 'draft'" link type="danger" :loading="actionLoading === `delete:${scope.row.id}`" @click="removeRequest(scope.row)">删除</el-button>
             <el-button v-if="scope.row.status === 'draft'" link :loading="actionLoading === scope.row.id" @click="action(scope.row, 'submit')">提交</el-button>
-            <el-button v-if="scope.row.status === 'submitted'" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button>
-            <el-button v-if="scope.row.status === 'submitted'" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'reject')">驳回</el-button>
+            <el-tag v-if="scope.row.status === 'submitted' && scope.row.in_workflow" type="warning" effect="plain" size="small">审批中（我的待办）</el-tag>
+            <el-button v-if="scope.row.status === 'submitted' && !scope.row.in_workflow" link type="success" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'approve')">审核</el-button>
+            <el-button v-if="scope.row.status === 'submitted' && !scope.row.in_workflow" link type="danger" :loading="actionLoading === scope.row.id" @click="action(scope.row, 'reject')">驳回</el-button>
             <el-button v-if="scope.row.status === 'approved'" link type="warning" @click="openConvert(scope.row)">转订单</el-button>
           </template>
         </el-table-column>

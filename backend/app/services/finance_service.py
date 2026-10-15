@@ -368,6 +368,18 @@ def approve_expense(db: Session, expense_id: str, context: UserContext) -> FinEx
     return expense
 
 
+def reject_expense(db: Session, expense_id: str, context: UserContext) -> FinExpense:
+    """GAP-10: 审批流驳回报销单 → rejected。"""
+    expense = db.get(FinExpense, expense_id)
+    if expense is None or expense.org_id != context.org_id:
+        raise AppError("报销单不存在", code=404)
+    if expense.status != "draft":
+        raise AppError("报销单当前不可驳回", code=400)
+    expense.status = "rejected"
+    db.flush()
+    return expense
+
+
 def settle_expense(db: Session, expense_id: str, context: UserContext) -> FinExpense:
     expense = db.get(FinExpense, expense_id)
     if expense is None or expense.org_id != context.org_id:
@@ -633,7 +645,14 @@ def list_payments(db: Session, context: UserContext) -> list[dict]:
 
 
 def list_expenses(db: Session, context: UserContext) -> list[dict]:
+    from app.models.workflow import WfInstance
+
     rows = db.scalars(select(FinExpense).where(FinExpense.org_id == context.org_id).order_by(FinExpense.id.desc())).all()
+    running_ids = set(db.scalars(select(WfInstance.business_id).where(
+        WfInstance.org_id == context.org_id,
+        WfInstance.business_type.in_(("expense", "fin_expense")),
+        WfInstance.status == "running",
+    )).all())
     voucher_source_ids = set(
         db.scalars(
             select(FinVoucher.source_id).where(
@@ -656,6 +675,7 @@ def list_expenses(db: Session, context: UserContext) -> list[dict]:
             "source_type": row.source_type,
             "source_id": row.source_id,
             "voucher_generated": row.id in voucher_source_ids,
+            "in_workflow": row.id in running_ids,
         }
         for row in rows
     ]

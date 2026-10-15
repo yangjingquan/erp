@@ -91,8 +91,11 @@ def serialize_request(row):
 
 
 def list_requests(db: Session, context: UserContext):
+    from app.models.workflow import WfInstance
+
     rows = db.scalars(select(PurchaseRequest).where(PurchaseRequest.org_id == context.org_id).order_by(PurchaseRequest.created_at.desc())).all()
-    return [serialize_request(row) for row in rows]
+    running_ids = set(db.scalars(select(WfInstance.business_id).where(WfInstance.org_id == context.org_id, WfInstance.business_type == "purchase_request", WfInstance.status == "running")).all())
+    return [{**serialize_request(row), "in_workflow": row.id in running_ids} for row in rows]
 
 
 def create_request(db: Session, payload, context: UserContext):

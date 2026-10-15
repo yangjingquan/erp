@@ -133,7 +133,14 @@ def request_action(request_id: str, action: str, context: UserContext = Depends(
     status = {"submit": "submitted", "approve": "approved", "reject": "rejected"}.get(action)
     if status is None:
         raise AppError("不支持的采购申请操作", code=400)
-    return ok(serialize_request(transition_request(db, request_id, status, context)))
+    if action in {"approve", "reject"} and has_running_workflow(db, "purchase_request", request_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
+    row = transition_request(db, request_id, status, context)
+    if action == "submit":
+        # GAP-10: 配置了「采购申请」审批流时，提交即发起流程并进入待办。
+        start_workflow_if_active(db, "purchase_request", request_id, context)
+        db.commit()
+    return ok(serialize_request(row))
 
 
 @router.get("/returns")

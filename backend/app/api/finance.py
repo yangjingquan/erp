@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.exceptions import AppError
 from app.core.response import ok
 from app.schemas.finance import (
     AccountCreate,
@@ -402,12 +403,18 @@ def reconcile_payment(payment_id: str, payload: dict, context: UserContext = Dep
 @router.post("/expenses")
 def expense(payload: dict, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
     row = create_expense(db, context, amount=payload["amount"], expense_type=payload["expense_type"], description=payload.get("description", ""))
+    # GAP-10: 配置了「费用报销」审批流时，提交即发起流程并进入待办。
+    from app.services.workflow_service import start_workflow_if_active
+    instance = start_workflow_if_active(db, "expense", row.id, context)
     db.commit()
-    return ok({"id": row.id, "doc_no": row.doc_no, "status": row.status})
+    return ok({"id": row.id, "doc_no": row.doc_no, "status": row.status, "workflow_instance_id": instance.id if instance else None})
 
 
 @router.post("/expenses/{expense_id}/approve")
 def approve_expense_api(expense_id: str, context: UserContext = Depends(require_permission("finance:manage")), db: Session = Depends(get_db)):
+    from app.services.workflow_service import has_running_workflow
+    if has_running_workflow(db, "expense", expense_id, context):
+        raise AppError("该单据已进入审批流，请在我的待办中处理", code=409)
     row = approve_expense(db, expense_id, context)
     db.commit()
     return ok({"id": row.id, "doc_no": row.doc_no, "status": row.status})
