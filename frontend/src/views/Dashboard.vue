@@ -5,7 +5,7 @@ import { BarChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { init, use, type ECharts } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
-import { Bell, CircleCheck, TopRight, Wallet } from "@element-plus/icons-vue";
+import { Bell, TopRight, Wallet } from "@element-plus/icons-vue";
 
 import { getDashboardOverview, getReportCenter } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
@@ -144,16 +144,15 @@ function handleResize() { chartInstance?.resize(); }
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/master-data/materials')">物料档案</button><small>管理物料、价格与安全库存</small></div><el-button type="primary" size="small" @click="go('/master-data/materials')">新增物料</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.material_type }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.material_type }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table></div><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
       </el-card>
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/sales/orders')">销售订单</button><small>从草稿到出库的工作流</small></div><el-button type="primary" size="small" @click="go('/sales/orders')">新建订单</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_name || row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ statusLabel(row.status) }}</span></td><td><button class="table-link" type="button" @click="go(`/documents/sales_order/${row.id}`)">查看</button></td></tr></tbody></table><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_name || row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ statusLabel(row.status) }}</span></td><td><button class="table-link" type="button" @click="go(`/documents/sales_order/${row.id}`)">查看</button></td></tr></tbody></table></div><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
       </el-card>
     </div>
 
-    <div class="dashboard-foot"><el-icon><CircleCheck /></el-icon>方向 C · 暖石运营 <span>/</span> 在保持 ERP 专业度的前提下，建立更有品牌识别度的运营体验</div>
   </section>
 </template>
 
@@ -208,10 +207,12 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .module-header > div { display: flex; flex-direction: column; gap: 4px; }
 .module-title { padding: 0; border: 0; background: transparent; color: #493d35; font-size: 16px; font-weight: 720; cursor: pointer; text-align: left; }
 .module-header small { color: var(--erp-subtle-text); font-size: 11px; }
-.module-body { padding: 14px 17px; }
+.module-body { min-width: 0; padding: 14px 17px; }
 .mini-toolbar { display: flex; gap: 7px; margin-bottom: 10px; }
 .mini-toolbar :deep(.el-input), .mini-toolbar :deep(.el-select) { min-width: 0; flex: 1; }
 .mini-toolbar :deep(.el-select) { max-width: 96px; }
+.preview-table-wrap { width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.dashboard-page .preview-table { display: table; width: 100%; min-width: 0; }
 .preview-table { width: 100%; border-collapse: collapse; color: #5a4f46; font-size: 11px; }
 .preview-table th { padding: 8px 6px; border-bottom: 1px solid #e7ddd2; color: var(--erp-muted-text); font-weight: 500; text-align: left; }
 .preview-table td { padding: 11px 6px; border-bottom: 1px solid var(--erp-border-soft); white-space: nowrap; }
@@ -220,9 +221,6 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .status-tag.green { background: var(--erp-green-bg); color: var(--erp-green); }
 .status-tag.amber { background: var(--erp-amber-bg); color: var(--erp-amber); }
 .table-link { padding: 0; border: 0; background: transparent; color: var(--erp-primary-dark); cursor: pointer; font-size: 11px; }
-.dashboard-foot { display: flex; align-items: center; gap: 7px; padding-top: 16px; color: var(--erp-subtle-text); font-size: 11px; }
-.dashboard-foot .el-icon { color: var(--erp-green); }
-.dashboard-foot span { color: var(--erp-border); }
 @media (max-width: 1100px) { .metric-card { grid-column: span 6; } .chart-card, .todo-card { grid-column: span 12; } .module-card { grid-column: span 12; } }
 @media (max-width: 620px) { .dashboard-heading { align-items: flex-start; flex-direction: column; gap: 14px; } .metric-card { grid-column: span 12; } .mini-toolbar { flex-wrap: wrap; } .mini-toolbar :deep(.el-input) { flex-basis: 100%; } .report-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
