@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import {
@@ -37,7 +37,8 @@ const searchResults = ref<Array<Record<string, any>>>([]);
 const organizations = ref<Array<Record<string, any>>>([]);
 const switchingOrganization = ref(false);
 const compactViewport = ref(false);
-const sidebarCollapsed = computed(() => app.sidebarCollapsed || compactViewport.value);
+const mobileMenuOpen = ref(false);
+const sidebarCollapsed = computed(() => app.sidebarCollapsed && !compactViewport.value);
 const activeMenu = computed(() => route.path);
 const pageHeader = computed(() => pageHeaders[route.path]);
 const openMenuKeys = computed(() => {
@@ -110,19 +111,47 @@ async function switchOrganization(orgId: string) {
   }
 }
 
-function syncViewport() { compactViewport.value = window.innerWidth <= 820; }
+function syncViewport() {
+  compactViewport.value = window.innerWidth <= 900;
+  if (!compactViewport.value) mobileMenuOpen.value = false;
+}
+
+function toggleNavigation() {
+  if (compactViewport.value) {
+    if (mobileMenuOpen.value) {
+      closeMobileMenu();
+    } else {
+      mobileMenuOpen.value = true;
+      void nextTick(() => document.querySelector<HTMLElement>(".sidebar .el-menu-item, .sidebar .el-sub-menu__title")?.focus());
+    }
+    return;
+  }
+  app.toggleSidebar();
+}
+
+function closeMobileMenu() {
+  if (!mobileMenuOpen.value) return;
+  mobileMenuOpen.value = false;
+  if (compactViewport.value) void nextTick(() => document.querySelector<HTMLElement>(".menu-trigger")?.focus());
+}
+
+watch(() => route.path, closeMobileMenu);
+watch(mobileMenuOpen, (open) => document.body.classList.toggle("navigation-open", open), { immediate: true });
 
 onMounted(async () => {
   syncViewport();
   window.addEventListener("resize", syncViewport);
   await loadOrganizations();
 });
-onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", syncViewport);
+  document.body.classList.remove("navigation-open");
+});
 </script>
 
 <template>
-  <el-container data-erp-ready="1" class="admin-layout">
-    <el-aside :width="sidebarCollapsed ? '68px' : '224px'" class="sidebar">
+  <el-container data-erp-ready="1" class="admin-layout" @keydown.esc="closeMobileMenu">
+    <el-aside :width="sidebarCollapsed ? '68px' : '224px'" :class="['sidebar', { 'mobile-open': compactViewport && mobileMenuOpen }]" :aria-hidden="compactViewport && !mobileMenuOpen" :inert="compactViewport && !mobileMenuOpen">
       <div class="brand">
         <span class="brand-mark">ERP</span>
         <span v-if="!sidebarCollapsed">ERP 管理系统</span>
@@ -255,14 +284,15 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
         <span v-if="!sidebarCollapsed" class="user-copy"><strong>{{ auth.user?.display_name || auth.user?.username || "用户" }}</strong><small>运营管理员</small></span>
       </button>
     </el-aside>
+    <button v-if="compactViewport && mobileMenuOpen" class="mobile-nav-backdrop" type="button" aria-label="关闭导航菜单" @click="closeMobileMenu" />
     <el-container>
       <el-header class="topbar">
-        <el-button class="menu-trigger" text @click="app.toggleSidebar"><el-icon><Menu /></el-icon></el-button>
+        <el-button class="menu-trigger" text :aria-label="compactViewport ? '打开主导航' : '切换侧边栏'" :aria-expanded="compactViewport ? mobileMenuOpen : undefined" @click="toggleNavigation"><el-icon><Menu /></el-icon></el-button>
         <el-autocomplete
           v-model="searchKeyword"
           class="global-search"
           :fetch-suggestions="fetchSearchSuggestions"
-          placeholder="全局检索编码、名称、单据号"
+          placeholder="检索业务数据"
           clearable
           @keyup.enter="search"
           @select="selectResult"
@@ -272,8 +302,8 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
           <el-option v-for="item in organizations" :key="item.id" :label="item.name || item.code" :value="item.id" />
         </el-select>
         <NotificationCenter />
-        <el-button class="top-action" text @click="app.toggleTheme"><el-icon><Sunny /></el-icon>{{ app.theme === "light" ? "暖石" : "浅色" }}</el-button>
-        <el-button class="top-action" text><el-icon><QuestionFilled /></el-icon>帮助</el-button>
+        <el-button class="top-action theme-action" text aria-label="切换主题" @click="app.toggleTheme"><el-icon><Sunny /></el-icon>{{ app.theme === "light" ? "暖石" : "浅色" }}</el-button>
+        <el-button class="top-action help-action" text><el-icon><QuestionFilled /></el-icon>帮助</el-button>
         <el-dropdown>
           <span class="user-menu"><span class="avatar avatar-small">{{ (auth.user?.display_name || auth.user?.username || "用").slice(0, 1) }}</span><span>{{ auth.user?.display_name || auth.user?.username || "用户" }}</span></span>
           <template #dropdown>
@@ -293,9 +323,9 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
 </template>
 
 <style scoped>
-.admin-layout { width: 100%; min-height: 100vh; overflow: hidden; background: var(--erp-page-bg); }
-.admin-layout > :deep(.el-container) { min-width: 0; }
-.sidebar { display: flex; flex-direction: column; background: var(--erp-sidebar-bg); transition: width .2s; overflow: hidden; }
+.admin-layout { width: 100%; min-height: 100vh; overflow-x: clip; background: var(--erp-page-bg); }
+.admin-layout > :deep(.el-container) { min-width: 0; min-height: 100vh; }
+.sidebar { display: flex; flex: 0 0 auto; flex-direction: column; height: 100vh; background: var(--erp-sidebar-bg); transition: width .2s; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 80px; padding: 20px 18px; color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap; }
 .brand-mark { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border-radius: 12px; background: var(--erp-primary); color: #fff; font-size: 10px; letter-spacing: .02em; }
 .sidebar :deep(.el-menu) { flex: 0 0 auto; border-right: 0; background: transparent; padding: 0 12px; }
@@ -328,19 +358,29 @@ onBeforeUnmount(() => window.removeEventListener("resize", syncViewport));
 .main-content { min-width: 0; background: var(--erp-page-bg); }
 .main-content :deep(.el-main) { padding: 0; }
 .main-content > :deep(.el-main) { background: var(--erp-page-bg); }
-@media (max-width: 820px) {
-  .sidebar { width: 68px !important; }
-  .brand { padding-inline: 16px; }
-  .sidebar-user { margin-inline: 18px; }
+@media (max-width: 900px) {
+  .admin-layout { min-height: 100dvh; overflow: visible; }
+  .admin-layout > :deep(.el-container) { min-height: 100dvh; }
+  .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 3001; width: min(286px, calc(100vw - 48px)) !important; height: 100dvh; min-height: 100dvh; transform: translateX(-102%); transition: transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .24s ease; box-shadow: none; }
+  .sidebar.mobile-open { transform: translateX(0); box-shadow: 12px 0 32px rgba(30, 22, 18, .22); }
+  .mobile-nav-backdrop { position: fixed; inset: 0; z-index: 3000; padding: 0; border: 0; background: rgba(25, 20, 17, .46); touch-action: none; }
+  .brand { min-height: 72px; padding: 18px 20px; }
+  .sidebar-user { margin-inline: 20px; }
+  .topbar { height: calc(60px + env(safe-area-inset-top)); flex: 0 0 calc(60px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; }
+  .spacer { display: none; }
   .global-search { min-width: 0; flex: 1 1 auto; width: auto; margin-left: 4px; }
   .top-action { padding-inline: 6px; }
   .top-action :deep(.el-icon) { margin-right: 0; }
-  .top-action:not(:has(.el-icon)) { display: none; }
+  .help-action { display: none; }
+  .main-content { padding: 18px; overflow-x: hidden; }
 }
 @media (max-width: 640px) {
-  .topbar { gap: 2px; padding: 0 8px; }
-  .top-action { display: none; }
+  .topbar { gap: 4px; height: calc(56px + env(safe-area-inset-top)); flex-basis: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-left)) 0; }
+  .menu-trigger { flex: 0 0 40px; width: 40px; height: 44px; padding: 0; }
+  .global-search { margin: 0; }
+  .theme-action { flex: 0 0 36px; width: 36px; height: 44px; padding: 0; font-size: 0; }
+  .theme-action :deep(.el-icon) { margin: 0; font-size: 18px; }
   .user-menu > span:last-child { display: none; }
-  .main-content { padding: 12px 10px; overflow-x: hidden; }
+  .main-content { padding: 14px max(12px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
 }
 </style>
