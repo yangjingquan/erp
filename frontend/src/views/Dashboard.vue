@@ -215,7 +215,7 @@ h1 { margin: 4px 0 0; color: var(--erp-text); font-size: 26px; line-height: 1.2;
 .dashboard-page .preview-table { display: table; width: 100%; min-width: 0; }
 .preview-table { width: 100%; border-collapse: collapse; color: #5a4f46; font-size: 11px; }
 .preview-table th { padding: 8px 6px; border-bottom: 1px solid #e7ddd2; color: var(--erp-muted-text); font-weight: 500; text-align: left; }
-.preview-table td { padding: 11px 6px; border-bottom: 1px solid var(--erp-border-soft); white-space: nowrap; }
+.preview-table td { padding: 11px 6px; border-bottom: 1px solid var(--erp-border-soft); text-align: left; white-space: nowrap; }
 .preview-table tr:last-child td { border-bottom: 0; }
 .status-tag { display: inline-flex; padding: 4px 8px; border-radius: 999px; background: #f2e6dc; color: #a45b40; font-size: 10px; }
 .status-tag.green { background: var(--erp-green-bg); color: var(--erp-green); }

@@ -323,9 +323,9 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.admin-layout { width: 100%; min-height: 100vh; overflow-x: clip; background: var(--erp-page-bg); }
-.admin-layout > :deep(.el-container) { min-width: 0; min-height: 100vh; }
-.sidebar { display: flex; flex: 0 0 auto; flex-direction: column; height: 100vh; background: var(--erp-sidebar-bg); transition: width .2s; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.admin-layout { width: 100%; height: 100vh; height: 100dvh; overflow: hidden; background: var(--erp-page-bg); }
+.admin-layout > :deep(.el-container) { min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.sidebar { display: flex; flex: 0 0 auto; flex-direction: column; min-height: 0; height: 100%; background: var(--erp-sidebar-bg); transition: width .2s; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .brand { display: flex; align-items: center; gap: 10px; min-height: 80px; padding: 20px 18px; color: #fff; font-size: 16px; font-weight: 700; white-space: nowrap; }
 .brand-mark { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border-radius: 12px; background: var(--erp-primary); color: #fff; font-size: 10px; letter-spacing: .02em; }
 .sidebar :deep(.el-menu) { flex: 0 0 auto; border-right: 0; background: transparent; padding: 0 12px; }
@@ -355,12 +355,10 @@ onBeforeUnmount(() => {
 .top-action :deep(.el-icon) { margin-right: 4px; }
 .global-search { flex: 0 1 360px; width: min(360px, 30vw); margin-left: 14px; }
 .global-search :deep(.el-input__wrapper) { border-radius: 11px; padding: 1px 12px; }
-.main-content { min-width: 0; background: var(--erp-page-bg); }
+.main-content { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; background: var(--erp-page-bg); }
 .main-content :deep(.el-main) { padding: 0; }
 .main-content > :deep(.el-main) { background: var(--erp-page-bg); }
 @media (max-width: 900px) {
-  .admin-layout { min-height: 100dvh; overflow: visible; }
-  .admin-layout > :deep(.el-container) { min-height: 100dvh; }
   .sidebar { position: fixed; inset: 0 auto 0 0; z-index: 3001; width: min(286px, calc(100vw - 48px)) !important; height: 100dvh; min-height: 100dvh; transform: translateX(-102%); transition: transform .24s cubic-bezier(.22, 1, .36, 1), box-shadow .24s ease; box-shadow: none; }
   .sidebar.mobile-open { transform: translateX(0); box-shadow: 12px 0 32px rgba(30, 22, 18, .22); }
   .mobile-nav-backdrop { position: fixed; inset: 0; z-index: 3000; padding: 0; border: 0; background: rgba(25, 20, 17, .46); touch-action: none; }

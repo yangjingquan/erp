@@ -81,12 +81,10 @@ button, input, textarea, select { font: inherit; }
 .main-content .el-table__body-wrapper { overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 .main-content .el-table__cell .cell { min-width: 0; }
 .main-content .el-card, .main-content .el-card__body, .main-content .page-stack, .main-content .list-workbench { min-width: 0; max-width: 100%; }
-.main-content table:not(.el-table__header):not(.el-table__body) { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
+.main-content table:not(.el-table__header):not(.el-table__body):not(.preview-table) { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 .el-table th.el-table__cell { font-weight: 600; }
 .el-table th.el-table__cell .cell { text-align: center; }
 .el-table td.el-table__cell .cell { text-align: center; }
-.preview-table th { text-align: center; }
-.preview-table td { text-align: center; }
 .el-table tr:hover > td.el-table__cell { background: var(--erp-panel-soft) !important; }
 .el-dialog { --el-dialog-bg-color: var(--erp-panel-bg); display: flex; flex-direction: column; max-height: calc(100dvh - 32px); overflow: hidden; border-radius: 16px; }
 .el-dialog__header, .el-dialog__footer { flex: 0 0 auto; }
