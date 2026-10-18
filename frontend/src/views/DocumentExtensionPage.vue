@@ -88,7 +88,7 @@ function listFrom(response: any) {
 
 function optionLabel(options: SelectOption[], id: unknown) {
   const value = String(id || "");
-  return options.find((option) => option.value === value)?.label || value || "-";
+  return options.find((option) => option.value === value)?.label || "-";
 }
 
 function supplierLabel(id: unknown) {
@@ -406,7 +406,7 @@ onMounted(async () => {
         <el-table-column prop="total_amount" label="金额" min-width="140" />
         <el-table-column label="状态" width="110">
           <template #default="scope">
-            <el-tag class="request-status-tag" :type="statusTagType(scope.row.status)" effect="light">
+            <el-tag class="request-status-tag" :type="statusTagType(scope.row.status)" effect="plain">
               {{ statusLabel(scope.row.status) }}
             </el-tag>
           </template>
@@ -450,7 +450,7 @@ onMounted(async () => {
           <el-table-column prop="total_amount" label="金额" min-width="140" />
           <el-table-column label="状态" width="110">
             <template #default="scope">
-              <el-tag class="request-status-tag" :type="statusTagType(scope.row.status)" effect="light">
+              <el-tag class="request-status-tag" :type="statusTagType(scope.row.status)" effect="plain">
                 {{ statusLabel(scope.row.status) }}
               </el-tag>
             </template>
@@ -469,14 +469,14 @@ onMounted(async () => {
         </template>
         <template v-else>
           <el-table-column v-if="!isQuote()" label="状态" width="110">
-            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
+            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template>
           </el-table-column>
           <el-table-column v-if="isQuote() || isSalesReturn()" label="客户" min-width="180">
-            <template #default="scope">{{ scope.row.customer_name || scope.row.customer_id || '-' }}</template>
+            <template #default="scope">{{ scope.row.customer_name || optionLabel(customers, scope.row.customer_id) }}</template>
           </el-table-column>
           <el-table-column prop="total_amount" label="金额" min-width="140" />
           <el-table-column v-if="isQuote()" label="状态" width="110">
-            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template>
+            <template #default="scope"><el-tag class="request-status-tag" :type="tagTypeOf(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="操作" width="280" v-if="isQuote() || isSalesReturn()">
             <template #default="scope">
@@ -527,10 +527,10 @@ onMounted(async () => {
           <el-input v-model="form.remark" type="textarea" />
         </el-form-item>
         <el-form-item v-if="isSalesReturn()" label="来源发货单">
-          <el-input v-model="form.source_delivery_id" placeholder="可关联原发货单 ID" />
+          <el-input v-model="form.source_delivery_id" placeholder="可关联原发货单编号" />
         </el-form-item>
         <el-form-item v-if="props.kind === 'purchase-return'" label="来源收货单">
-          <el-input v-model="form.source_receipt_id" placeholder="可关联原收货单 ID" />
+          <el-input v-model="form.source_receipt_id" placeholder="可关联原收货单编号" />
         </el-form-item>
         <el-form-item label="物料" required>
           <el-select v-model="form.items[0].material_id" filterable clearable style="width: 100%">

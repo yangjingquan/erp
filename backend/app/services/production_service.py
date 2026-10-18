@@ -68,7 +68,11 @@ def _serialize_material(row: MfgWorkOrderMaterial) -> dict:
     }
 
 
-def serialize_work_order(row: MfgWorkOrder) -> dict:
+def serialize_work_order(row: MfgWorkOrder, db: Session | None = None) -> dict:
+    voucher_no = None
+    if db is not None and row.cost and row.cost.voucher_id:
+        from app.models.finance import FinVoucher
+        voucher_no = db.scalar(select(FinVoucher.voucher_no).where(FinVoucher.id == row.cost.voucher_id, FinVoucher.org_id == row.org_id))
     return {
         "id": row.id,
         "doc_no": row.doc_no,
@@ -87,7 +91,7 @@ def serialize_work_order(row: MfgWorkOrder) -> dict:
         "source_type": row.source_type,
         "source_id": row.source_id,
         "materials": [_serialize_material(item) for item in row.materials if not item.is_deleted],
-        "actual_cost": serialize_work_order_cost(row.cost),
+        "actual_cost": serialize_work_order_cost(row.cost, voucher_no),
     }
 
 

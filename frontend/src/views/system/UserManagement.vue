@@ -105,7 +105,7 @@ onMounted(load);
         <el-table-column label="所属部门" min-width="140"><template #default="scope">{{ departmentName(scope.row.department_id) }}</template></el-table-column>
         <el-table-column label="角色" min-width="180"><template #default="scope">{{ roleNames(scope.row.role_ids) }}</template></el-table-column>
         <el-table-column prop="phone" label="手机号" min-width="130" />
-        <el-table-column prop="status" label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'">{{ scope.row.status === "active" ? "启用" : "停用" }}</el-tag></template></el-table-column>
+        <el-table-column prop="status" label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'" effect="plain">{{ scope.row.status === "active" ? "启用" : "停用" }}</el-tag></template></el-table-column>
         <el-table-column label="操作" width="420" class-name="operation-column"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">设置用户信息</el-button><el-button link type="primary" @click="openRoles(scope.row)">配置角色</el-button><el-button link type="warning" @click="openPassword(scope.row)">修改密码</el-button><el-button link type="info" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无登录用户" /></template>
       </el-table>

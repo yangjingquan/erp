@@ -35,7 +35,7 @@ def _quantity(value) -> Decimal:
     return Decimal(str(value or 0)).quantize(QUANTITY, rounding=ROUND_HALF_UP)
 
 
-def serialize_work_order_cost(row: MfgWorkOrderCost | None) -> dict | None:
+def serialize_work_order_cost(row: MfgWorkOrderCost | None, voucher_no: str | None = None) -> dict | None:
     if row is None:
         return None
     return {
@@ -51,6 +51,7 @@ def serialize_work_order_cost(row: MfgWorkOrderCost | None) -> dict | None:
         "standard_cost": str(row.standard_cost),
         "variance_amount": str(row.variance_amount),
         "voucher_id": row.voucher_id,
+        "voucher_no": voucher_no,
         "status": row.status,
         "details": row.cost_detail_json,
     }
@@ -264,4 +265,7 @@ def get_work_order_cost(db: Session, work_order_id: str, context: UserContext) -
         MfgWorkOrderCost.work_order_id == work_order_id,
         MfgWorkOrderCost.is_deleted.is_(False),
     ))
-    return serialize_work_order_cost(row)
+    if row is None:
+        return None
+    voucher_no = db.scalar(select(FinVoucher.voucher_no).where(FinVoucher.id == row.voucher_id, FinVoucher.org_id == context.org_id)) if row.voucher_id else None
+    return serialize_work_order_cost(row, voucher_no)

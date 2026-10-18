@@ -21,7 +21,7 @@ const transactionSourceTypeLabels: Record<string, string> = {
 const transactionDirectionLabels: Record<string, string> = { ...directionLabels, active: "入库" };
 const rows = ref<Row[]>([]);
 const filters = reactive({ source_type: "", source_id: "", direction: "" });
-const filteredRows = computed(() => rows.value.filter((row) => (!filters.source_type || row.source_type === filters.source_type) && (!filters.source_id || String(row.source_id || "").includes(filters.source_id)) && (!filters.direction || row.direction === filters.direction)));
+const filteredRows = computed(() => rows.value.filter((row) => (!filters.source_type || row.source_type === filters.source_type) && (!filters.source_id || String(row.source_label || "").toLowerCase().includes(filters.source_id.toLowerCase())) && (!filters.direction || row.direction === filters.direction)));
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const loading = ref(false);
 const errorMessage = ref("");
@@ -48,7 +48,7 @@ onMounted(load);
     <el-page-header content="库存流水" />
     <el-space class="toolbar" wrap><el-select v-model="filters.source_type" clearable placeholder="来源类型" style="width:170px"><el-option v-for="(label, key) in transactionSourceTypeLabels" :key="key" :label="label" :value="key" /></el-select><el-input v-model="filters.source_id" clearable placeholder="来源单据" style="width:200px" /><el-select v-model="filters.direction" clearable placeholder="方向" style="width:130px"><el-option label="入库" value="in" /><el-option label="出库" value="out" /></el-select><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon closable @close="errorMessage = ''"><template #default><el-button link type="primary" @click="load">重新加载</el-button></template></el-alert>
-    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit><el-table-column label="来源类型"><template #default="scope">{{ labelOf(transactionSourceTypeLabels, scope.row.source_type) }}</template></el-table-column><el-table-column prop="source_id" label="来源单据" /><el-table-column label="方向"><template #default="scope">{{ labelOf(transactionDirectionLabels, scope.row.direction) }}</template></el-table-column><el-table-column prop="quantity" label="数量" /><el-table-column prop="amount" label="金额" /></el-table>
+    <el-table v-loading="loading" :data="pagedRows" stripe width="100%" fit><el-table-column label="来源类型"><template #default="scope"><el-tag effect="plain" type="info">{{ labelOf(transactionSourceTypeLabels, scope.row.source_type, "其他来源") }}</el-tag></template></el-table-column><el-table-column prop="source_label" label="来源单据" /><el-table-column label="方向"><template #default="scope"><el-tag effect="plain" :type="scope.row.direction === 'in' ? 'success' : 'warning'">{{ labelOf(transactionDirectionLabels, scope.row.direction) }}</el-tag></template></el-table-column><el-table-column prop="quantity" label="数量" /><el-table-column prop="amount" label="金额" /></el-table>
     <ClientPagination v-model:page="page" v-model:page-size="pageSize" :total="total" @update:page-size="updatePageSize" />
   </section>
 </template>

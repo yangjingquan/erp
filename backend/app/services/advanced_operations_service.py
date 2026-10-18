@@ -601,8 +601,8 @@ def _serialize_claim(db, row, context):
     expense = db.scalar(select(FinExpense).where(FinExpense.org_id == context.org_id, FinExpense.source_type == "customer_claim", FinExpense.source_id == row.id))
     ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.id == row.nonconformance_id, QaNonconformity.org_id == context.org_id)) if row.nonconformance_id else None
     return _row(row, ["claim_no", "customer_id", "source_type", "source_id", "title", "amount", "approved_amount", "status", "owner_id", "due_date", "root_cause", "resolution", "review_evidence", "review_comment", "reviewed_by", "reviewed_at", "closure_evidence", "nonconformance_id", "financial_expense_id", "closed_at", "closed_by"]) | {
-        "customer_name": customer.name if customer else row.customer_id,
-        "source_document_name": source["label"] if source else (row.source_id or "-"),
+        "customer_name": customer.name if customer else "相关客户",
+        "source_document_name": source["label"] if source else "相关业务单据",
         "ncr_status": ncr.status if ncr else None,
         "finance_expense_status": expense.status if expense else None,
         "finance_expense_id": expense.id if expense else row.financial_expense_id,

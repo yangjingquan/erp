@@ -54,17 +54,17 @@ function listFrom(response: any): Row[] {
 
 function supplierLabel(id: unknown) {
   const value = String(id || "");
-  return suppliers.value.find((option) => option.value === value)?.label || value || "-";
+  return suppliers.value.find((option) => option.value === value)?.label || "-";
 }
 
 function materialLabel(id: unknown) {
   const value = String(id || "");
-  return materials.value.find((option) => option.value === value)?.label || value || "-";
+  return materials.value.find((option) => option.value === value)?.label || "-";
 }
 
 function warehouseLabel(id: unknown) {
   const value = String(id || "");
-  return warehouses.value.find((option) => option.value === value)?.label || value || "-";
+  return warehouses.value.find((option) => option.value === value)?.label || "-";
 }
 
 function hasReceipt(row: Row) {
@@ -132,7 +132,7 @@ async function removeOrder(row: Row) {
   const id = String(row.id || "");
   if (!id) { ElMessage.error("订单缺少有效 ID，无法删除"); return; }
   try {
-    await ElMessageBox.confirm(`确认删除采购订单“${row.doc_no || id}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
+    await ElMessageBox.confirm(`确认删除采购订单“${row.doc_no || "该采购订单"}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
     actionLoading.value = id;
     const response = await deletePurchaseOrder(id);
     if (response.data.code !== 0) throw new Error(response.data.msg);
@@ -148,7 +148,7 @@ async function confirmAction(row: Row, action: "submit" | "approve" | "receipt" 
   if (!id) { ElMessage.error("订单缺少有效 ID，无法操作"); return; }
   const labels = { submit: "提交审核", approve: "审核订单", receipt: "创建入库单", reject: "驳回订单", unapprove: "反审核订单" };
   try {
-    await ElMessageBox.confirm(`确认${labels[action]}“${row.doc_no || id}”吗？`, "操作确认", { type: "warning" });
+    await ElMessageBox.confirm(`确认${labels[action]}“${row.doc_no || "该采购订单"}”吗？`, "操作确认", { type: "warning" });
     actionLoading.value = id;
     const handlers = { submit: submitPurchaseOrder, approve: approvePurchaseOrder, receipt: createPurchaseReceipt, reject: rejectPurchaseOrder, unapprove: unapprovePurchaseOrder };
     const response = await handlers[action](id);

@@ -18,11 +18,11 @@ const { warehouses, loadOptions } = useMasterOptions();
 
 const statusLabels: Record<string, string> = { active: "启用", inactive: "停用" };
 
-function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
+function statusLabel(status: string) { return statusLabels[status] || (status ? "其他状态" : "-"); }
 function statusTagType(status: string) { return status === "active" ? "success" : "info"; }
 
 function warehouseName(warehouseId: string | null | undefined) {
-  return warehouses.value.find((item) => item.value === warehouseId)?.label || warehouseId || "-";
+  return warehouses.value.find((item) => item.value === warehouseId)?.label || "-";
 }
 
 async function load() {
@@ -128,7 +128,7 @@ onMounted(async () => {
       <el-table-column prop="code" label="库位编码" min-width="180" />
       <el-table-column prop="name" label="库位名称" min-width="220" />
       <el-table-column label="库区" min-width="180"><template #default="scope">{{ warehouseName(scope.row.warehouse_id) }}</template></el-table-column>
-      <el-table-column label="状态" width="120"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="120"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="240"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button link :type="scope.row.status === 'active' ? 'warning' : 'success'" :loading="actionLoading === scope.row.id" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button><el-button link type="danger" :loading="actionLoading === scope.row.id" @click="remove(scope.row)">删除</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无库位" /></template>
     </el-table>

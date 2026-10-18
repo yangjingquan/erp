@@ -10,7 +10,7 @@ import { Bell, TopRight, Wallet } from "@element-plus/icons-vue";
 import { getDashboardOverview, getReportCenter } from "../api/dashboard";
 import { useAppStore } from "../stores/app";
 import { localMonthString } from "../utils/time";
-import { statusLabel } from "../utils/labels";
+import { materialTypeLabels, statusLabel } from "../utils/labels";
 
 const router = useRouter();
 const app = useAppStore();
@@ -144,12 +144,12 @@ function handleResize() { chartInstance?.resize(); }
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/master-data/materials')">物料档案</button><small>管理物料、价格与安全库存</small></div><el-button type="primary" size="small" @click="go('/master-data/materials')">新增物料</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ row.material_type }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table></div><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/master-data/materials')">打开物料档案</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>物料编码</th><th>物料名称</th><th>类型</th><th>安全库存</th><th>状态</th></tr></thead><tbody><tr v-for="row in overview.materials" :key="row.id"><td>{{ row.code }}</td><td>{{ row.name }}</td><td>{{ materialTypeLabels[row.material_type] || '其他类型' }}</td><td>{{ row.min_stock }}</td><td><span :class="['status-tag', row.status === 'active' ? 'green' : '']">{{ row.status === 'active' ? '启用' : '停用' }}</span></td></tr></tbody></table></div><el-empty v-if="!overview.materials.length" description="暂无物料" :image-size="56" /></div>
       </el-card>
 
       <el-card class="module-card" shadow="never">
         <div class="module-header"><div><button class="module-title" type="button" @click="go('/sales/orders')">销售订单</button><small>从草稿到出库的工作流</small></div><el-button type="primary" size="small" @click="go('/sales/orders')">新建订单</el-button></div>
-        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_name || row.customer_id }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ statusLabel(row.status) }}</span></td><td><button class="table-link" type="button" @click="go(`/documents/sales_order/${row.id}`)">查看</button></td></tr></tbody></table></div><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
+        <div class="module-body"><div class="mini-toolbar"><el-button size="small" @click="go('/sales/orders')">打开销售订单</el-button></div><div class="preview-table-wrap"><table class="preview-table"><thead><tr><th>订单号</th><th>客户</th><th>含税金额</th><th>状态</th><th>操作</th></tr></thead><tbody><tr v-for="row in overview.sales_orders" :key="row.id"><td>{{ row.doc_no }}</td><td>{{ row.customer_name || '相关客户' }}</td><td>{{ formatCurrency(row.total_amount) }}</td><td><span :class="['status-tag', row.status === 'approved' ? 'green' : 'amber']">{{ statusLabel(row.status) }}</span></td><td><button class="table-link" type="button" @click="go(`/documents/sales_order/${row.id}`)">查看</button></td></tr></tbody></table></div><el-empty v-if="!overview.sales_orders.length" description="暂无本期订单" :image-size="56" /></div>
       </el-card>
     </div>
 

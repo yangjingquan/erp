@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { approveWorkflowTask, listMyWorkflowTasks, rejectWorkflowTask } from "../../api/workflow";
 
 type Row = Record<string, any>;
+const businessTypeLabels: Record<string, string> = { sales_order: "销售订单", purchase_order: "采购订单", purchase_request: "采购申请", quote: "销售报价" };
 const rows = ref<Row[]>([]);
 const loading = ref(false);
 const actionLoading = ref<string | null>(null);
@@ -68,7 +69,7 @@ onMounted(load);
     <el-card shadow="never">
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column prop="document_label" label="单据" min-width="220" />
-        <el-table-column prop="business_type" label="业务类型" width="140" />
+        <el-table-column label="业务类型" width="140"><template #default="scope"><el-tag effect="plain" type="info">{{ businessTypeLabels[scope.row.business_type] || "其他业务类型" }}</el-tag></template></el-table-column>
         <el-table-column prop="node_name" label="审批节点" min-width="160" />
         <el-table-column prop="created_at" label="到达时间" width="180" />
         <el-table-column label="操作" width="180">

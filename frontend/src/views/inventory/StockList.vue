@@ -23,7 +23,7 @@ watch(() => [balanceFilters.warehouse_id, balanceFilters.material_id], () => { b
 
 function optionLabel(options: Array<{ label: string; value: string }>, id: unknown) {
   const value = String(id || "");
-  return options.find((option) => option.value === value)?.label || value || "-";
+  return options.find((option) => option.value === value)?.label || "-";
 }
 
 function warehouseLabel(id: unknown) { return optionLabel(warehouses.value, id); }

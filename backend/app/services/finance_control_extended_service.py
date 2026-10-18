@@ -86,6 +86,12 @@ def auto_match_bank_statement(db: Session, statement_id: str, context: UserConte
         ).order_by(model.doc_no).limit(10)).all()
         suggestions.append({
             "line_id": line.id,
+            "line_no": line.line_no,
+            "transaction_date": line.transaction_date.isoformat(),
+            "amount": _money(line.amount),
+            "direction": line.direction,
+            "counterparty": line.counterparty,
+            "reference_no": line.reference_no,
             "reason": "金额、方向、交易日自动匹配",
             "candidates": [{"source_type": "receipt" if line.direction == "in" else "payment", "source_id": item.id, "doc_no": item.doc_no, "amount": _money(item.amount), "match_score": 100} for item in candidates],
             "status": "suggested" if candidates else "unmatched",

@@ -219,7 +219,10 @@ def list_projects(db, context):
     entries = db.scalars(select(ProjectEntry).where(ProjectEntry.org_id == context.org_id, ProjectEntry.is_deleted.is_(False))).all()
     totals = defaultdict(Decimal)
     for entry in entries: totals[entry.project_id] += entry.amount
-    return [_row(row, ["project_code", "name", "customer_id", "manager_id", "status", "budget_amount", "actual_amount", "start_date", "end_date"]) | {"actual_amount": str(totals[row.id]), "variance": str(Decimal(row.budget_amount or 0) - totals[row.id])} for row in rows]
+    customer_ids = {row.customer_id for row in rows if row.customer_id}
+    customers = db.scalars(select(MdCustomer).where(MdCustomer.org_id == context.org_id, MdCustomer.id.in_(customer_ids), MdCustomer.is_deleted.is_(False))).all() if customer_ids else []
+    customer_names = {row.id: row.name for row in customers}
+    return [_row(row, ["project_code", "name", "status", "budget_amount", "actual_amount", "start_date", "end_date"]) | {"customer_name": customer_names.get(row.customer_id, "未关联客户"), "actual_amount": str(totals[row.id]), "variance": str(Decimal(row.budget_amount or 0) - totals[row.id])} for row in rows]
 
 
 def create_project(db, payload, context):
@@ -249,7 +252,10 @@ def create_milestone(db, payload, context):
 
 def list_milestones(db, project_id, context):
     rows = db.scalars(select(ProjectMilestone).where(ProjectMilestone.org_id == context.org_id, ProjectMilestone.project_id == project_id, ProjectMilestone.is_deleted.is_(False)).order_by(ProjectMilestone.due_date)).all()
-    return [_row(item, ["project_id", "wbs_id", "name", "due_date", "status"]) for item in rows]
+    wbs_ids = {row.wbs_id for row in rows if row.wbs_id}
+    wbs_rows = db.scalars(select(ProjectWbs).where(ProjectWbs.org_id == context.org_id, ProjectWbs.id.in_(wbs_ids), ProjectWbs.is_deleted.is_(False))).all() if wbs_ids else []
+    wbs_names = {row.id: f"{row.code} · {row.name}" for row in wbs_rows}
+    return [_row(item, ["name", "due_date", "status"]) | {"wbs_label": wbs_names.get(item.wbs_id, "未关联") if item.wbs_id else "未关联"} for item in rows]
 
 
 def project_dashboard(db, project_id, context):
@@ -267,7 +273,9 @@ def create_project_entry(db, payload, context):
 
 def list_project_entries(db, project_id, context):
     if db.scalar(select(Project.id).where(Project.id == project_id, Project.org_id == context.org_id, Project.is_deleted.is_(False))) is None: raise AppError("项目不存在", code=404)
-    return [_row(row, ["project_id", "wbs_id", "entry_date", "category", "source_type", "source_id", "amount"]) for row in db.scalars(select(ProjectEntry).where(ProjectEntry.org_id == context.org_id, ProjectEntry.project_id == project_id, ProjectEntry.is_deleted.is_(False)).order_by(ProjectEntry.entry_date.desc())).all()]
+    from app.services.document_service import resolve_source_label
+    rows = db.scalars(select(ProjectEntry).where(ProjectEntry.org_id == context.org_id, ProjectEntry.project_id == project_id, ProjectEntry.is_deleted.is_(False)).order_by(ProjectEntry.entry_date.desc())).all()
+    return [_row(row, ["entry_date", "category", "source_type", "amount"]) | {"source_label": resolve_source_label(db, context.org_id, row.source_type, row.source_id)} for row in rows]
 
 
 def _get_asset(db, asset_id: str, context):

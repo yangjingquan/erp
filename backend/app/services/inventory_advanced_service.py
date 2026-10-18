@@ -1053,9 +1053,10 @@ def list_batches(db: Session, material_id: str | None, context: UserContext) -> 
     return list(db.scalars(statement.order_by(InvBatch.created_at.desc())).all())
 
 
-def _serialize_reservation(row: InvReservation) -> dict:
+def _serialize_reservation(row: InvReservation, source_label: str = "相关业务单据") -> dict:
     return {
         "id": row.id, "source_type": row.source_type, "source_id": row.source_id,
+        "source_label": source_label,
         "material_id": row.material_id, "warehouse_id": row.warehouse_id,
         "quantity": _number(row.quantity), "released_quantity": _number(row.released_quantity),
         "reserved_quantity": _number(_decimal(row.quantity) - _decimal(row.released_quantity)),
@@ -1133,7 +1134,10 @@ def list_reservations(db: Session, context: UserContext, status: str | None = No
     allowed = allowed_warehouse_ids(context)
     if allowed is not None:
         statement = statement.where(InvReservation.warehouse_id.in_(allowed))
-    return [_serialize_reservation(row) for row in db.scalars(statement.order_by(InvReservation.created_at.desc())).all()]
+    from app.services.document_service import resolve_source_label
+
+    rows = db.scalars(statement.order_by(InvReservation.created_at.desc())).all()
+    return [_serialize_reservation(row, resolve_source_label(db, context.org_id, row.source_type, row.source_id)) for row in rows]
 
 
 def list_trace_events(db: Session, context: UserContext, *, material_id: str | None = None, batch_id: str | None = None) -> list[dict]:
@@ -1148,10 +1152,21 @@ def list_trace_events(db: Session, context: UserContext, *, material_id: str | N
     allowed = allowed_warehouse_ids(context)
     if allowed is not None:
         statement = statement.where(InvTraceEvent.warehouse_id.in_(allowed))
+    rows = db.scalars(statement.order_by(InvTraceEvent.event_time.desc(), InvTraceEvent.created_at.desc())).all()
+    batch_ids = {row.batch_id for row in rows if row.batch_id}
+    batch_nos = {
+        row.id: row.batch_no
+        for row in db.scalars(select(InvBatch).where(InvBatch.org_id == context.org_id, InvBatch.id.in_(batch_ids), InvBatch.is_deleted.is_(False))).all()
+    } if batch_ids else {}
+    from app.services.document_service import resolve_source_label
+
     return [{
         "id": row.id, "material_id": row.material_id, "batch_id": row.batch_id,
+        "batch_no": batch_nos.get(row.batch_id, ""),
         "transaction_id": row.transaction_id, "source_type": row.source_type,
-        "source_id": row.source_id, "direction": row.direction,
+        "source_id": row.source_id,
+        "source_label": resolve_source_label(db, context.org_id, row.source_type, row.source_id),
+        "direction": row.direction,
         "quantity": _number(row.quantity), "warehouse_id": row.warehouse_id,
         "location_id": row.location_id, "event_time": row.event_time.isoformat() if row.event_time else None,
-    } for row in db.scalars(statement.order_by(InvTraceEvent.event_time.desc(), InvTraceEvent.created_at.desc())).all()]
+    } for row in rows]

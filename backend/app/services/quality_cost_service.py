@@ -214,17 +214,24 @@ def record_customer_claim_failure_cost(db: Session, row: QaCustomerClaim, contex
 def source_label(db: Session, row: QaQualityCost, context: UserContext) -> str:
     if row.source_type == "inspection":
         inspection = db.scalar(select(QaInspection).where(QaInspection.id == row.source_id, QaInspection.org_id == context.org_id))
-        return f"检验单 · {inspection.source_type}" if inspection else f"检验单 · {row.source_id}"
+        if inspection:
+            from app.services.document_service import resolve_source_label
+            return f"检验单 · {resolve_source_label(db, context.org_id, inspection.source_type, inspection.source_id)}"
+        return "相关检验单"
     if row.source_type == "nonconformance":
         ncr = db.scalar(select(QaNonconformity).where(QaNonconformity.id == row.source_id, QaNonconformity.org_id == context.org_id))
-        return f"NCR · {ncr.description[:24]}" if ncr else f"NCR · {row.source_id}"
+        return f"NCR · {ncr.description[:24]}" if ncr else "相关不合格记录"
     if row.source_type == "supplier_quality":
         quality = db.scalar(select(QaSupplierQuality).where(QaSupplierQuality.id == row.source_id, QaSupplierQuality.org_id == context.org_id))
-        return f"供应商质量 · {quality.period}" if quality else f"供应商质量 · {row.source_id}"
+        return f"供应商质量 · {quality.period}" if quality else "相关供应商质量记录"
     if row.source_type == "customer_claim":
         claim = db.scalar(select(QaCustomerClaim).where(QaCustomerClaim.id == row.source_id, QaCustomerClaim.org_id == context.org_id))
-        return f"客户索赔 · {claim.claim_no}" if claim else f"客户索赔 · {row.source_id}"
-    return row.source_id or "手工录入"
+        return f"客户索赔 · {claim.claim_no}" if claim else "相关客户索赔"
+    if row.source_id:
+        from app.services.document_service import resolve_source_label
+        label = resolve_source_label(db, context.org_id, row.source_type, row.source_id)
+        return label if label != "-" else "相关业务单据"
+    return "手工录入"
 
 
 def serialize_quality_cost(db: Session, row: QaQualityCost, context: UserContext) -> dict:

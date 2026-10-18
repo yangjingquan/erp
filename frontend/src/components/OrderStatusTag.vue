@@ -20,4 +20,4 @@ const display = computed(() => ({
 }));
 </script>
 
-<template><el-tag :type="display.type" effect="light" round>{{ display.label }}</el-tag></template>
+<template><el-tag :type="display.type" effect="plain" round>{{ display.label }}</el-tag></template>

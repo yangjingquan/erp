@@ -77,7 +77,8 @@ const inspectionTypeLabels: Record<string, string> = {
   active: "启用",
 };
 
-function statusTagType(status: string) {
+function statusTagType(status: string, overdue = false) {
+  if (overdue) return "danger";
   return ({ open: "danger", investigating: "warning", closed: "success" } as Record<string, string>)[status] || "info";
 }
 
@@ -86,7 +87,7 @@ function severityTagType(severity: string) {
 }
 
 function ownerName(ownerId?: string | null) {
-  return users.value.find((option) => option.value === ownerId)?.label || ownerId || "待分配";
+  return users.value.find((option) => option.value === ownerId)?.label || "待分配";
 }
 
 function sourceDocumentKey(sourceType: unknown, sourceId: unknown) {
@@ -95,15 +96,13 @@ function sourceDocumentKey(sourceType: unknown, sourceId: unknown) {
 
 function sourceDocumentLabel(row: QualityNonconformance) {
   if (row.supplier_quality_id) return `供应商质量：${supplierLabel(row.supplier_id)}${row.supplier_period ? ` · ${row.supplier_period}` : ""}`;
-  const sourceId = String(row.source_id || "");
   return row.source_document_name
-    || sourceDocumentNames.value[sourceDocumentKey(row.source_type, sourceId)]
-    || sourceDocumentNames.value[sourceId]
-    || "-";
+    || sourceDocumentNames.value[sourceDocumentKey(row.source_type, row.source_id)]
+    || "相关业务单据";
 }
 
 function supplierLabel(supplierId?: string | null) {
-  return suppliers.value.find((option) => option.value === supplierId)?.label?.replace(/（[^（）]*）$/, "") || supplierId || "-";
+  return suppliers.value.find((option) => option.value === supplierId)?.label?.replace(/（[^（）]*）$/, "") || "-";
 }
 
 async function loadSourceNames() {
@@ -297,24 +296,24 @@ onMounted(async () => {
           </div>
           <div class="action-header"><strong>CAPA 措施</strong><el-space v-if="canManage && scope.row.status !== 'closed'"><el-button size="small" @click="openAction(scope.row, 'corrective')">新增纠正措施</el-button><el-button size="small" @click="openAction(scope.row, 'preventive')">新增预防措施</el-button></el-space></div>
           <el-table :data="scope.row.actions" size="small" border>
-            <el-table-column label="类型" width="110"><template #default="actionScope">{{ actionTypeLabels[actionScope.row.action_type] }}</template></el-table-column>
+            <el-table-column label="类型" width="110"><template #default="actionScope"><el-tag effect="plain" type="info">{{ actionTypeLabels[actionScope.row.action_type] || "其他措施" }}</el-tag></template></el-table-column>
             <el-table-column prop="description" label="措施内容" min-width="220" />
             <el-table-column label="责任人" width="160"><template #default="actionScope">{{ ownerName(actionScope.row.owner_id) }}</template></el-table-column>
             <el-table-column prop="due_date" label="期限" width="110" />
-            <el-table-column label="状态" width="100"><template #default="actionScope"><el-tag :type="actionScope.row.status === 'completed' ? 'success' : actionScope.row.overdue ? 'danger' : 'warning'">{{ actionScope.row.status === "completed" ? "已完成" : actionScope.row.overdue ? "已逾期" : "进行中" }}</el-tag></template></el-table-column>
+            <el-table-column label="状态" width="100"><template #default="actionScope"><el-tag :type="actionScope.row.status === 'completed' ? 'success' : actionScope.row.overdue ? 'danger' : 'warning'" effect="plain">{{ actionScope.row.status === "completed" ? "已完成" : actionScope.row.overdue ? "已逾期" : "进行中" }}</el-tag></template></el-table-column>
             <el-table-column prop="completion_evidence" label="完成证据" min-width="180" />
             <el-table-column v-if="canManage" label="操作" width="100"><template #default="actionScope"><el-button v-if="actionScope.row.status !== 'completed'" link type="success" @click="openCompletion(actionScope.row)">提交证据</el-button></template></el-table-column>
             <template #empty><el-empty description="尚未制定 CAPA 措施" :image-size="48" /></template>
           </el-table>
         </template>
       </el-table-column>
-      <el-table-column label="检验类型" width="110"><template #default="scope">{{ inspectionTypeLabels[scope.row.inspection_type] || scope.row.inspection_type || "-" }}</template></el-table-column>
+      <el-table-column label="检验类型" width="110"><template #default="scope"><el-tag effect="plain" type="info">{{ inspectionTypeLabels[scope.row.inspection_type] || "其他检验类型" }}</el-tag></template></el-table-column>
       <el-table-column label="来源单据" min-width="170"><template #default="scope">{{ sourceDocumentLabel(scope.row) }}</template></el-table-column>
-      <el-table-column label="严重度" width="100"><template #default="scope"><el-tag :type="severityTagType(scope.row.severity)">{{ severityLabels[scope.row.severity] }}</el-tag></template></el-table-column>
+      <el-table-column label="严重度" width="100"><template #default="scope"><el-tag effect="plain" :type="severityTagType(scope.row.severity)">{{ severityLabels[scope.row.severity] || "其他严重度" }}</el-tag></template></el-table-column>
       <el-table-column label="责任人" width="170"><template #default="scope">{{ ownerName(scope.row.owner_id) }}</template></el-table-column>
       <el-table-column label="整改期限" width="120"><template #default="scope"><span :class="{ overdue: scope.row.overdue }">{{ scope.row.due_date || "待设定" }}</span></template></el-table-column>
       <el-table-column label="处置" width="120"><template #default="scope">{{ dispositionLabels[scope.row.disposition] || "待确定" }}</template></el-table-column>
-      <el-table-column label="状态" width="110"><template #default="scope"><el-tag :type="statusTagType(scope.row.status)">{{ scope.row.overdue ? "已逾期" : statusLabels[scope.row.status] }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="110"><template #default="scope"><el-tag effect="plain" :type="statusTagType(scope.row.status, scope.row.overdue)">{{ scope.row.overdue ? "已逾期" : statusLabels[scope.row.status] || "其他状态" }}</el-tag></template></el-table-column>
       <el-table-column v-if="canManage" label="操作" width="230"><template #default="scope"><el-button v-if="scope.row.status !== 'closed'" link type="primary" @click="openInvestigation(scope.row)">调查</el-button><el-button v-if="scope.row.status === 'investigating'" link type="warning" @click="openAction(scope.row)">制定措施</el-button><el-button v-if="scope.row.status === 'investigating'" link type="success" @click="openClose(scope.row)">验证关闭</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无不合格记录" /></template>
     </el-table>

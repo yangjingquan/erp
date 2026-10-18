@@ -5,6 +5,7 @@ import { createPrintTemplate, deletePrintTemplate, listPrintTemplates, updatePri
 import { useClientPagination } from "../../composables/useClientPagination";
 import RichTextEditor from "../../components/RichTextEditor.vue";
 
+const businessTypeLabels: Record<string, string> = { sales_quote: "销售报价", sales_order: "销售订单", sales_delivery: "销售出库", sales_return: "销售退货", purchase_order: "采购订单", purchase_receipt: "采购入库", purchase_return: "采购退货", mfg_work_order: "生产工单", fin_voucher: "会计凭证" };
 const rows = ref<PrintTemplate[]>([]);
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 const loading = ref(false);
@@ -80,9 +81,9 @@ onMounted(load);
     <el-page-header content="打印模板" />
     <el-space class="toolbar"><el-button type="primary" @click="openCreate">新增模板</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-table v-loading="loading" :data="pagedRows" border>
-      <el-table-column prop="business_type" label="业务类型" />
+      <el-table-column label="业务类型"><template #default="scope"><el-tag effect="plain" type="info">{{ businessTypeLabels[scope.row.business_type] || "其他业务类型" }}</el-tag></template></el-table-column>
       <el-table-column prop="name" label="模板名称" />
-      <el-table-column label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'" effect="light">{{ scope.row.status === 'active' ? '启用' : '停用' }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'" effect="plain">{{ scope.row.status === 'active' ? '启用' : '停用' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
         <template #default="scope">
           <el-button link type="primary" @click="openEdit(scope.row)">修改</el-button>

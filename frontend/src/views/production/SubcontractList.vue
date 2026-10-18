@@ -30,7 +30,7 @@ const { suppliers, materials, warehouses, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { draft: "草稿", released: "已下达", partially_received: "部分收货", completed: "已完成", cancelled: "已取消" };
 function statusTag(status: string) { return ({ draft: "info", released: "primary", partially_received: "warning", completed: "success", cancelled: "danger" } as Record<string, string>)[status] || "info"; }
 function unwrap(response: any) { if (response?.data?.code !== 0) throw new Error(response?.data?.msg || "委外接口返回失败"); return response.data.data; }
-function labelOf(id: unknown, options: Array<{ value: string; label: string }>) { const value = String(id || ""); return options.find((o) => o.value === value)?.label || value || "-"; }
+function labelOf(id: unknown, options: Array<{ value: string; label: string }>) { const value = String(id || ""); return options.find((o) => o.value === value)?.label || "-"; }
 async function load() { loading.value = true; try { rows.value = unwrap(await listSubcontractOrders()) || []; } catch (error) { ElMessage.error(error instanceof Error ? error.message : "委外订单加载失败"); } finally { loading.value = false; } }
 function openCreate() { Object.assign(form, { supplier_id: "", material_id: "", warehouse_id: "", plan_date: localDateString(), quantity: 1, processing_fee: 0 }); createVisible.value = true; }
 async function saveCreate() { if (!form.supplier_id || !form.material_id || !form.warehouse_id || form.quantity <= 0 || form.processing_fee <= 0) { ElMessage.warning("请完整填写供应商、物料、仓库、数量和加工费"); return; } saving.value = true; try { unwrap(await createSubcontractOrder({ ...form })); ElMessage.success("委外订单已创建"); createVisible.value = false; await load(); } catch (error) { ElMessage.error(error instanceof Error ? error.message : "委外订单创建失败"); } finally { saving.value = false; } }
@@ -57,7 +57,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["suppliers", "ma
       <el-table-column prop="quantity" label="数量" width="100" />
       <el-table-column prop="received_quantity" label="已收" width="100" />
       <el-table-column prop="processing_fee" label="加工费" width="110" />
-      <el-table-column label="状态" width="110"><template #default="scope"><el-tag :type="statusTag(scope.row.status)" effect="light">{{ statusLabels[scope.row.status] || scope.row.status }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="110"><template #default="scope"><el-tag :type="statusTag(scope.row.status)" effect="plain">{{ statusLabels[scope.row.status] || '其他状态' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" min-width="220">
         <template #default="scope">
           <el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="act(scope.row, 'release')">下达</el-button>

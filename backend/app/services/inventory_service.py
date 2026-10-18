@@ -334,7 +334,7 @@ def serialize_count(count: InvCount) -> dict:
     }
 
 
-def serialize_transaction(transaction: InvStockTransaction) -> dict:
+def serialize_transaction(transaction: InvStockTransaction, source_label: str = "相关业务单据") -> dict:
     return {
         "id": transaction.id,
         "warehouse_id": transaction.warehouse_id,
@@ -343,6 +343,7 @@ def serialize_transaction(transaction: InvStockTransaction) -> dict:
         "batch_id": transaction.batch_id,
         "source_type": transaction.source_type,
         "source_id": transaction.source_id,
+        "source_label": source_label,
         "direction": transaction.direction,
         "quantity": str(transaction.quantity),
         "unit_cost": str(transaction.unit_cost),
@@ -360,7 +361,9 @@ def list_stock_transactions(db: Session, context: UserContext) -> list[dict]:
         InvStockTransaction.warehouse_id,
         context,
     )
-    return [serialize_transaction(row) for row in db.scalars(statement).all()]
+    from app.services.document_service import resolve_source_label
+
+    return [serialize_transaction(row, resolve_source_label(db, context.org_id, row.source_type, row.source_id)) for row in db.scalars(statement).all()]
 
 
 def list_transfers(db: Session, context: UserContext) -> list[dict]:

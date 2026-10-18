@@ -191,7 +191,7 @@ onMounted(load);
       <div class="table-caption"><div><strong>{{ props.title }}</strong><span>共 {{ totalRows }} 条记录</span></div><span class="caption-tip">支持编码、名称和关键字模糊搜索</span></div>
       <el-table v-loading="loading" :data="rows" row-key="id" class="master-table" width="100%" fit>
         <el-table-column v-for="column in props.columns" :key="column.prop" :prop="column.prop" :label="column.label" :width="column.width" min-width="100" show-overflow-tooltip>
-          <template #default="{ row }"><el-tag v-if="isActiveStatus(row, column)" class="status-tag" type="success">{{ formatCell(row, column) }}</el-tag><el-tag v-else-if="column.prop === 'status'" class="status-tag" type="info">{{ formatCell(row, column) }}</el-tag><span v-else>{{ formatCell(row, column) }}</span></template>
+          <template #default="{ row }"><el-tag v-if="isActiveStatus(row, column)" class="status-tag" type="success" effect="plain">{{ formatCell(row, column) }}</el-tag><el-tag v-else-if="column.prop === 'status'" class="status-tag" type="info" effect="plain">{{ formatCell(row, column) }}</el-tag><span v-else>{{ formatCell(row, column) }}</span></template>
         </el-table-column>
         <el-table-column label="操作" width="220" class-name="operation-column">
           <template #default="{ row }"><el-button link class="row-action" @click="openDetail(row)"><el-icon><View /></el-icon>查看</el-button><el-button link class="row-action" @click="openEdit(row)"><el-icon><EditPen /></el-icon>编辑</el-button><el-button link class="row-action" @click="toggleStatus(row)">{{ row.status === "inactive" ? "启用" : "停用" }}</el-button></template>
@@ -208,7 +208,7 @@ onMounted(load);
       <template #footer><el-button @click="closeCreate">取消</el-button><el-button type="primary" :loading="submitting" @click="submitCreate">保存{{ props.title.replace('档案', '') }}</el-button></template>
     </el-dialog>
 
-    <el-drawer v-model="detailVisible" :title="`${props.title}详情`" size="430px"><div v-if="selectedRow" class="detail-panel"><div class="detail-intro"><span class="detail-code">{{ selectedRow.code || '-' }}</span><el-tag v-if="selectedRow.status !== 'inactive'" type="success">启用</el-tag><el-tag v-else type="info">停用</el-tag></div><div v-for="field in props.fields" :key="field.prop" class="detail-row"><span>{{ field.label }}</span><strong>{{ selectedRow[field.prop] ?? '-' }}</strong></div></div></el-drawer>
+    <el-drawer v-model="detailVisible" :title="`${props.title}详情`" size="430px"><div v-if="selectedRow" class="detail-panel"><div class="detail-intro"><span class="detail-code">{{ selectedRow.code || '-' }}</span><el-tag v-if="selectedRow.status !== 'inactive'" type="success" effect="plain">启用</el-tag><el-tag v-else type="info" effect="plain">停用</el-tag></div><div v-for="field in props.fields" :key="field.prop" class="detail-row"><span>{{ field.label }}</span><strong>{{ selectedRow[field.prop] ?? '-' }}</strong></div></div></el-drawer>
   </section>
 </template>
 

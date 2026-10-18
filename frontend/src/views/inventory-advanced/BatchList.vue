@@ -9,8 +9,8 @@ const filteredRows = computed(() => rows.value.filter((row) => !statusFilter.val
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(filteredRows);
 const { materials, loadOptions } = useMasterOptions();
 const statusLabels: Record<string, string> = { active: "启用", inactive: "停用" };
-function materialLabel(id: unknown) { const value = String(id || ""); return materials.value.find((option) => option.value === value)?.label || value || "-"; }
-function statusLabel(status: string) { return statusLabels[status] || status || "未知"; }
+function materialLabel(id: unknown) { const value = String(id || ""); return materials.value.find((option) => option.value === value)?.label || "-"; }
+function statusLabel(status: string) { return statusLabels[status] || (status ? "其他状态" : "-"); }
 function statusTagType(status: string) { return status === "active" ? "success" : "info"; }
 async function load() { loading.value = true; try { const response = await listBatches(form.material_id || undefined); if (response.data.code !== 0) throw new Error(response.data.msg); rows.value = response.data.data || []; } catch (error) { ElMessage.error(error instanceof Error ? error.message : "批次加载失败"); } finally { loading.value = false; } }
 function openCreate() { editingId.value = null; form.batch_no = ""; form.production_date = ""; form.expiry_date = ""; form.status = "active"; visible.value = true; }
@@ -29,7 +29,7 @@ watch(() => form.material_id, load); onMounted(() => Promise.all([load(), loadOp
       <el-table-column label="物料" min-width="220"><template #default="scope">{{ materialLabel(scope.row.material_id) }}</template></el-table-column>
       <el-table-column prop="production_date" label="生产日期" width="140" />
       <el-table-column prop="expiry_date" label="失效日期" width="140" />
-      <el-table-column label="状态" width="110"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="110"><template #default="scope"><el-tag class="status-tag" :type="statusTagType(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="240"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">修改</el-button><el-button link :type="scope.row.status === 'active' ? 'warning' : 'success'" :loading="actionLoading === scope.row.id" @click="toggleStatus(scope.row)">{{ scope.row.status === "active" ? "停用" : "启用" }}</el-button><el-button link type="danger" :loading="actionLoading === scope.row.id" @click="remove(scope.row)">删除</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无批次" /></template>
     </el-table>

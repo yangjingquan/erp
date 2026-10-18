@@ -13,7 +13,7 @@ const loading = ref(false);
 const saving = ref(false);
 const visible = ref(false);
 const form = reactive({ name: "", customer_id: "", material_id: "", quantity: 1, unit_price: 0 });
-const { materials, loadOptions } = useMasterOptions();
+const { customers, materials, loadOptions } = useMasterOptions();
 const { pagedRows, page, pageSize, total, updatePageSize } = useClientPagination(rows);
 
 async function load() {
@@ -31,6 +31,8 @@ async function load() {
 }
 
 function openCreate() { form.name = ""; form.customer_id = ""; form.material_id = ""; form.quantity = 1; form.unit_price = 0; visible.value = true; }
+function customerLabel(id: string) { return customers.value.find((option) => option.value === id)?.label || "-"; }
+function materialLabel(id: string) { return materials.value.find((option) => option.value === id)?.label || "-"; }
 
 async function create() {
   if (!form.name.trim()) { ElMessage.warning("请填写商机名称"); return; }
@@ -94,7 +96,7 @@ async function follow(id: string) {
   }
 }
 
-onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]); });
+onMounted(async () => { await Promise.all([load(), loadOptions(["customers", "materials"])]); });
 </script>
 
 <template>
@@ -103,9 +105,9 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
     <el-space><el-button type="primary" @click="openCreate">新建商机</el-button><el-button :loading="loading" @click="load">刷新</el-button></el-space>
     <el-table v-loading="loading" :data="pagedRows" stripe>
       <el-table-column prop="name" label="商机" min-width="200" />
-      <el-table-column prop="customer_id" label="客户" min-width="180" />
-      <el-table-column label="物料" min-width="140"><template #default="scope">{{ scope.row.material_id ? (materials.find((o) => o.value === scope.row.material_id)?.label || scope.row.material_id) : '-' }}</template></el-table-column>
-      <el-table-column label="阶段" width="120"><template #default="scope"><el-tag :type="tagTypeOf(scope.row.stage === 'won' ? 'won' : scope.row.stage === 'lost' ? 'lost' : 'proposal')" effect="light">{{ stageLabels[scope.row.stage] || scope.row.stage || '-' }}</el-tag></template></el-table-column>
+      <el-table-column label="客户" min-width="180"><template #default="scope">{{ customerLabel(scope.row.customer_id) }}</template></el-table-column>
+      <el-table-column label="物料" min-width="140"><template #default="scope">{{ scope.row.material_id ? materialLabel(scope.row.material_id) : '-' }}</template></el-table-column>
+      <el-table-column label="阶段" width="120"><template #default="scope"><el-tag :type="tagTypeOf(scope.row.stage)" effect="plain">{{ stageLabels[scope.row.stage] || '其他阶段' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="300"><template #default="scope"><el-button link type="primary" @click="follow(scope.row.id)">添加跟进</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link @click="move(scope.row, 'proposal')">推进商谈</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link type="success" @click="move(scope.row, 'won')">赢单</el-button><el-button v-if="!['won', 'lost'].includes(scope.row.stage)" link type="danger" @click="markLost(scope.row)">输单</el-button><span v-if="scope.row.stage === 'lost' && scope.row.loss_reason" class="loss-reason">原因：{{ scope.row.loss_reason }}</span></template></el-table-column>
       <template #empty><el-empty description="暂无商机" /></template>
     </el-table>
@@ -113,7 +115,7 @@ onMounted(async () => { await Promise.all([load(), loadOptions(["materials"])]);
     <el-dialog v-model="visible" title="新建商机" width="520px">
       <el-form label-width="90px">
         <el-form-item label="商机名称" required><el-input v-model="form.name" /></el-form-item>
-        <el-form-item label="客户 ID"><el-input v-model="form.customer_id" placeholder="可选，留空则赢单时自动建档" /></el-form-item>
+        <el-form-item label="客户"><el-select v-model="form.customer_id" filterable clearable placeholder="可选，留空则赢单时自动建档" style="width: 100%"><el-option v-for="option in customers" :key="option.value" v-bind="option" /></el-select></el-form-item>
         <el-form-item label="物料"><el-select v-model="form.material_id" filterable clearable placeholder="可选，赢单转订单用" style="width: 100%"><el-option v-for="o in materials" :key="o.value" v-bind="o" /></el-select></el-form-item>
         <el-form-item label="数量"><el-input-number v-model="form.quantity" :min="0.000001" :precision="6" /></el-form-item>
         <el-form-item label="单价"><el-input-number v-model="form.unit_price" :min="0" :precision="2" /></el-form-item>

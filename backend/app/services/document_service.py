@@ -70,6 +70,68 @@ TYPE_CONFIG: dict[str, dict[str, Any]] = {
     "tax_invoice": {"model": TaxInvoice, "label": "税务发票", "doc": "invoice_no", "date": None, "amount": "amount"},
 }
 
+SOURCE_TYPE_ALIASES = {
+    "transfer": "inv_transfer",
+    "count": "inv_count",
+    "subcontract_order": "mfg_subcontract_order",
+    "subcontract_receipt": "mfg_subcontract_receipt",
+}
+
+
+def resolve_source_label(db: Session, org_id: str, source_type: str | None, source_id: str | None) -> str:
+    """Return a readable source-document label without exposing opaque record IDs."""
+    if not source_id:
+        return "-"
+    source_type = str(source_type or "")
+    raw_id = str(source_id).strip()
+    try:
+        import uuid
+        uuid.UUID(raw_id)
+        is_uuid = True
+    except (ValueError, AttributeError, TypeError):
+        is_uuid = False
+    if not is_uuid:
+        return raw_id
+
+    normalized_type = SOURCE_TYPE_ALIASES.get(source_type, source_type)
+    config = TYPE_CONFIG.get(normalized_type)
+    if config:
+        model = config["model"]
+        conditions = [model.id == raw_id, model.org_id == org_id]
+        if hasattr(model, "is_deleted"):
+            conditions.append(model.is_deleted.is_(False))
+        row = db.scalar(select(model).where(*conditions))
+        if row is not None:
+            doc_value = getattr(row, config.get("doc") or "", None)
+            if doc_value:
+                return f"{config['label']} {doc_value}"
+
+    # Material issue/return records inherit their human-facing number from the
+    # work order; that number is the useful reference in inventory history.
+    from app.models.production import MfgMaterialIssue, MfgMaterialReturn, MfgSubcontractOrder, MfgSubcontractReceipt, MfgWorkOrder
+    if source_type in {"mfg_material_issue", "mfg_material_return", "mfg_completion"}:
+        work_order_id = raw_id
+        if source_type == "mfg_material_issue":
+            issue = db.scalar(select(MfgMaterialIssue).where(MfgMaterialIssue.id == raw_id, MfgMaterialIssue.org_id == org_id))
+            work_order_id = issue.work_order_id if issue and issue.work_order_id else ""
+        elif source_type == "mfg_material_return":
+            material_return = db.scalar(select(MfgMaterialReturn).where(MfgMaterialReturn.id == raw_id, MfgMaterialReturn.org_id == org_id))
+            work_order_id = material_return.work_order_id if material_return else ""
+        if work_order_id:
+            work_order = db.scalar(select(MfgWorkOrder).where(MfgWorkOrder.id == work_order_id, MfgWorkOrder.org_id == org_id))
+            if work_order:
+                action = {"mfg_material_issue": "领料", "mfg_material_return": "退料", "mfg_completion": "完工入库"}[source_type]
+                return f"生产工单 {work_order.doc_no} · {action}"
+    if source_type == "subcontract_material_issue":
+        order = db.scalar(select(MfgSubcontractOrder).where(MfgSubcontractOrder.id == raw_id, MfgSubcontractOrder.org_id == org_id))
+        if order:
+            return f"委外订单 {order.doc_no} · 发料"
+    if source_type == "subcontract_receipt":
+        receipt = db.scalar(select(MfgSubcontractReceipt).where(MfgSubcontractReceipt.id == raw_id, MfgSubcontractReceipt.org_id == org_id))
+        if receipt:
+            return f"委外入库 {receipt.doc_no}"
+    return "相关业务单据"
+
 STATUS_LABELS = {
     "draft": "草稿", "submitted": "待审核", "approved": "已审核", "completed": "已完成",
     "open": "待核销", "partial": "部分核销", "settled": "已结清", "confirmed": "已确认",
@@ -201,7 +263,19 @@ def _snapshot(db: Session, business_type: str, row: Any) -> dict[str, Any]:
         row_date = row_date.date()
     amount = getattr(row, config["amount"], 0) if config.get("amount") else 0
     doc_no = getattr(row, config["doc"], None) if config.get("doc") else None
-    doc_no = str(doc_no or row.id)
+    if not doc_no:
+        prefixes = {"qa_inspection": "QI", "inventory_transaction": "INV", "svc_visit": "VIS"}
+        prefix = prefixes.get(business_type, business_type[:3].upper())
+        numbered_date = row_date or getattr(row, "created_at", None) or date.today()
+        if isinstance(numbered_date, datetime):
+            numbered_date = numbered_date.date()
+        ordinal = db.scalar(
+            select(func.count())
+            .select_from(config["model"])
+            .where(config["model"].org_id == row.org_id, config["model"].id <= row.id)
+        ) or 1
+        doc_no = f"{prefix}-{numbered_date:%Y%m}-{ordinal:04d}"
+    doc_no = str(doc_no)
     source_type, source_id = _source_reference(business_type, row)
     status = str(config.get("fixed_status") or getattr(row, "status", "active"))
     org_id = str(row.org_id)

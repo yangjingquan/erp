@@ -192,7 +192,7 @@ def disable_routing_api(routing_id: str, context: UserContext = Depends(require_
 @router.get("/work-orders")
 def list_work_orders_api(context: UserContext = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.scalars(select(MfgWorkOrder).where(MfgWorkOrder.org_id == context.org_id, MfgWorkOrder.is_deleted.is_(False)).order_by(MfgWorkOrder.created_at.desc())).all()
-    return ok([serialize_work_order(row) for row in rows])
+    return ok([serialize_work_order(row, db) for row in rows])
 
 
 @router.get("/boms")
@@ -373,7 +373,7 @@ def confirm_mrp_result_api(result_id: str, context: UserContext = Depends(requir
 def create_work_order_api(payload: WorkOrderCreate, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     row = create_work_order(db, payload, context)
     db.commit()
-    return ok(serialize_work_order(row))
+    return ok(serialize_work_order(row, db))
 
 
 @router.get("/subcontract-orders")
@@ -420,7 +420,7 @@ def receive_subcontract_order_api(order_id: str, payload: SubcontractReceiptCrea
 def release_work_order_api(work_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     row = release_work_order(db, work_order_id, context)
     db.commit()
-    return ok(serialize_work_order(row))
+    return ok(serialize_work_order(row, db))
 
 
 @router.get("/work-orders/{work_order_id}/readiness")
@@ -459,14 +459,14 @@ def report_work_api(work_order_id: str, payload: WorkReportCreate, context: User
 def complete_work_order_api(work_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     row = complete_work_order(db, work_order_id, context)
     db.commit()
-    return ok(serialize_work_order(row))
+    return ok(serialize_work_order(row, db))
 
 
 @router.post("/work-orders/{work_order_id}/cancel")
 def cancel_work_order_api(work_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
     row = cancel_work_order(db, work_order_id, context)
     db.commit()
-    return ok(serialize_work_order(row))
+    return ok(serialize_work_order(row, db))
 
 
 @router.get("/schedules")

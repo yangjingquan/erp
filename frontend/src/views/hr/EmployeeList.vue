@@ -68,7 +68,7 @@ onMounted(async () => {
         <el-table-column prop="name" label="姓名" min-width="120" />
         <el-table-column label="部门" min-width="140"><template #default="scope">{{ departments.find((item) => item.id === scope.row.department_id)?.name || "-" }}</template></el-table-column>
         <el-table-column label="登录账号" min-width="150"><template #default="scope">{{ scope.row.account_username || "未绑定" }}</template></el-table-column>
-        <el-table-column prop="status" label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'">{{ scope.row.status === "active" ? "在职" : "停用" }}</el-tag></template></el-table-column>
+        <el-table-column prop="status" label="状态" width="100"><template #default="scope"><el-tag :type="scope.row.status === 'active' ? 'success' : 'info'" effect="plain">{{ scope.row.status === "active" ? "在职" : "停用" }}</el-tag></template></el-table-column>
         <el-table-column v-if="canManage()" label="操作" width="220"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">设置员工信息</el-button><el-button link type="warning" @click="openPassword(scope.row)">修改密码</el-button></template></el-table-column>
         <template #empty><el-empty description="暂无员工" /></template>
       </el-table>

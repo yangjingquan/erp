@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { createReservation, listReservations, listTraceEvents, releaseReservation } from "../../api/inventory-advanced";
+import { createReservation, listBatches, listReservations, listTraceEvents, releaseReservation } from "../../api/inventory-advanced";
 import { useMasterOptions } from "../../composables/useMasterOptions";
 import { useClientPagination } from "../../composables/useClientPagination";
 import { labelOf, sourceTypeLabels, statusLabel, tagTypeOf } from "../../utils/labels";
@@ -13,6 +13,7 @@ const saving = ref(false);
 const reservationVisible = ref(false);
 const reservations = ref<Row[]>([]);
 const trace = ref<Row[]>([]);
+const batches = ref<Row[]>([]);
 const reservationFilters = reactive({ search: "", warehouse_id: "", source_type: "", status: "" });
 const traceFilters = reactive({ material_id: "", batch_id: "" });
 const form = reactive({ source_type: "sales_order", source_id: "", material_id: "", warehouse_id: "", quantity: 1, note: "" });
@@ -21,9 +22,8 @@ const filteredReservations = computed(() => {
   const search = reservationFilters.search.trim().toLowerCase();
   return reservations.value.filter((row) => {
     const materialText = label(materials.value, row.material_id).toLowerCase();
-    const sourceId = String(row.source_id ?? "").toLowerCase();
-    const materialId = String(row.material_id ?? "").toLowerCase();
-    return (!search || sourceId.includes(search) || materialText.includes(search) || materialId.includes(search))
+    const sourceText = String(row.source_label ?? "").toLowerCase();
+    return (!search || sourceText.includes(search) || materialText.includes(search))
       && (!reservationFilters.warehouse_id || String(row.warehouse_id) === reservationFilters.warehouse_id)
       && (!reservationFilters.source_type || String(row.source_type) === reservationFilters.source_type)
       && (!reservationFilters.status || String(row.status) === reservationFilters.status);
@@ -47,13 +47,15 @@ function data(response: any) {
   return Array.isArray(value) ? value : Array.isArray(value?.items) ? value.items : [];
 }
 
-function label(options: any[], id: any) { return options.find((item) => item.value === id)?.label || id || "-"; }
+function label(options: any[], id: any) { return options.find((item) => String(item.value) === String(id))?.label || "-"; }
+function batchLabel(id: any) { return batches.value.find((item) => String(item.id) === String(id))?.batch_no || "-"; }
 
 async function load() {
   loading.value = true;
   try {
     reservations.value = data(await listReservations(reservationFilters.status || undefined));
     trace.value = data(await listTraceEvents({ material_id: traceFilters.material_id || undefined, batch_id: traceFilters.batch_id || undefined }));
+    batches.value = data(await listBatches());
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : "库存控制台加载失败");
   } finally {
@@ -133,13 +135,13 @@ onMounted(async () => {
           </el-space>
         </div>
         <el-table v-loading="loading" :data="reservationRows" stripe>
-          <el-table-column prop="source_id" label="来源单据" min-width="180" />
+          <el-table-column prop="source_label" label="来源单据" min-width="180" />
           <el-table-column label="物料" min-width="160"><template #default="scope">{{ label(materials, scope.row.material_id) }}</template></el-table-column>
           <el-table-column label="仓库" min-width="140"><template #default="scope">{{ label(warehouses, scope.row.warehouse_id) }}</template></el-table-column>
           <el-table-column prop="quantity" label="预留总量" width="110" />
           <el-table-column prop="reserved_quantity" label="剩余预留" width="110" />
           <el-table-column label="来源" width="140"><template #default="scope">{{ labelOf(reservationSourceTypeLabels, scope.row.source_type) }}</template></el-table-column>
-          <el-table-column label="状态" width="100"><template #default="scope"><el-tag class="status-tag" :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
+          <el-table-column label="状态" width="100"><template #default="scope"><el-tag class="status-tag" :type="tagTypeOf(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
           <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="scope.row.status !== 'released'" link type="danger" @click="release(scope.row)">释放</el-button></template></el-table-column>
           <template #empty><el-empty description="暂无库存预留记录" /></template>
         </el-table>
@@ -148,17 +150,17 @@ onMounted(async () => {
       <el-tab-pane label="批次追溯" name="trace">
         <el-form inline class="control-form">
           <el-form-item label="物料"><el-select v-model="traceFilters.material_id" filterable clearable style="width: 200px"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select></el-form-item>
-          <el-form-item label="批次 ID"><el-input v-model="traceFilters.batch_id" clearable placeholder="可选批次 ID" /></el-form-item>
+          <el-form-item label="批次"><el-select v-model="traceFilters.batch_id" filterable clearable placeholder="选择批次" style="width: 220px"><el-option v-for="item in batches" :key="String(item.id)" :label="`${item.batch_no} · ${label(materials, item.material_id)}`" :value="String(item.id)" /></el-select></el-form-item>
           <el-button type="primary" @click="load">查询追溯</el-button>
           <el-button @click="traceFilters.material_id = ''; traceFilters.batch_id = ''; load()">重置</el-button>
         </el-form>
         <el-table :data="traceRows" stripe>
           <el-table-column prop="event_time" label="日期" width="120" />
-          <el-table-column prop="direction" label="方向" width="90" />
+          <el-table-column label="方向" width="90"><template #default="scope">{{ scope.row.direction === "in" ? "入库" : scope.row.direction === "out" ? "出库" : "-" }}</template></el-table-column>
           <el-table-column label="来源类型" width="150"><template #default="scope">{{ labelOf(reservationSourceTypeLabels, scope.row.source_type) }}</template></el-table-column>
-          <el-table-column prop="source_id" label="来源单据" min-width="180" />
+          <el-table-column prop="source_label" label="来源单据" min-width="180" />
           <el-table-column label="物料" min-width="160"><template #default="scope">{{ label(materials, scope.row.material_id) }}</template></el-table-column>
-          <el-table-column prop="batch_id" label="批次" min-width="150" />
+          <el-table-column label="批次" min-width="150"><template #default="scope">{{ scope.row.batch_no || batchLabel(scope.row.batch_id) }}</template></el-table-column>
           <el-table-column prop="quantity" label="数量" width="120" />
           <template #empty><el-empty description="暂无批次追溯事件" /></template>
         </el-table>
@@ -168,7 +170,7 @@ onMounted(async () => {
     <el-dialog v-model="reservationVisible" title="新建库存预留" width="560px">
       <el-form label-width="90px">
         <el-form-item label="来源类型" required><el-select v-model="form.source_type" style="width: 100%"><el-option v-for="item in reservationSourceTypeOptions" :key="item.value" v-bind="item" /></el-select></el-form-item>
-        <el-form-item label="来源单据" required><el-input v-model="form.source_id" placeholder="单据 ID" /></el-form-item>
+        <el-form-item label="来源单据编号" required><el-input v-model="form.source_id" placeholder="例如销售订单号或生产工单号" /></el-form-item>
         <el-form-item label="物料" required><el-select v-model="form.material_id" filterable clearable style="width: 100%"><el-option v-for="item in materials" :key="item.value" v-bind="item" /></el-select></el-form-item>
         <el-form-item label="仓库" required><el-select v-model="form.warehouse_id" filterable clearable style="width: 100%"><el-option v-for="item in warehouses" :key="item.value" v-bind="item" /></el-select></el-form-item>
         <el-form-item label="数量" required><el-input-number v-model="form.quantity" :min="0.000001" :precision="6" style="width: 100%" /></el-form-item>

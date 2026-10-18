@@ -49,7 +49,7 @@ onMounted(load);
       <el-table-column prop="period" label="期间" width="100" />
       <el-table-column prop="amount" label="分摊金额" width="130" />
       <el-table-column label="分摊依据" width="120"><template #default="scope">{{ allocationBasisLabels[scope.row.basis] || scope.row.basis || '-' }}</template></el-table-column>
-      <el-table-column label="状态" width="110"><template #default="scope"><el-tag :type="tagTypeOf(scope.row.status)" effect="light">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" width="110"><template #default="scope"><el-tag :type="tagTypeOf(scope.row.status)" effect="plain">{{ statusLabel(scope.row.status) }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="120"><template #default="scope"><el-button v-if="scope.row.status === 'draft'" link type="primary" :loading="actionLoading === scope.row.id" @click="post(scope.row)">过账</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无成本分摊记录" /></template>
     </el-table>

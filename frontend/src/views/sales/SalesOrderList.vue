@@ -102,7 +102,7 @@ async function save() {
 async function removeOrder(row: Row) {
   const id = String(row.business_id || "");
   try {
-    await ElMessageBox.confirm(`确认删除销售订单“${row.doc_no || id}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
+    await ElMessageBox.confirm(`确认删除销售订单“${row.doc_no || "该业务单据"}”吗？删除后不可恢复。`, "删除确认", { type: "warning" });
     actionLoading.value = id;
     unwrap(await deleteSalesOrder(id));
     ElMessage.success("销售订单已删除"); await load();
@@ -115,7 +115,7 @@ async function confirmAction(row: Row, action: Row) {
   const id = String(row.business_id || "");
   if (!id) { ElMessage.error("订单缺少有效 ID，无法操作"); return; }
   try {
-    await ElMessageBox.confirm(`确认${action.label}“${row.doc_no || id}”吗？`, "业务操作确认", { type: "warning" });
+    await ElMessageBox.confirm(`确认${action.label}“${row.doc_no || "该业务单据"}”吗？`, "业务操作确认", { type: "warning" });
     actionLoading.value = id;
     unwrap(await runDocumentCommand("sales_order", id, action.command));
     ElMessage.success(`${action.label}成功`); await load();
