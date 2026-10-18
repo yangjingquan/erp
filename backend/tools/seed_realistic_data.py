@@ -68,8 +68,14 @@ REALISTIC_NAMES: dict[str, list[str]] = {
     "md_warehouse": ["宁波主生产仓", "宁波售后备件仓", "苏州原材料仓", "杭州成品仓"],
     "hr_employee": ["陈晓宁", "周明远", "林若岚", "顾承宇", "许安琪", "沈嘉禾"],
     "hr_recruitment_candidate": ["梁诗涵", "唐嘉宁", "方昱辰", "叶舒妍", "罗景然", "蒋思齐"],
-    "crm_lead": ["华东汽车零部件产线升级", "苏州精密装配自动化需求", "杭州仓储控制系统改造"],
-    "crm_opportunity": ["宁波宏越智能装配项目", "嘉兴远锋产线改造项目", "无锡东辰备件框架采购"],
+    "crm_lead": [
+        "宁波宏越产线智能化升级", "苏州恒启精密装配自动化改造", "杭州嘉实智能仓储控制系统建设",
+        "嘉兴远锋制造执行系统升级", "无锡东辰柔性装配线改造", "绍兴华信设备数据采集平台建设",
+    ],
+    "crm_opportunity": [
+        "宁波宏越智能装配项目", "苏州恒启伺服单元改造项目", "杭州嘉实仓储升级项目",
+        "嘉兴远锋产线改造项目", "无锡东辰备件框架采购", "绍兴华信设备联网项目",
+    ],
     "project": [
         "宁波精密装配线数字化改造", "苏州智能仓储升级", "杭州售后备件中心建设",
         "嘉兴伺服单元国产化项目",
@@ -78,17 +84,24 @@ REALISTIC_NAMES: dict[str, list[str]] = {
     "mfg_work_center": ["精密加工一组", "机电装配二组", "成品检测工位", "包装与发运工位"],
     "mfg_routing": ["伺服单元装配工艺", "铝合金底座加工工艺", "驱动器老化验证工艺"],
     "qa_defect_catalog": ["装配尺寸偏差", "端子压接不良", "表面划伤", "电气绝缘异常"],
-    "fin_account": ["银行存款", "应收账款", "主营业务收入", "管理费用"],
+    "fin_account": ["银行存款", "应收账款", "主营业务收入", "管理费用", "应付账款", "主营业务成本"],
     "fin_currency": ["人民币", "美元", "欧元", "日元", "港币", "英镑"],
-    "sys_api_client": ["仓储同步服务", "财务对账接口", "供应商协同门户"],
-    "ext_event_subscription": ["订单变更订阅", "库存预警订阅", "质量闭环订阅"],
+    "sys_api_client": [
+        "仓储库存同步服务", "财务对账接口服务", "供应商协同门户接口",
+        "客户订单接入服务", "生产进度同步服务", "售后服务数据接口",
+    ],
+    "ext_event_subscription": [
+        "销售订单变更订阅", "库存预警订阅", "质量闭环订阅",
+        "采购收货事件订阅", "生产工单进度订阅", "售后服务状态订阅",
+    ],
     "fin_accounting_dimension": ["责任部门", "客户", "供应商", "员工", "项目", "自定义核算项"],
     "fin_asset": ["立式加工中心", "数控车床", "自动锁螺丝工作站", "空压机组", "三坐标测量仪", "智能仓储堆垛机"],
     "tax_code": ["一般货物税率", "交通运输服务税率", "技术服务税率", "小规模纳税人征收率", "免税项目", "出口零税率"],
     "low_code_definition": ["售后服务申请", "设备维修申请", "客户回访登记", "质量问题反馈", "备件领用申请", "服务合同变更"],
+    "plm_change_request": ["伺服驱动器固件版本升级", "安装底座孔位公差优化", "轴承供应商切换评估", "安全继电器替代料导入", "连接器端子镀层调整", "紧固件表面处理变更"],
 }
 
-REALISTIC_FIELD_VALUES: dict[str, dict[str, list[str]]] = {
+REALISTIC_FIELD_VALUES: dict[str, dict[str, list[object]]] = {
     "md_customer": {
         "short_name": ["宏越装备", "恒启工业", "嘉实自动化", "远锋精密", "东辰机电", "华信制造"],
         "contact_name": ["王静怡", "陈立新", "周婉清", "赵启航", "孙雅雯", "高志远"],
@@ -146,6 +159,9 @@ REALISTIC_FIELD_VALUES: dict[str, dict[str, list[str]]] = {
     "fin_asset": {
         "asset_name": ["立式加工中心 VMC-850", "数控车床 NL-320", "自动锁螺丝工作站 AS-12", "空压机组 AC-75", "三坐标测量仪 CMM-544", "智能仓储堆垛机 STK-20"],
         "category": ["生产设备", "生产设备", "自动化设备", "动力设备", "检测设备", "仓储设备"],
+        "original_value": ["286000", "156000", "98000", "640000", "125000", "42000"],
+        "accumulated_depreciation": ["57200", "156000", "24500", "640000", "25000", "42000"],
+        "useful_life_months": [120, 120, 84, 120, 96, 120],
     },
     "fin_reconciliation_statement": {"statement_no": ["AR-REC-202610-001", "AP-REC-202610-001", "AR-REC-202610-002", "AP-REC-202610-002", "AR-REC-202610-003", "AP-REC-202610-003"]},
     "fin_bank_statement": {"statement_no": ["BANK-202610-0001", "BANK-202610-0002", "BANK-202610-0003", "BANK-202610-0004", "BANK-202610-0005", "BANK-202610-0006"]},
@@ -166,11 +182,22 @@ REALISTIC_FIELD_VALUES: dict[str, dict[str, list[str]]] = {
         "location": ["宁波主生产仓·机加工车间", "苏州原材料仓·精密加工区", "杭州成品仓·装配线二工位", "嘉兴动力站房·空压机房"],
     },
     "eam_maintenance_plan": {"name": ["主轴润滑与精度校准", "刀塔检查与导轨保养", "锁付扭矩校验", "空压机滤芯与压力检查", "测量系统年度校准", "堆垛机轨道巡检"]},
-    "cfg_print_template": {"name": ["销售订单正式版", "采购订单正式版", "销售出库单", "采购入库单", "生产工单流转单", "质量检验记录单"]},
+    "cfg_print_template": {
+        "name": ["销售订单正式版", "采购订单正式版", "销售出库单", "采购入库单", "生产工单流转单", "会计凭证标准版"],
+        "business_type": ["sales_order", "purchase_order", "sales_delivery", "purchase_receipt", "mfg_work_order", "fin_voucher"],
+    },
     "org_intercompany_transaction": {"transaction_no": ["IC-202610-0001", "IC-202610-0002", "IC-202610-0003", "IC-202610-0004", "IC-202610-0005", "IC-202610-0006"]},
     "tax_code": {"code": ["VAT-13", "VAT-09", "VAT-06", "VAT-03", "VAT-EXEMPT", "VAT-EXPORT"], "rate": ["13", "9", "6", "3", "0", "0"]},
     "tax_invoice": {"invoice_no": ["25332000000000128461", "25332000000000128479", "25332000000000128508", "25332000000000128516", "25332000000000128524", "25332000000000128532"]},
     "low_code_definition": {"object_key": ["after_sales_request", "equipment_repair", "customer_visit", "quality_feedback", "spare_part_request", "service_contract_change"]},
+    "plm_change_request": {"title": ["伺服驱动器固件版本升级", "安装底座孔位公差优化", "轴承供应商切换评估", "安全继电器替代料导入", "连接器端子镀层调整", "紧固件表面处理变更"]},
+    "plm_product_revision": {
+        "revision": ["SD-220 Rev.C", "AL-104 Rev.B", "6204-Z Rev.D", "SR-08 Rev.B", "CN-24 Rev.C", "M8 Rev.F"],
+        "change_summary": [
+            "提升驱动器低速运行稳定性", "优化底座安装孔位公差", "更新轴承润滑等级与供应来源",
+            "完成安全继电器替代料认证验证", "改善连接器端子耐腐蚀镀层工艺", "提高紧固件表面处理耐盐雾性能",
+        ],
+    },
 }
 
 TABLE_LABELS = {
@@ -323,6 +350,17 @@ def ensure_preserved_user_context(metadata: MetaData, connection) -> None:
         insert_if_absent(connection, org_table, {
             "id": org_id, "code": f"ORG-{org_id.replace('-', '')[:8].upper()}",
             "name": org_names[(index - 1) % len(org_names)], "parent_id": None,
+            "status": "active", "created_at": now, "updated_at": now,
+        })
+
+    # Group transactions need actual organizations to resolve their names.
+    # These records do not grant user membership or cross-organization access.
+    for index, (org_id, code, org_name) in enumerate([
+        (uid("sys_org", 2), "ORG-SUZHOU-HQ", "苏州恒启工业系统有限公司"),
+        (uid("sys_org", 3), "ORG-HANGZHOU-JS", "杭州嘉实自动化科技有限公司"),
+    ], start=2):
+        insert_if_absent(connection, org_table, {
+            "id": org_id, "code": code, "name": org_name, "parent_id": ORG,
             "status": "active", "created_at": now, "updated_at": now,
         })
 
@@ -607,7 +645,7 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
             else:
                 row[key] = None if column.nullable else uid(name + key, index)
         elif key.endswith("_json") or key in {"items_json", "schema_json", "workflow_json", "evidence_json", "payload_json", "result_json", "snapshot_json", "source_snapshot", "input_snapshot", "output_snapshot", "bom_snapshot", "routing_snapshot", "details", "dimensions_json", "goals_json", "response_json", "event_types", "scopes"}:
-            row[key] = [] if "items" in key or key in {"event_types", "scopes"} else {}
+            row[key] = [] if "items" in key or key in {"event_types", "scopes", "impact_snapshot"} else {}
         elif key in {"created_at", "updated_at", "event_time", "occurred_at", "report_time", "scheduled_at", "effective_at", "closed_at", "reopened_at", "completed_at", "delivered_at", "confirmed_at", "posted_at"}:
             row[key] = datetime.now()
         elif key in {"date", "order_date", "quote_date", "request_date", "expense_date", "payment_date", "receipt_date", "delivery_date", "return_date", "promised_date", "document_date", "allocation_date", "entry_date", "plan_date", "plan_from", "plan_to", "due_date", "start_date", "end_date", "expected_date", "purchase_date", "effective_from", "effective_to", "production_date", "expiry_date", "attendance_date", "next_due", "next_maintenance_date", "planned_date", "actual_date", "event_date", "forecast_date", "statement_date", "transaction_date", "schedule_date", "transfer_date", "count_date", "voucher_date", "rate_date", "capacity_date", "valid_until", "period_start", "period_end"}:
@@ -671,9 +709,9 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         names = REALISTIC_NAMES.get(name)
         if names:
             base_name = names[(index - 1) % len(names)]
-            row["name"] = base_name if name == "md_unit" else f"{base_name} {index:02d}"
+            row["name"] = base_name
         else:
-            row["name"] = f"{TABLE_LABELS.get(name, '华东经营事项')} {index:02d}"
+            row["name"] = TABLE_LABELS.get(name, "业务档案")
     if name == "biz_document":
         doc_types = ["sales_order", "purchase_order", "sales_delivery", "purchase_receipt", "qa_inspection", "fin_expense", "mfg_work_order"]
         doc_type = doc_types[(index - 1) % len(doc_types)]
@@ -684,7 +722,7 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         party_index = ((index - 1) % seed_count(party_table)) + 1
         row["party_id"] = uid(party_table, party_index)
         party_name = REALISTIC_NAMES[party_table][party_index - 1]
-        row["party_name"] = f"{party_name} {party_index:02d}"
+        row["party_name"] = party_name
         row["source_type"] = doc_type
     if name in {"sales_order", "purchase_order"}:
         amount = order_amount(index)
@@ -1115,11 +1153,12 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
     if name == "svc_visit":
         row["case_id"] = uid("svc_case", index)
     if "display_name" in table.c:
-        row["display_name"] = f"运营专员{index:02d}"
+        employee_names = REALISTIC_NAMES["hr_employee"]
+        row["display_name"] = employee_names[(index - 1) % len(employee_names)]
     if "description" in table.c:
-        row["description"] = f"围绕华东区域交付的第 {index:02d} 条业务记录"
+        row["description"] = "围绕华东区域订单交付、质量跟踪与回款协同的业务记录"
     if "title" in table.c:
-        row["title"] = f"华东客户服务事项 {index:02d}"
+        row["title"] = "客户交付与质量改进事项"
     if "note" in table.c:
         row["note"] = "已完成业务核对，等待下一节点处理"
     if "remark" in table.c:
@@ -1127,7 +1166,8 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
     if "email" in table.c:
         row["email"] = f"contact{index:02d}@chenghaimfg.cn"
     if "phone" in table.c:
-        row["phone"] = f"138{index:08d}"
+        contact_phones = REALISTIC_FIELD_VALUES["md_customer"]["contact_phone"]
+        row["phone"] = contact_phones[(index - 1) % len(contact_phones)]
     if "account_no" in table.c:
         row["account_no"] = f"622202260000{index:06d}"
     if "currency" in table.c:
@@ -1215,6 +1255,36 @@ def table_rows(table: Table, index: int) -> dict[str, object]:
         row["line_no"] = ((index - 1) // max(seed_count(parent_table), 1)) + 1 if parent_table else 1
     elif name == "fin_voucher_entry":
         row["line_no"] = 1 if index % 2 else 2
+
+    # Replace generic filler with business-appropriate values on user-facing
+    # fields. Numeric suffixes remain only in explicit codes/document numbers.
+    field_values = REALISTIC_FIELD_VALUES.get(name, {})
+    for field_name, values in field_values.items():
+        if field_name not in row or not values:
+            continue
+        value = values[(index - 1) % len(values)]
+        row[field_name] = Decimal(value) if field_name in {"rate", "original_value", "accumulated_depreciation"} else value
+
+    if name == "fin_reconciliation_statement":
+        party_table = "md_customer" if row.get("statement_type") == "ar" else "md_supplier"
+        row["party_id"] = uid(party_table, ((index - 1) // 2) + 1)
+    if name == "inv_reservation":
+        row["source_type"] = "sales_order"
+        row["source_id"] = uid("sales_order", index)
+    if name == "org_intercompany_transaction":
+        row["from_org_id"] = ORG
+        row["to_org_id"] = uid("sys_org", 2 if index % 2 else 3)
+        row["source_type"] = "sales_order"
+        row["source_id"] = uid("sales_order", ((index - 1) % seed_count("sales_order")) + 1)
+    if name == "tax_invoice":
+        invoice_tax_rates = [Decimal("13"), Decimal("9"), Decimal("6"), Decimal("3"), Decimal("0"), Decimal("0")]
+        tax_rate = invoice_tax_rates[(index - 1) % len(invoice_tax_rates)]
+        row["amount"] = order_amount(index)
+        row["tax_amount"] = (row["amount"] * tax_rate / (Decimal("100") + tax_rate)).quantize(Decimal("0.01")) if tax_rate else Decimal("0")
+        row["source_type"] = "sales_order"
+        row["source_id"] = uid("sales_order", ((index - 1) % seed_count("sales_order")) + 1)
+        row["party_id"] = uid("md_customer", ((index - 1) % seed_count("md_customer")) + 1)
+        row["tax_code"] = ["VAT-13", "VAT-09", "VAT-06", "VAT-03", "VAT-EXEMPT", "VAT-EXPORT"][(index - 1) % 6]
     return row
 
 

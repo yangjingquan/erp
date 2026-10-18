@@ -86,7 +86,15 @@ def transition_revision(db, revision_id, status, context):
 
 def list_change_requests(db, context, status=None):
     rows = _list(db, PlmChangeRequest, context, status=status)
-    return [_row(row, ["change_no", "title", "change_type", "description", "status", "owner_id", "due_date", "impact_snapshot"]) for row in rows]
+    results = []
+    for row in rows:
+        item = _row(row, ["change_no", "title", "change_type", "description", "status", "owner_id", "due_date", "impact_snapshot"])
+        # Older seed runs stored an empty object here; consumers render this
+        # JSON field as a list, so normalize malformed snapshots at the API.
+        if not isinstance(item.get("impact_snapshot"), list):
+            item["impact_snapshot"] = []
+        results.append(item)
+    return results
 
 
 def create_change_request(db, payload, context):
