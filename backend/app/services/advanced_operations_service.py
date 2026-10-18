@@ -209,9 +209,21 @@ def _spc_actions(db, exception: QaSpcException, context) -> list[QaCapaAction]:
 
 
 def serialize_spc_record(db, row: QaSpcRecord, context) -> dict:
-    exception = _get_spc_exception(db, row.exception_id, context) if row.exception_id else None
+    # A stale optional exception reference must not make every SPC sample
+    # disappear from the list. Resolve only a live exception in this org and
+    # omit the broken link from the response; exception-specific operations
+    # still use _get_spc_exception and return a clear 404 for invalid IDs.
+    exception = None
+    if row.exception_id:
+        exception = db.scalar(select(QaSpcException).where(
+            QaSpcException.id == row.exception_id,
+            QaSpcException.org_id == context.org_id,
+            QaSpcException.is_deleted.is_(False),
+        ))
     workflow_status = spc_workflow_status(db, exception, context) if exception else ("normal" if row.status in {"in_control", "active"} else "pending_review")
     data = _row(row, ["inspection_id", "material_id", "metric", "sample_value", "lsl", "usl", "cpk", "status", "parent_record_id", "exception_id"])
+    if row.exception_id and exception is None:
+        data["exception_id"] = None
     data.update({
         "control_status": row.status if row.status in {"in_control", "out_of_control"} else "in_control",
         "workflow_status": workflow_status,

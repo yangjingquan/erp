@@ -3,6 +3,8 @@ backend/.venv/
 backend/.env
 backend/var/backups/
 backend/.idea/*
+backend/tools
+backend/tests
 # Track unit tests (DEF fixes)
 # backend/tests/
 backend/tests/__pycache__/

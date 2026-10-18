@@ -288,19 +288,20 @@ onBeforeUnmount(() => {
     <el-container>
       <el-header class="topbar">
         <el-button class="menu-trigger" text :aria-label="compactViewport ? '打开主导航' : '切换侧边栏'" :aria-expanded="compactViewport ? mobileMenuOpen : undefined" @click="toggleNavigation"><el-icon><Menu /></el-icon></el-button>
-        <el-autocomplete
-          v-model="searchKeyword"
-          class="global-search"
-          :fetch-suggestions="fetchSearchSuggestions"
-          placeholder="检索业务数据"
-          clearable
-          @keyup.enter="search"
-          @select="selectResult"
-        />
-        <span class="spacer" />
-        <el-select v-if="organizations.length > 1" class="org-switcher" :model-value="auth.user?.org_id" :loading="switchingOrganization" size="small" @change="switchOrganization">
-          <el-option v-for="item in organizations" :key="item.id" :label="item.name || item.code" :value="item.id" />
-        </el-select>
+        <div class="topbar-fields" :class="{ 'has-org-switcher': organizations.length > 1 }">
+          <el-autocomplete
+            v-model="searchKeyword"
+            class="global-search"
+            :fetch-suggestions="fetchSearchSuggestions"
+            placeholder="检索业务数据"
+            clearable
+            @keyup.enter="search"
+            @select="selectResult"
+          />
+          <el-select v-if="organizations.length > 1" class="org-switcher" :model-value="auth.user?.org_id" :loading="switchingOrganization" @change="switchOrganization">
+            <el-option v-for="item in organizations" :key="item.id" :label="item.name || item.code" :value="item.id" />
+          </el-select>
+        </div>
         <NotificationCenter />
         <el-button class="top-action theme-action" text aria-label="切换主题" @click="app.toggleTheme"><el-icon><Sunny /></el-icon>{{ app.theme === "light" ? "暖石" : "浅色" }}</el-button>
         <el-button class="top-action help-action" text><el-icon><QuestionFilled /></el-icon>帮助</el-button>
@@ -348,13 +349,14 @@ onBeforeUnmount(() => {
 .avatar { display: grid; place-items: center; flex: 0 0 31px; width: 31px; height: 31px; border-radius: 50%; background: #e0ac8f; color: #573122; font-size: 11px; font-weight: 700; }
 .avatar-small { width: 29px; height: 29px; }
 .topbar { display: flex; align-items: center; height: 66px; border-bottom: 1px solid var(--erp-border); background: var(--erp-panel-bg); }
-.spacer { flex: 1; }
+.topbar-fields { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 12px; min-width: 0; margin-left: 14px; }
+.topbar-fields.has-org-switcher { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .menu-trigger { color: var(--erp-muted-text); font-size: 20px; }
 .user-menu { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: var(--erp-text); white-space: nowrap; }
 .top-action { color: var(--erp-muted-text); }
 .top-action :deep(.el-icon) { margin-right: 4px; }
-.global-search { flex: 0 1 360px; width: min(360px, 30vw); margin-left: 14px; }
-.global-search :deep(.el-input__wrapper) { border-radius: 11px; padding: 1px 12px; }
+.global-search, .org-switcher { width: 100%; min-width: 0; }
+.global-search :deep(.el-input__wrapper), .org-switcher :deep(.el-select__wrapper) { min-height: 34px; border-radius: 11px; padding: 1px 12px; }
 .main-content { min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; background: var(--erp-page-bg); }
 .main-content :deep(.el-main) { padding: 0; }
 .main-content > :deep(.el-main) { background: var(--erp-page-bg); }
@@ -365,8 +367,7 @@ onBeforeUnmount(() => {
   .brand { min-height: 72px; padding: 18px 20px; }
   .sidebar-user { margin-inline: 20px; }
   .topbar { height: calc(60px + env(safe-area-inset-top)); flex: 0 0 calc(60px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; }
-  .spacer { display: none; }
-  .global-search { min-width: 0; flex: 1 1 auto; width: auto; margin-left: 4px; }
+  .topbar-fields { gap: 8px; margin-left: 4px; }
   .top-action { padding-inline: 6px; }
   .top-action :deep(.el-icon) { margin-right: 0; }
   .help-action { display: none; }
@@ -375,7 +376,8 @@ onBeforeUnmount(() => {
 @media (max-width: 640px) {
   .topbar { gap: 4px; height: calc(56px + env(safe-area-inset-top)); flex-basis: calc(56px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-left)) 0; }
   .menu-trigger { flex: 0 0 40px; width: 40px; height: 44px; padding: 0; }
-  .global-search { margin: 0; }
+  .topbar-fields { gap: 6px; margin-left: 0; }
+  .topbar-fields.has-org-switcher { grid-template-columns: minmax(0, 1fr) minmax(96px, .55fr); }
   .theme-action { flex: 0 0 36px; width: 36px; height: 44px; padding: 0; font-size: 0; }
   .theme-action :deep(.el-icon) { margin: 0; font-size: 18px; }
   .user-menu > span:last-child { display: none; }
