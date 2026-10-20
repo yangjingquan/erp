@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from jinja2 import Template
@@ -7,6 +8,15 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.models.configuration import CfgFieldDefinition, CfgNumberRule, CfgPrintTemplate
 from app.services.auth_service import UserContext
+
+
+DEFAULT_WORK_ORDER_NUMBER_RULE = {
+    "rule_key": "mfg_work_order",
+    "prefix": "WO",
+    "date_format": "%Y%m",
+    "sequence_length": 4,
+    "reset_cycle": "month",
+}
 
 
 def next_doc_no(db: Session, rule_key: str, org_id: str, document_date: date) -> str:
@@ -21,6 +31,26 @@ def next_doc_no(db: Session, rule_key: str, org_id: str, document_date: date) ->
     if rule.current_date_key != date_key:
         rule.current_date_key = date_key
         rule.current_sequence = 0
+        if rule_key == "mfg_work_order":
+            from app.models.production import MfgWorkOrder
+
+            existing_numbers = db.scalars(
+                select(MfgWorkOrder.doc_no).where(
+                    MfgWorkOrder.org_id == org_id,
+                    MfgWorkOrder.doc_no.like(f"{rule.prefix}{date_key}%"),
+                )
+            ).all()
+            number_pattern = re.compile(
+                rf"^{re.escape(rule.prefix + date_key)}(\d{{{rule.sequence_length}}})$"
+            )
+            rule.current_sequence = max(
+                (
+                    int(match.group(1))
+                    for doc_no in existing_numbers
+                    if (match := number_pattern.fullmatch(doc_no))
+                ),
+                default=0,
+            )
     rule.current_sequence += 1
     db.flush()
     return f"{rule.prefix}{date_key}{rule.current_sequence:0{rule.sequence_length}d}"

@@ -2515,7 +2515,7 @@ VALUES
 ('30000000-0000-0000-0000-000000000007', '00000000-0000-0000-0000-000000000001', 'purchase_request', 'PRQ', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000008', '00000000-0000-0000-0000-000000000001', 'purchase_return', 'PTR', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000009', '00000000-0000-0000-0000-000000000001', 'sales_return', 'STR', '%Y%m%d', 4, 'day'),
-('30000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'mfg_work_order', 'WO', '%Y%m%d', 4, 'day'),
+('30000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001', 'mfg_work_order', 'WO', '%Y%m', 4, 'month'),
 ('30000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000001', 'qa_inspection', 'QI', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000012', '00000000-0000-0000-0000-000000000001', 'mfg_mps', 'MPS', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000013', '00000000-0000-0000-0000-000000000001', 'mfg_mrp', 'MRP', '%Y%m%d', 4, 'day'),
@@ -2523,7 +2523,7 @@ VALUES
 ('30000000-0000-0000-0000-000000000015', '00000000-0000-0000-0000-000000000001', 'mfg_subcontract_receipt', 'SR', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000016', '00000000-0000-0000-0000-000000000001', 'crm_lead', 'LD', '%Y%m%d', 4, 'day'),
 ('30000000-0000-0000-0000-000000000017', '00000000-0000-0000-0000-000000000001', 'crm_opportunity', 'OP', '%Y%m%d', 4, 'day')
-ON DUPLICATE KEY UPDATE prefix = VALUES(prefix), date_format = VALUES(date_format), sequence_length = VALUES(sequence_length);
+ON DUPLICATE KEY UPDATE prefix = VALUES(prefix), date_format = VALUES(date_format), sequence_length = VALUES(sequence_length), reset_cycle = VALUES(reset_cycle);
 
 INSERT INTO cfg_global_parameter (id, org_id, parameter_key, parameter_value, value_type, description)
 VALUES

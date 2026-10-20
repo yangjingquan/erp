@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import JSON, Numeric, String, Text
+from sqlalchemy import JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import UUIDModel
@@ -24,6 +24,7 @@ class CfgFieldDefinition(UUIDModel):
 
 class CfgNumberRule(UUIDModel):
     __tablename__ = "cfg_number_rule"
+    __table_args__ = (UniqueConstraint("org_id", "rule_key", name="uk_cfg_number_rule_key"),)
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     rule_key: Mapped[str] = mapped_column(String(64), nullable=False)
