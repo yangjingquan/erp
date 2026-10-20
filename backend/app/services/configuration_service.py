@@ -2,21 +2,146 @@ import re
 from datetime import date
 
 from jinja2 import Template
-from sqlalchemy import select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
+from app.models.business_extensions import PurchaseRequest, SalesQuote
 from app.models.configuration import CfgFieldDefinition, CfgNumberRule, CfgPrintTemplate
+from app.models.crm import CrmLead, CrmOpportunity
+from app.models.finance import FinVoucher
+from app.models.phase2_extensions import (
+    EamWorkOrder,
+    OrgIntercompanyTransaction,
+    PlmChangeOrder,
+    PlmChangeRequest,
+    SrmRfq,
+    SvcCase,
+    SvcContract,
+    TaxInvoice,
+)
+from app.models.production import (
+    MfgMps,
+    MfgMrpRun,
+    MfgSubcontractOrder,
+    MfgSubcontractReceipt,
+    MfgWorkOrder,
+)
+from app.models.purchase import PurchaseOrder, PurchaseReceipt, PurchaseReturn
+from app.models.sales import SalesDelivery, SalesOrder, SalesReturn
 from app.services.auth_service import UserContext
 
 
-DEFAULT_WORK_ORDER_NUMBER_RULE = {
-    "rule_key": "mfg_work_order",
-    "prefix": "WO",
-    "date_format": "%Y%m",
-    "sequence_length": 4,
-    "reset_cycle": "month",
+_NUMBER_RULE_SPECS = (
+    ("sales_order", "SO", "%Y%m%d", "day"),
+    ("purchase_order", "PO", "%Y%m%d", "day"),
+    ("sales_delivery", "SD", "%Y%m%d", "day"),
+    ("purchase_receipt", "PR", "%Y%m%d", "day"),
+    ("fin_voucher", "FV", "%Y%m%d", "day"),
+    ("sales_quote", "QT", "%Y%m%d", "day"),
+    ("purchase_request", "PRQ", "%Y%m", "month"),
+    ("purchase_return", "PTR", "%Y%m%d", "day"),
+    ("sales_return", "STR", "%Y%m%d", "day"),
+    ("mfg_work_order", "WO", "%Y%m", "month"),
+    ("qa_inspection", "QI", "%Y%m%d", "day"),
+    ("mfg_mps", "MPS", "%Y%m%d", "day"),
+    ("mfg_mrp", "MRP", "%Y%m%d", "day"),
+    ("mfg_subcontract_order", "SC", "%Y%m%d", "day"),
+    ("mfg_subcontract_receipt", "SR", "%Y%m%d", "day"),
+    ("crm_lead", "LD", "%Y%m%d", "day"),
+    ("crm_opportunity", "OP", "%Y%m%d", "day"),
+    ("plm_change_request", "PLMCR", "%Y%m%d", "day"),
+    ("plm_change_order", "ECN", "%Y%m%d", "day"),
+    ("srm_rfq", "RFQ", "%Y%m%d", "day"),
+    ("eam_work_order", "EAMWO", "%Y%m%d", "day"),
+    ("svc_contract", "SVCC", "%Y%m%d", "day"),
+    ("svc_case", "SVCS", "%Y%m%d", "day"),
+    ("tax_invoice", "TAX", "%Y%m%d", "day"),
+    ("intercompany", "IC", "%Y%m%d", "day"),
+)
+
+DEFAULT_NUMBER_RULES = {
+    rule_key: {
+        "prefix": prefix,
+        "date_format": date_format,
+        "sequence_length": 4,
+        "reset_cycle": reset_cycle,
+    }
+    for rule_key, prefix, date_format, reset_cycle in _NUMBER_RULE_SPECS
 }
+
+NUMBERED_DOCUMENT_FIELDS = {
+    "sales_order": (SalesOrder, "doc_no"),
+    "purchase_order": (PurchaseOrder, "doc_no"),
+    "sales_delivery": (SalesDelivery, "doc_no"),
+    "purchase_receipt": (PurchaseReceipt, "doc_no"),
+    "fin_voucher": (FinVoucher, "voucher_no"),
+    "sales_quote": (SalesQuote, "doc_no"),
+    "purchase_request": (PurchaseRequest, "doc_no"),
+    "purchase_return": (PurchaseReturn, "doc_no"),
+    "sales_return": (SalesReturn, "doc_no"),
+    "mfg_work_order": (MfgWorkOrder, "doc_no"),
+    "mfg_mps": (MfgMps, "doc_no"),
+    "mfg_mrp": (MfgMrpRun, "doc_no"),
+    "mfg_subcontract_order": (MfgSubcontractOrder, "doc_no"),
+    "mfg_subcontract_receipt": (MfgSubcontractReceipt, "doc_no"),
+    "crm_lead": (CrmLead, "lead_no"),
+    "crm_opportunity": (CrmOpportunity, "opportunity_no"),
+    "plm_change_request": (PlmChangeRequest, "change_no"),
+    "plm_change_order": (PlmChangeOrder, "ecn_no"),
+    "srm_rfq": (SrmRfq, "rfq_no"),
+    "eam_work_order": (EamWorkOrder, "work_order_no"),
+    "svc_contract": (SvcContract, "contract_no"),
+    "svc_case": (SvcCase, "case_no"),
+    "tax_invoice": (TaxInvoice, "invoice_no"),
+    "intercompany": (OrgIntercompanyTransaction, "transaction_no"),
+}
+
+
+def existing_document_sequence(
+    db: Session,
+    rule_key: str,
+    org_id: str,
+    date_key: str,
+    prefix: str,
+    sequence_length: int,
+) -> int:
+    return existing_document_sequences(
+        db, rule_key, [org_id], date_key, prefix, sequence_length
+    ).get(org_id, 0)
+
+
+def existing_document_sequences(
+    db: Session,
+    rule_key: str,
+    org_ids: list[str],
+    date_key: str,
+    prefix: str,
+    sequence_length: int,
+) -> dict[str, int]:
+    source = NUMBERED_DOCUMENT_FIELDS.get(rule_key)
+    if source is None or not org_ids:
+        return {}
+    model, field_name = source
+    if not inspect(db.bind).has_table(model.__tablename__):
+        return {}
+    number_field = getattr(model, field_name)
+    leading_part = f"{prefix}{date_key}"
+    numbers = db.execute(
+        select(model.org_id, number_field).where(
+            model.org_id.in_(org_ids),
+            func.substr(number_field, 1, len(leading_part)) == leading_part,
+        )
+    ).all()
+    pattern = re.compile(rf"^{re.escape(leading_part)}(\d{{{sequence_length}}})$")
+    sequences: dict[str, int] = {}
+    for org_id, number in numbers:
+        match = pattern.fullmatch(number)
+        if match:
+            sequences[org_id] = max(
+                sequences.get(org_id, 0), int(match.group(1))
+            )
+    return sequences
 
 
 def next_doc_no(db: Session, rule_key: str, org_id: str, document_date: date) -> str:
@@ -26,31 +151,37 @@ def next_doc_no(db: Session, rule_key: str, org_id: str, document_date: date) ->
         .with_for_update()
     )
     if rule is None:
-        raise AppError(f"未配置单据编号规则：{rule_key}", code=400)
+        default_rule = DEFAULT_NUMBER_RULES.get(rule_key)
+        if default_rule is None:
+            raise AppError(f"未配置单据编号规则：{rule_key}", code=400)
+        date_key = document_date.strftime(default_rule["date_format"])
+        rule = CfgNumberRule(
+            org_id=org_id,
+            rule_key=rule_key,
+            **default_rule,
+            current_date_key=date_key,
+            current_sequence=existing_document_sequence(
+                db,
+                rule_key,
+                org_id,
+                date_key,
+                default_rule["prefix"],
+                default_rule["sequence_length"],
+            ),
+        )
+        db.add(rule)
+        db.flush()
     date_key = document_date.strftime(rule.date_format or "%Y%m%d")
     if rule.current_date_key != date_key:
         rule.current_date_key = date_key
-        rule.current_sequence = 0
-        if rule_key == "mfg_work_order":
-            from app.models.production import MfgWorkOrder
-
-            existing_numbers = db.scalars(
-                select(MfgWorkOrder.doc_no).where(
-                    MfgWorkOrder.org_id == org_id,
-                    MfgWorkOrder.doc_no.like(f"{rule.prefix}{date_key}%"),
-                )
-            ).all()
-            number_pattern = re.compile(
-                rf"^{re.escape(rule.prefix + date_key)}(\d{{{rule.sequence_length}}})$"
-            )
-            rule.current_sequence = max(
-                (
-                    int(match.group(1))
-                    for doc_no in existing_numbers
-                    if (match := number_pattern.fullmatch(doc_no))
-                ),
-                default=0,
-            )
+        rule.current_sequence = existing_document_sequence(
+            db,
+            rule_key,
+            org_id,
+            date_key,
+            rule.prefix,
+            rule.sequence_length,
+        )
     rule.current_sequence += 1
     db.flush()
     return f"{rule.prefix}{date_key}{rule.current_sequence:0{rule.sequence_length}d}"

@@ -1,5 +1,3 @@
-import re
-
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -15,23 +13,25 @@ def ensure_auth_captcha_schema(db: Session) -> None:
 
 
 def ensure_default_number_rules(db: Session) -> None:
-    """Backfill missing work-order number rules for every organization.
+    """Backfill all built-in document-number rules for every organization.
 
     The original initialization script seeded rules only for its fixed demo
     organization. Organizations added later therefore failed when creating
-    work orders. Preserve the monthly WO format shown by existing documents,
-    and continue its current-month sequence to avoid duplicate numbers.
+    documents. Existing rules stay untouched, and missing rules continue the
+    current period's sequence when matching documents already exist.
     """
     table_names = set(inspect(db.bind).get_table_names())
-    if not {"sys_org", "cfg_number_rule", "mfg_work_order"}.issubset(table_names):
+    if not {"sys_org", "cfg_number_rule"}.issubset(table_names):
         return
 
     from app.core.time import local_today
     from app.models.base import new_uuid
     from app.models.configuration import CfgNumberRule
-    from app.models.production import MfgWorkOrder
     from app.models.system import SysOrg
-    from app.services.configuration_service import DEFAULT_WORK_ORDER_NUMBER_RULE
+    from app.services.configuration_service import (
+        DEFAULT_NUMBER_RULES,
+        existing_document_sequences,
+    )
 
     org_ids = db.scalars(
         select(SysOrg.id).where(SysOrg.is_deleted.is_(False))
@@ -39,44 +39,45 @@ def ensure_default_number_rules(db: Session) -> None:
     if not org_ids:
         return
 
-    configured_org_ids = set(
-        db.scalars(
-            select(CfgNumberRule.org_id).where(
+    existing_rules = set(
+        db.execute(
+            select(CfgNumberRule.org_id, CfgNumberRule.rule_key).where(
                 CfgNumberRule.org_id.in_(org_ids),
-                CfgNumberRule.rule_key == DEFAULT_WORK_ORDER_NUMBER_RULE["rule_key"],
+                CfgNumberRule.rule_key.in_(DEFAULT_NUMBER_RULES),
             )
         ).all()
     )
-    missing_org_ids = [org_id for org_id in org_ids if org_id not in configured_org_ids]
-    if not missing_org_ids:
-        return
-
-    month_key = local_today().strftime("%Y%m")
-    max_sequence_by_org: dict[str, int] = {}
-    doc_numbers = db.execute(
-        select(MfgWorkOrder.org_id, MfgWorkOrder.doc_no).where(
-            MfgWorkOrder.org_id.in_(missing_org_ids),
-            MfgWorkOrder.doc_no.like(f"WO{month_key}%"),
+    today = local_today()
+    rows = []
+    for rule_key, rule in DEFAULT_NUMBER_RULES.items():
+        missing_org_ids = [
+            org_id for org_id in org_ids if (org_id, rule_key) not in existing_rules
+        ]
+        if not missing_org_ids:
+            continue
+        date_key = today.strftime(rule["date_format"])
+        sequences = existing_document_sequences(
+            db,
+            rule_key,
+            missing_org_ids,
+            date_key,
+            rule["prefix"],
+            rule["sequence_length"],
         )
-    ).all()
-    pattern = re.compile(rf"^WO{month_key}(\d{{4}})$")
-    for org_id, doc_no in doc_numbers:
-        match = pattern.fullmatch(doc_no)
-        if match:
-            max_sequence_by_org[org_id] = max(
-                max_sequence_by_org.get(org_id, 0), int(match.group(1))
-            )
+        rows.extend(
+            {
+                "id": new_uuid(),
+                "org_id": org_id,
+                "rule_key": rule_key,
+                **rule,
+                "current_date_key": date_key,
+                "current_sequence": sequences.get(org_id, 0),
+            }
+            for org_id in missing_org_ids
+        )
 
-    rows = [
-        {
-            "id": new_uuid(),
-            "org_id": org_id,
-            **DEFAULT_WORK_ORDER_NUMBER_RULE,
-            "current_date_key": month_key,
-            "current_sequence": max_sequence_by_org.get(org_id, 0),
-        }
-        for org_id in missing_org_ids
-    ]
+    if not rows:
+        return
 
     if db.bind.dialect.name == "mysql":
         # INSERT IGNORE makes simultaneous application starts safe under the
