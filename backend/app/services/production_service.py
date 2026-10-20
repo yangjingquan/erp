@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import AppError
+from app.models.collaboration import BizDocument, BizDocumentRelation
 from app.models.inventory import (
     MFG_COMPLETION_SOURCE,
     MFG_MATERIAL_ISSUE_SOURCE,
@@ -25,7 +26,10 @@ from app.models.production import (
     MfgSubcontractOrder,
     MfgSubcontractReceipt,
     MfgWorkOrder,
+    MfgWorkOrderCost,
+    MfgWorkOrderException,
     MfgWorkOrderMaterial,
+    MfgWorkOrderSchedule,
 )
 from app.services.audit_service import write_operation_log
 from app.services.auth_service import UserContext
@@ -328,6 +332,62 @@ def create_work_order(db: Session, payload, context: UserContext) -> MfgWorkOrde
     db.flush()
     write_operation_log(db, user=context.user, action="create", resource="mfg_work_order", target_id=row.id)
     return row
+
+
+def delete_work_order(db: Session, work_order_id: str, context: UserContext) -> None:
+    row = _get_work_order(db, work_order_id, context, lock=True)
+    if row.status != "draft":
+        raise AppError("只有草稿状态的生产工单可以删除", code=400)
+
+    # A draft should not have execution records. Keep the guard in place in case
+    # data was written outside the normal status-checked production flow.
+    has_execution_data = any(
+        db.scalar(select(model.id).where(model.work_order_id == row.id).limit(1)) is not None
+        for model in (MfgMaterialIssue, MfgMaterialReturn, MfgReport, MfgExecutionEvent, MfgWorkOrderCost)
+    )
+    if has_execution_data:
+        raise AppError("该工单已有关联的领料、报工或成本记录，不能删除", code=409)
+
+    row.is_deleted = True
+    row.updated_by = context.id
+    row.version += 1
+
+    # Draft orders can already have schedules or planning notes. Retire these
+    # records too so they do not consume capacity or appear in global lists.
+    child_models = (MfgWorkOrderMaterial, MfgWorkOrderSchedule, MfgAlternateMaterial, MfgWorkOrderException)
+    for model in child_models:
+        children = db.scalars(select(model).where(model.work_order_id == row.id, model.is_deleted.is_(False))).all()
+        for child in children:
+            child.is_deleted = True
+            child.version += 1
+
+    document = db.scalar(select(BizDocument).where(
+        BizDocument.org_id == context.org_id,
+        BizDocument.business_type == "mfg_work_order",
+        BizDocument.business_id == row.id,
+        BizDocument.is_deleted.is_(False),
+    ))
+    if document is not None:
+        document.is_deleted = True
+        document.version += 1
+        relations = db.scalars(select(BizDocumentRelation).where(
+            BizDocumentRelation.org_id == context.org_id,
+            BizDocumentRelation.is_deleted.is_(False),
+            (
+                (BizDocumentRelation.from_type == "mfg_work_order")
+                & (BizDocumentRelation.from_id == row.id)
+            )
+            | (
+                (BizDocumentRelation.to_type == "mfg_work_order")
+                & (BizDocumentRelation.to_id == row.id)
+            ),
+        )).all()
+        for relation in relations:
+            relation.is_deleted = True
+            relation.version += 1
+
+    write_operation_log(db, user=context.user, action="delete", resource="mfg_work_order", target_id=row.id)
+    db.flush()
 
 
 def create_subcontract_order(db: Session, payload, context: UserContext) -> MfgSubcontractOrder:

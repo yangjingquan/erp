@@ -54,6 +54,7 @@ from app.services.production_service import (
     cancel_subcontract_order,
     complete_work_order,
     create_work_order,
+    delete_work_order,
     create_subcontract_order,
     issue_material,
     issue_subcontract_material,
@@ -374,6 +375,13 @@ def create_work_order_api(payload: WorkOrderCreate, context: UserContext = Depen
     row = create_work_order(db, payload, context)
     db.commit()
     return ok(serialize_work_order(row, db))
+
+
+@router.delete("/work-orders/{work_order_id}")
+def delete_work_order_api(work_order_id: str, context: UserContext = Depends(require_permission("production:manage")), db: Session = Depends(get_db)):
+    delete_work_order(db, work_order_id, context)
+    db.commit()
+    return ok(msg="草稿生产工单已删除")
 
 
 @router.get("/subcontract-orders")

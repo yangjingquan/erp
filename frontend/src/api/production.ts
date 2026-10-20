@@ -13,6 +13,7 @@ export const runMrp = (id: string) => http.post(`/production/mps/${id}/run-mrp`)
 export const confirmMrpResult = (resultId: string) => http.post(`/production/mrp-results/${resultId}/confirm`);
 export const listWorkOrders = () => http.get("/production/work-orders");
 export const createWorkOrder = (payload: unknown) => http.post("/production/work-orders", payload);
+export const deleteWorkOrder = (id: string) => http.delete(`/production/work-orders/${id}`);
 export const releaseWorkOrder = (id: string) => http.post(`/production/work-orders/${id}/release`);
 export const issueMaterial = (id: string, items: unknown) => http.post(`/production/work-orders/${id}/issue`, { items });
 export const reportWork = (id: string, payload: unknown) => http.post(`/production/work-orders/${id}/reports`, payload);
